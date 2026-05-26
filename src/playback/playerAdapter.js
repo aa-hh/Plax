@@ -1,8 +1,11 @@
+import Hls from 'hls.js';
 import { keepScreenOn } from '../platform/webos.js';
 import { updateProgress as libraryUpdateProgress, markWatched as libraryMarkWatched } from '../plex/library.js';
 import { redactPlexUrl } from '../plex/client.js';
+import { getPlexClientIdentity, PMS_PRODUCT } from '../plex/clientIdentity.js';
 import { connectionSchemeLabel } from '../plex/servers/connectionPolicy.js';
 import { fetchText } from '../utils/fetch.js';
+import { isSimulatorRuntime } from '../platform/webosRuntime.js';
 import { describeHlsError, isHlsUrl } from './hlsPolicy.js';
 import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
 import { shouldScrobble, shouldResetScrobble } from './scrobblePolicy.js';
@@ -32,6 +35,8 @@ var lastKnownPositionMs = 0;
 var streamBaseOffsetMs = 0;
 /** @see docs/caching-and-buffering.md */
 var REBUFFER_TIMEOUT_MS = 12000;
+var HlsPlayer = Hls;
+var activeHls = null;
 
 function fireRebufferTimeout() {
   if (onRebufferTimeoutCb) {
@@ -57,6 +62,11 @@ var rebufferWatchdog = createAdapterRebufferWatchdog();
 function setRebufferTimersForTest(timerFns) {
   if (rebufferWatchdog && rebufferWatchdog.destroy) rebufferWatchdog.destroy();
   rebufferWatchdog = createAdapterRebufferWatchdog(timerFns || null);
+}
+
+function setHlsPlayerForTest(HlsCtor) {
+  destroyActiveHls();
+  HlsPlayer = HlsCtor || Hls;
 }
 var initialPlayingTimelineSynced = false;
 var initialTimelineTimeupdateListener = null;
@@ -138,6 +148,58 @@ function resolvePlaybackConnectionScheme(url, session) {
 
 function logPlaybackConnection(url, session) {
   console.info('[playback] connection: ' + resolvePlaybackConnectionScheme(url, session));
+}
+
+function shouldUseMseHls(url) {
+  if (!isHlsUrl(url) || !HlsPlayer || !HlsPlayer.isSupported || !HlsPlayer.isSupported()) {
+    return false;
+  }
+  var identity = getPlexClientIdentity();
+  /* Real webOS TVs have native HLS support and stricter decoder ownership.
+   * Simulator and desktop-browser runs use Chromium's MSE path instead, which
+   * avoids FFmpegDemuxer rejecting Plex MPEG-TS HLS directly. */
+  return isSimulatorRuntime() || !identity || identity.product !== PMS_PRODUCT;
+}
+
+function destroyActiveHls() {
+  if (!activeHls) return;
+  try { activeHls.destroy(); } catch (e) { /* ignore teardown errors */ }
+  activeHls = null;
+}
+
+function attachMseHls(url) {
+  var events = HlsPlayer.Events || {};
+  var errorTypes = HlsPlayer.ErrorTypes || {};
+  destroyActiveHls();
+  activeHls = new HlsPlayer({
+    lowLatencyMode: false,
+    backBufferLength: 60
+  });
+  activeHls.on(events.MEDIA_ATTACHED, function () {
+    activeHls.loadSource(url);
+  });
+  activeHls.on(events.MANIFEST_PARSED, function () {
+    notifyBuffering(false);
+  });
+  activeHls.on(events.ERROR, function (_event, data) {
+    if (!data || !data.fatal) return;
+    console.warn('[playback] hls.js fatal error', data.type, data.details);
+    if (data.type === errorTypes.NETWORK_ERROR && activeHls.startLoad) {
+      activeHls.startLoad();
+      return;
+    }
+    if (data.type === errorTypes.MEDIA_ERROR && activeHls.recoverMediaError) {
+      activeHls.recoverMediaError();
+      return;
+    }
+    destroyActiveHls();
+    notifyBuffering(false);
+    if (onErrorCb) {
+      onErrorCb(normalizePlaybackError(new Error('HLS playback failed'), url));
+    }
+  });
+  activeHls.attachMedia(videoEl);
+  console.info('[playback] using hls.js for HLS compatibility');
 }
 
 function notifyBuffering(show) {
@@ -507,7 +569,12 @@ function play(url, session, options) {
   rebufferWatchdog.resetEpisode();
   notifyBuffering(true);
   videoEl.classList.remove('hidden');
-  videoEl.src = url;
+  if (shouldUseMseHls(url)) {
+    attachMseHls(url);
+  } else {
+    destroyActiveHls();
+    videoEl.src = url;
+  }
   keepScreenOn(true);
   videoEl.addEventListener('canplay', notifyFirstFrame, { once: true });
   videoEl.addEventListener('playing', notifyFirstFrame, { once: true });
@@ -562,6 +629,7 @@ function stop(options) {
   keepScreenOn(false);
   if (videoEl) {
     videoEl.pause();
+    destroyActiveHls();
     // Order matters on webOS: clear src first, then call load() to free the
     // native decoder. Otherwise the decoder may stay pinned until the next
     // <video> usage and silently fail subsequent play().
@@ -815,5 +883,6 @@ export {
   getPlaybackStats,
   REBUFFER_TIMEOUT_MS,
   setProgressApiForTest,
-  setRebufferTimersForTest
+  setRebufferTimersForTest,
+  setHlsPlayerForTest
 };

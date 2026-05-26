@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { installMinimalDom, createElement } from './helpers/minimal-dom.js';
+import {
+  resetPlexDeviceInfoForTest,
+  setPlexDeviceInfo
+} from '../src/plex/clientIdentity.js';
 
 installMinimalDom();
 
@@ -92,6 +96,41 @@ function setupVideo(overrides) {
   return video;
 }
 
+function createFakeHls() {
+  function FakeHls() {
+    this.handlers = {};
+    this.destroyed = false;
+    FakeHls.instances.push(this);
+  }
+  FakeHls.instances = [];
+  FakeHls.Events = {
+    MEDIA_ATTACHED: 'MEDIA_ATTACHED',
+    MANIFEST_PARSED: 'MANIFEST_PARSED',
+    ERROR: 'ERROR'
+  };
+  FakeHls.ErrorTypes = {
+    NETWORK_ERROR: 'networkError',
+    MEDIA_ERROR: 'mediaError'
+  };
+  FakeHls.isSupported = function () { return true; };
+  FakeHls.prototype.on = function (event, handler) {
+    this.handlers[event] = handler;
+  };
+  FakeHls.prototype.attachMedia = function (media) {
+    this.media = media;
+    if (this.handlers[FakeHls.Events.MEDIA_ATTACHED]) {
+      this.handlers[FakeHls.Events.MEDIA_ATTACHED]();
+    }
+  };
+  FakeHls.prototype.loadSource = function (url) {
+    this.source = url;
+  };
+  FakeHls.prototype.destroy = function () {
+    this.destroyed = true;
+  };
+  return FakeHls;
+}
+
 test.beforeEach(async function () {
   setupVideo();
   await loadPlayer();
@@ -106,7 +145,11 @@ test.afterEach(function () {
     playerModule.clearListeners();
     playerModule.setProgressApiForTest(null);
     playerModule.setRebufferTimersForTest(null);
+    playerModule.setHlsPlayerForTest(null);
   }
+  resetPlexDeviceInfoForTest();
+  delete globalThis.PalmSystem;
+  delete globalThis.webOS;
 });
 
 test('play defers first playing timeline until playing event', async function () {
@@ -188,6 +231,38 @@ test('play logs connection scheme from server when URL has no scheme', function 
     console.info = origInfo;
   }
   assert.ok(logs.some(function (line) { return line === '[playback] connection: HTTPS'; }));
+});
+
+test('play uses hls.js for browser HLS compatibility', function () {
+  var FakeHls = createFakeHls();
+  var video = playerModule.getVideoElement();
+  playerModule.setHlsPlayerForTest(FakeHls);
+
+  playerModule.play('http://127.0.0.1/video.m3u8?X-Plex-Token=abc123', session, { mode: 'transcode-hls' });
+
+  assert.equal(FakeHls.instances.length, 1);
+  assert.equal(FakeHls.instances[0].media, video);
+  assert.equal(FakeHls.instances[0].source, 'http://127.0.0.1/video.m3u8?X-Plex-Token=abc123');
+  assert.equal(video.src, '');
+});
+
+test('play keeps real webOS TV HLS on native video', function () {
+  var FakeHls = createFakeHls();
+  var video = playerModule.getVideoElement();
+  playerModule.setHlsPlayerForTest(FakeHls);
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'OLED55B9PUA', version: '4.9.0' });
+    }
+  };
+  setPlexDeviceInfo({ modelName: 'OLED55B9PUA', version: '4.9.0' });
+
+  playerModule.play('http://127.0.0.1/video.m3u8', session, { mode: 'transcode-hls' });
+
+  assert.equal(FakeHls.instances.length, 0);
+  assert.equal(video.src, 'http://127.0.0.1/video.m3u8');
 });
 
 test('timeupdate at zero does not sync playing before progress', async function () {
