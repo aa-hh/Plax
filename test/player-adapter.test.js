@@ -111,21 +111,32 @@ test('play logs stream type with mode and redacted url', function () {
   var logs = [];
   var origInfo = console.info;
   console.info = function () {
-    logs.push(Array.prototype.join.call(arguments, ' '));
+    logs.push(Array.prototype.slice.call(arguments));
   };
   try {
-    playerModule.play('http://127.0.0.1/video.m3u8?X-Plex-Token=abc123&offset=60', session, {
-      mode: 'transcode-hls'
-    });
+    playerModule.play(
+      'http://127.0.0.1/video.m3u8?X-Plex-Token=abc123&path=%2Flibrary%2Fparts%2F1%2Ffile.mkv&protocol=hls&offset=60',
+      session,
+      { mode: 'transcode-hls' }
+    );
   } finally {
     console.info = origInfo;
   }
 
-  assert.equal(logs.length, 2);
-  assert.match(logs[0], /^\[playback\] stream type: pure-transcode \(mode=transcode-hls, url=/);
-  assert.ok(logs[0].indexOf('abc123') < 0);
-  assert.ok(logs[0].indexOf('X-Plex-Token=%5Bredacted%5D') >= 0);
-  assert.equal(logs[1], '[playback] connection: HTTP');
+  assert.equal(logs.length, 3);
+  var streamLine = logs[0].join(' ');
+  assert.match(streamLine, /^\[playback\] stream type: pure-transcode \(mode=transcode-hls, url=/);
+  assert.ok(streamLine.indexOf('abc123') < 0);
+  assert.ok(streamLine.indexOf('X-Plex-Token=%5Bredacted%5D') >= 0);
+
+  assert.equal(logs[1][0], '[playback] params:');
+  var params = logs[1][1];
+  assert.equal(params.path, '/library/parts/1/file.mkv');
+  assert.equal(params.protocol, 'hls');
+  assert.equal(params.offset, '60');
+  assert.ok(!('X-Plex-Token' in params), 'params log must not leak token');
+
+  assert.equal(logs[2].join(' '), '[playback] connection: HTTP');
 });
 
 test('play logs connection scheme from HTTPS playback URL', function () {

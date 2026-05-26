@@ -11,6 +11,7 @@ import { flushTimelineProgress } from './timelineFlush.js';
 import { parseSrtToCues } from './tracks/srtParser.js';
 import { shouldRetrySubtitleFetch } from './tracks/subtitleTracks.js';
 import { createRebufferWatchdog } from './rebufferWatchdog.js';
+import { summarizeTranscodeUrl } from './plexPaths.js';
 
 var videoEl = null;
 var progressTimer = null;
@@ -113,6 +114,14 @@ function logPlaybackStreamType(mode, url) {
       ' (mode=' + (mode || 'unknown') +
       ', url=' + compactPlaybackUrl(url) + ')'
   );
+}
+
+/* Decoded `path=` + transcode decision params, on their own line, so the
+ * value PMS actually receives is unambiguously visible in the console. */
+function logPlaybackTranscodeParams(url) {
+  var params = summarizeTranscodeUrl(url);
+  if (!params || !Object.keys(params).length) return;
+  console.info('[playback] params:', params);
 }
 
 function resolvePlaybackConnectionScheme(url, session) {
@@ -440,6 +449,7 @@ function play(url, session, options) {
   lastPlaybackUrl = url;
   playbackModeRef = mode;
   logPlaybackStreamType(mode, url);
+  logPlaybackTranscodeParams(url);
   logPlaybackConnection(url, session);
   rebufferWatchdog.resetEpisode();
   notifyBuffering(true);
