@@ -40,14 +40,28 @@ function buildTranscodeParams(server, partKey, session, protocol) {
   var strategy = resolvePlaybackStrategy(session);
   var fullTranscode = strategy === 'transcode' || strategy === 'http-transcode';
   var directStream = strategy === 'direct-stream';
+  var transcodeSession = getActiveTranscodeSession(session) ||
+    session.sessionId || 'xplay-' + Date.now();
+  /* Plex transcoder API (https://developer.plex.tv/pms/#tag/Transcoder/operation/transcodeStart):
+   *   - directStreamAudio=1 lets PMS keep the audio track unchanged when remuxing
+   *   - hasMDE=1 lets PMS skip its built-in profile gating; required pair with directPlay
+   *   - mediaBufferSize advertises the client buffer so PMS doesn't assume bandwidth-constrained
+   *   - autoAdjustQuality=0 disables server-driven ABR; we control quality from the menu
+   *   - X-Plex-Session-Identifier identifies the playback session (separate from `session=` UUID
+   *     which is the transcode session ID). Real Plex Web sends both. */
   var params = applyPlexClientFields({
     path: path,
     mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
     partIndex: session.partIndex != null ? session.partIndex : 0,
     fastSeek: '1',
+    hasMDE: '1',
     directPlay: fullTranscode ? '0' : (directStream ? '0' : '1'),
     directStream: fullTranscode ? '0' : '1',
-    session: getActiveTranscodeSession(session) || session.sessionId || 'xplay-' + Date.now(),
+    directStreamAudio: fullTranscode ? '0' : '1',
+    autoAdjustQuality: '0',
+    mediaBufferSize: '102400',
+    session: transcodeSession,
+    'X-Plex-Session-Identifier': transcodeSession,
     location: plexLocationForServer(server)
   });
   var offsetSec = offsetSecondsForPlex(session);
