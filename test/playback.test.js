@@ -656,6 +656,49 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
   }
 });
 
+test('prepareClientSubtitlePlayback adopts server resourceSession for subtitle fetches', async function () {
+  var savedFetch = globalThis.fetch;
+  globalThis.fetch = function () {
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: function () {
+        return Promise.resolve('<MediaContainer resourceSession="plex-sub-session-42"/>');
+      },
+      headers: { get: function () { return 'application/xml'; } }
+    });
+  };
+  try {
+    var server = {
+      connectionUri: 'http://185.203.56.20:17054',
+      accessToken: 'tok',
+      activeConnection: { local: false, uri: 'http://185.203.56.20:17054' }
+    };
+    var session = {
+      item: { key: '/library/metadata/33622', ratingKey: '33622' },
+      version: { partKey: '/library/parts/231208/1779142932/file.mkv' },
+      sessionId: 'xplay-1779812905191',
+      subtitleStreamId: 1894444,
+      mediaIndex: 0,
+      partIndex: 0
+    };
+    var track = { id: 1894444, codec: 'srt', delivery: 'embedded' };
+    await prepareClientSubtitlePlayback(server, session, track, 'direct');
+    assert.equal(session.transcodeSessionId, 'plex-sub-session-42');
+    var firstAttempt = buildSubtitleFetchPlan(server, session, track, {
+      playbackMode: 'direct'
+    })[1];
+    assert.ok(firstAttempt.url.indexOf('transcodeSessionId=plex-sub-session-42') >= 0);
+    assert.equal(
+      firstAttempt.init.headers['X-Plex-Session-Identifier'],
+      'plex-sub-session-42'
+    );
+  } finally {
+    if (savedFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = savedFetch;
+  }
+});
+
 test('buildSubtitleFetchPlan includes part path as last resort', function () {
   var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
   var session = {

@@ -410,6 +410,12 @@ function buildUniversalDecisionRequest(server, session, mediaPath, track, playba
   };
 }
 
+function extractDecisionResourceSession(xmlText) {
+  if (!xmlText) return null;
+  var match = String(xmlText).match(/\bresourceSession=(["'])(.*?)\1/);
+  return match && match[2] ? match[2] : null;
+}
+
 /**
  * Register progressive direct play with PMS before subtitle extract (PMP parity).
  * Do not call during HLS remux (`direct-stream`): an extra `/decision` while
@@ -429,7 +435,10 @@ function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
   return fetchText(
     request.url,
     Object.assign({ timeout: 15000 }, request.init || {})
-  ).catch(function (err) {
+  ).then(function (body) {
+    var resourceSession = extractDecisionResourceSession(body);
+    if (resourceSession && session) session.transcodeSessionId = resourceSession;
+  }).catch(function (err) {
     console.warn('[subtitles] decision prime failed:', err.message);
   });
 }
