@@ -196,15 +196,14 @@ function isDirectPlaybackMode(playbackMode) {
 }
 
 /**
- * PMS accepts relative paths during transcode; direct-play subtitle fetches use a
- * full metadata URL like Plex Media Player (http://host:port/library/metadata/…).
+ * PMS only accepts a `path=` whose host it recognises as itself. PMP runs on the
+ * same machine as the server, so it can send `http://127.0.0.1:32400/...`; a
+ * remote web/TV client cannot, and PMS rejects a public-facing URL with 400.
+ * Web-style clients send a server-relative path (`/library/metadata/...`),
+ * which PMS resolves against itself regardless of playback mode.
  */
-function resolveTranscodeMediaPath(server, relativePath, playbackMode) {
-  var path = normalizePlexPath(relativePath);
-  if (!path || !server || !server.connectionUri) return path;
-  if (!isDirectPlaybackMode(playbackMode)) return path;
-  var base = server.connectionUri.replace(/\/$/, '');
-  return base + path;
+function resolveTranscodeMediaPath(server, relativePath /* , playbackMode */) {
+  return normalizePlexPath(relativePath);
 }
 
 function isClientGeneratedSessionId(sessionId) {

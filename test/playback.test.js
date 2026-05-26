@@ -350,7 +350,8 @@ test('buildSubtitleFetchPlan skips stream GET for embedded text subs', function 
   assert.ok(first.indexOf('subtitleSize=100') >= 0);
   assert.ok(first.indexOf('audioBoost=100') >= 0);
   assert.ok(first.indexOf('protocol=http') >= 0);
-  assert.ok(first.indexOf(encodeURIComponent('http://plex.local:32400/library/metadata/999')) >= 0);
+  assert.ok(first.indexOf('path=' + encodeURIComponent('/library/metadata/999')) >= 0);
+  assert.ok(first.indexOf(encodeURIComponent('http://plex.local:32400/library/metadata/999')) < 0);
   assert.ok(first.indexOf('subtitleStreamID=1893985') >= 0);
   assert.ok(first.indexOf('X-Plex-Subtitle-Stream=') < 0);
   assert.ok(first.indexOf('subtitleFormat=') < 0);
@@ -414,7 +415,38 @@ test('buildSubtitleFetchPlan includes part path as last resort', function () {
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
   var last = attempts[attempts.length - 1];
   assert.equal(last.label, 'universal-part-sidecar');
-  assert.ok(last.url.indexOf(encodeURIComponent('http://plex.local:32400/library/parts/abc/video.mkv')) >= 0);
+  assert.ok(last.url.indexOf('path=' + encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
+  assert.ok(last.url.indexOf(encodeURIComponent('http://plex.local:32400/library/parts/abc/video.mkv')) < 0);
+});
+
+test('buildSubtitleFetchPlan uses server-relative path even on remote direct-play', function () {
+  var server = {
+    connectionUri: 'http://185.203.56.20:17054',
+    accessToken: 'tok'
+  };
+  var session = {
+    item: { key: '/library/metadata/33612', ratingKey: '33612' },
+    version: { partKey: '/library/parts/231199/1779144329/file.mkv' },
+    subtitleStreamId: 1894107,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var track = { id: 1894107, codec: 'srt', delivery: 'embedded' };
+  var attempts = buildSubtitleFetchPlan(server, session, track, {
+    playbackMode: 'direct'
+  });
+  attempts.forEach(function (attempt) {
+    assert.ok(
+      attempt.url.indexOf(encodeURIComponent('http://185.203.56.20:17054/library')) < 0,
+      'path must not include the public server URL (PMS rejects with HTTP 400): ' + attempt.url
+    );
+  });
+  assert.ok(attempts[0].url.indexOf('path=' + encodeURIComponent('/library/metadata/33612')) >= 0);
+  var partAttempt = attempts.filter(function (a) { return a.label === 'universal-part-sidecar'; })[0];
+  assert.ok(partAttempt);
+  assert.ok(partAttempt.url.indexOf(
+    'path=' + encodeURIComponent('/library/parts/231199/1779144329/file.mkv')
+  ) >= 0);
 });
 
 test('buildClientSubtitleUrl returns first fetch plan candidate', function () {

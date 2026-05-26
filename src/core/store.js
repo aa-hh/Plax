@@ -14,7 +14,11 @@ var state = {
   libraries: [],
   activeLibrary: null,
   networkPrefs: {
-    allowInsecure: true,
+    // Secure default: prefer HTTPS (signed *.plex.direct cert) and only
+    // fall back to plain HTTP if no HTTPS candidate is reachable. Set
+    // `allowInsecure: true` to let HTTP win when both are reachable
+    // (legacy LAN / non-plex.direct setups).
+    allowInsecure: false,
     preferDirect: true,
     connectionOrder: ['local', 'remote', 'relay']
   },
