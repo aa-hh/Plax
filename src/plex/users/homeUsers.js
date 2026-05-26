@@ -6,9 +6,17 @@ function asBool(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 
+function homeUserSwitchId(user) {
+  if (!user) return null;
+  if (user.id != null && user.id !== '') return user.id;
+  if (user.uuid) return user.uuid;
+  return null;
+}
+
 function mapHomeUser(u) {
+  var id = u.id != null && u.id !== '' ? u.id : (u.uuid || null);
   return {
-    id: u.id,
+    id: id,
     uuid: u.uuid,
     title: u.title || u.username || u.friendlyName,
     username: u.username,
@@ -112,7 +120,9 @@ function parseSwitchToken(data, xmlText) {
 
 // v1 fallback: keep PIN out of the URL (logs/history). Plex accepts form body on POST.
 function switchHomeUserV1(user, pin, ownerAuthToken) {
-  return fetchText(plexTvUrl('/api/home/users/' + user.id + '/switch'), {
+  var switchId = homeUserSwitchId(user);
+  if (!switchId) return Promise.reject(new Error('Profile is missing an id. Re-link Plex and try again.'));
+  return fetchText(plexTvUrl('/api/home/users/' + switchId + '/switch'), {
     method: 'POST',
     headers: plexHeaders({
       Accept: 'application/xml',
@@ -154,6 +164,22 @@ function fetchHomeUsers(ownerAuthToken, clientId) {
   });
 }
 
+function friendlySwitchError(err) {
+  var body = (err && err.body) || '';
+  var msg = (err && err.message) || '';
+  var combined = (body + ' ' + msg).toLowerCase();
+  if (combined.indexOf('directory') >= 0 && combined.indexOf('not found') >= 0) {
+    return 'Profile switch failed. Choose your profile again or re-link Plex on this TV.';
+  }
+  if (err && err.status === 403) {
+    return 'Incorrect PIN. Try again.';
+  }
+  if (err && err.status === 404) {
+    return 'Profile not found on Plex Home. Re-link Plex and try again.';
+  }
+  return msg || 'Could not switch profile.';
+}
+
 function switchToHomeUser(user, pin, ownerAuthToken) {
   if (canSkipHomeSwitch(user)) {
     return Promise.resolve({
@@ -162,7 +188,12 @@ function switchToHomeUser(user, pin, ownerAuthToken) {
     });
   }
 
-  return fetchJson(plexTvUrl('/api/v2/home/users/' + user.id + '/switch'), {
+  var switchId = homeUserSwitchId(user);
+  if (!switchId) {
+    return Promise.reject(new Error('Profile is missing an id. Re-link Plex and try again.'));
+  }
+
+  return fetchJson(plexTvUrl('/api/v2/home/users/' + switchId + '/switch'), {
     method: 'POST',
     headers: plexHeaders({
       'Content-Type': 'application/json',
@@ -184,12 +215,15 @@ function switchToHomeUser(user, pin, ownerAuthToken) {
       throw new Error('Incorrect PIN. Try again.');
     }
     return switchHomeUserV1(user, pin, ownerAuthToken).catch(function (v1err) {
-      if (v1err && v1err.status === 403) {
-        throw new Error('Incorrect PIN. Try again.');
-      }
-      throw v1err;
+      throw new Error(friendlySwitchError(v1err));
     });
   });
 }
 
-export { fetchHomeUsers, switchToHomeUser, mapHomeUser, canSkipHomeSwitch };
+export {
+  fetchHomeUsers,
+  switchToHomeUser,
+  mapHomeUser,
+  canSkipHomeSwitch,
+  homeUserSwitchId
+};

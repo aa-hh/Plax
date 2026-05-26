@@ -8,7 +8,7 @@
     "build": "rollup -c build/rollup.config.js",
     "watch": "rollup -c build/rollup.config.js -w",
     "package": "npm run build && node scripts/package-ipk.cjs",
-    "validate": "node scripts/validate-compat.cjs && node scripts/validate-intro-markers.mjs",
+    "validate": "node scripts/validate-compat.cjs && node scripts/validate-intro-markers.mjs && node scripts/validate-library-access.mjs",
     "icons": "node scripts/generate-icons.cjs",
     "prebuild": "node scripts/generate-icons.cjs",
     "sim": "npm run build && node scripts/sim-launch.cjs",

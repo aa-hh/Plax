@@ -197,7 +197,11 @@ function profilePickerScreen(root, params, navigate) {
       cache.invalidateAll();
       setState({
         activeHomeUser: result.user,
-        authToken: token
+        authToken: token,
+        libraries: [],
+        activeLibrary: null,
+        servers: [],
+        activeServer: null
       });
       persistAuth({
         activeHomeUser: result.user,

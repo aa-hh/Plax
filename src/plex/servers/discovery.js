@@ -1,6 +1,7 @@
 import { fetchJson } from '../../utils/fetch.js';
 import { plexTvUrl, plexHeaders, fetchPlexXml, serverUrl } from '../client.js';
 import { rankConnections } from './connectionPolicy.js';
+import { normalizeSectionType } from '../../security/libraryAccess.js';
 import { getState } from '../../core/store.js';
 import * as cache from '../../core/cache.js';
 
@@ -156,6 +157,26 @@ function mergeOwnerConnections(profileServers, ownerServers) {
   });
 }
 
+/** Managed Home profiles often have no plex.tv resources; borrow the owner's server list. */
+function resolveServersForDiscovery(profileServers, ownerServers, profileToken) {
+  if (profileServers && profileServers.length) {
+    return mergeOwnerConnections(profileServers, ownerServers);
+  }
+  if (!ownerServers || !ownerServers.length) return [];
+  return ownerServers.map(function (os) {
+    return Object.assign({}, os, { accessToken: profileToken || os.accessToken });
+  });
+}
+
+function parseSectionAccessible(accessible) {
+  if (accessible == null || accessible === '') return true;
+  if (accessible === '1' || accessible === true || accessible === 1) return true;
+  if (accessible === '0' || accessible === false || accessible === 0) return false;
+  if (accessible === 'true') return true;
+  if (accessible === 'false') return false;
+  return true;
+}
+
 function probeServers(servers, prefs, ownerServers) {
   var chain = Promise.resolve([]);
   servers.forEach(function (server) {
@@ -185,7 +206,7 @@ function discoverServers(prefs) {
       });
     }
     return fetchResources(state.ownerAuthToken).then(function (ownerServers) {
-      var merged = mergeOwnerConnections(servers, ownerServers);
+      var merged = resolveServersForDiscovery(servers, ownerServers, state.authToken);
       return probeServers(merged, prefs, ownerServers).then(function (resolved) {
         return { servers: merged, resolved: resolved };
       });
@@ -199,35 +220,97 @@ function discoverServers(prefs) {
   });
 }
 
+/**
+ * Real libraries from GET /library/sections are Directory rows with
+ * key=/library/sections/{id}, a media type (movie/show/artist/photo), and
+ * usually agent+scanner. Skip nested/secondary dirs, composite agents, and
+ * rows whose Location children are present but empty (virtual shelves).
+ * Promoted hubs live under /hubs/* — not this endpoint.
+ */
+function sectionFolderPaths(item) {
+  var paths = [];
+  (item._children || []).forEach(function (child) {
+    if (child._tag === 'Location' && child.path) {
+      var p = String(child.path).trim();
+      if (p) paths.push(p);
+    }
+  });
+  return paths;
+}
+
+function isFolderBackedLibrarySection(item) {
+  if (!item) return false;
+  var key = String(item.key || '');
+  if (!/\/library\/sections\/\d+\/?$/.test(key)) return false;
+  if (item.secondary === '1' || item.secondary === true || item.secondary === 'true') {
+    return false;
+  }
+  var agent = String(item.agent || '');
+  if (agent && /composite/i.test(agent)) return false;
+  var type = normalizeSectionType(item.type);
+  if (!type || type === 'hub' || type === 'mixed') return false;
+  var locNodes = (item._children || []).filter(function (c) {
+    return c._tag === 'Location';
+  });
+  if (locNodes.length && !sectionFolderPaths(item).length) return false;
+  return true;
+}
+
 function mapLibrarySection(item) {
-  if (!item) return null;
+  if (!item || !isFolderBackedLibrarySection(item)) return null;
   var key = item.key || '';
-  var id = String(item.librarySectionID || key.split('/').pop() || '');
+  var keyMatch = key.match(/\/library\/sections\/(\d+)/);
+  var id = String(
+    item.librarySectionID ||
+    item.id ||
+    (keyMatch && keyMatch[1]) ||
+    ''
+  );
+  if (!id || id === 'sections') return null;
   var shared = item.shared;
-  var hidden = item.hidden === '1' || item.hidden === true;
+  var hidden = item.hidden === '1' || item.hidden === true || item.hidden === 'true';
   var accessible = item.accessible;
   return {
     id: id,
     title: item.title,
-    type: item.type,
-    key: key,
+    type: normalizeSectionType(item.type) || item.type,
+    key: key || '/library/sections/' + id,
     shared: shared,
     hidden: hidden,
     uuid: item.uuid || '',
-    _accessible: accessible == null
-      ? true
-      : (accessible === '1' || accessible === true || accessible === 1)
+    agent: item.agent || '',
+    scanner: item.scanner || '',
+    locations: sectionFolderPaths(item),
+    _accessible: parseSectionAccessible(accessible)
   };
 }
 
+function librarySectionsCacheKey(server) {
+  var state = getState();
+  var user = state.activeHomeUser;
+  var userPart = user
+    ? String(user.id != null ? user.id : (user.uuid || 'home'))
+    : 'owner';
+  var scope = (server && (server.clientIdentifier || server.connectionUri)) || 'noserver';
+  return cache.buildKey(scope, userPart, 'sections');
+}
+
 function mapLibrarySections(result) {
-  return (result.items || []).map(mapLibrarySection).filter(Boolean);
+  var raw = result.items || [];
+  var mapped = raw.map(mapLibrarySection).filter(Boolean);
+  if (raw.length !== mapped.length) {
+    console.info('[libraries] folder-backed filter', {
+      apiSections: raw.length,
+      kept: mapped.length,
+      skipped: raw.length - mapped.length
+    });
+  }
+  return mapped;
 }
 
 function getLibraries(server, opts) {
   opts = opts || {};
-  var scope = (server && (server.clientIdentifier || server.connectionUri)) || 'noserver';
-  var key = cache.buildKey(scope, 'sections');
+  var key = librarySectionsCacheKey(server);
   if (opts.fresh) cache.invalidate('libraries', key);
   return cache.remember('libraries', key, function () {
     return fetchPlexXml(serverUrl(server.connectionUri, '/library/sections', {}, server));
@@ -240,5 +323,11 @@ export {
   getLibraries,
   mapLibrarySection,
   mapLibrarySections,
-  testServerConnection
+  librarySectionsCacheKey,
+  resolveServersForDiscovery,
+  testServerConnection,
+  isFolderBackedLibrarySection,
+  sectionFolderPaths
 };
+
+export { normalizeSectionType, isMovieOrTvSection as isMovieOrShowSection } from '../../security/libraryAccess.js';

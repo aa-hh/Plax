@@ -4,7 +4,10 @@ import { fetchUser } from '../../plex/auth/pinAuth.js';
 import { discoverServers, getLibraries, mapLibrarySections } from '../../plex/servers/discovery.js';
 import { prefetchHomeHubs } from '../../plex/library.js';
 import { startBootNetworkProbe } from '../../playback/networkProbe.js';
-import { filterLibrariesForUser } from '../../security/libraryAccess.js';
+import {
+  filterLibrariesForUser,
+  isRestrictedProfile
+} from '../../security/libraryAccess.js';
 import { createLoadingIndicator } from '../components/loadingIndicator.js';
 
 function bootstrapScreen(root, params, navigate) {
@@ -40,21 +43,51 @@ function bootstrapScreen(root, params, navigate) {
     var activeServer = servers[0];
     setState({ servers: servers, activeServer: activeServer, networkProbe: null });
     document.getElementById('boot-status').textContent = 'Loading libraries…';
+    var homeUser = getState().activeHomeUser;
     return Promise.all([
-      getLibraries(activeServer),
+      getLibraries(activeServer, { fresh: true }),
       prefetchHomeHubs(activeServer, { initialRows: 2, hubListSize: 16, rowSize: 20 })
     ]);
   }).then(function (results) {
-    startBootNetworkProbe(activeServer, results[1]);
-    var libs = mapLibrarySections(results[0]).filter(function (l) {
-      return l.type === 'movie' || l.type === 'show';
+    startBootNetworkProbe(getState().activeServer, results[1]);
+    var apiItems = (results[0] && results[0].items) ? results[0].items.length : 0;
+    var rawSections = mapLibrarySections(results[0]);
+    var homeUser = getState().activeHomeUser;
+    var libs = filterLibrariesForUser(rawSections, homeUser);
+    console.info('[bootstrap] library sections', {
+      apiItems: apiItems,
+      folderBacked: rawSections.length,
+      afterProfileFilter: libs.length,
+      restricted: isRestrictedProfile(homeUser),
+      profile: homeUser && (homeUser.title || homeUser.username),
+      serverToken: !!(getState().activeServer && getState().activeServer.accessToken)
     });
-    libs = filterLibrariesForUser(libs, getState().activeHomeUser);
+    if (!libs.length) {
+      var apiCount = rawSections.length;
+      console.warn('[bootstrap] libraries empty', {
+        apiItems: apiItems,
+        apiSections: apiCount,
+        restricted: isRestrictedProfile(homeUser),
+        profile: homeUser && (homeUser.title || homeUser.username)
+      });
+      var detail = apiCount
+        ? ' (Plex server returned ' + apiCount + ' section' + (apiCount === 1 ? '' : 's') +
+          (isRestrictedProfile(homeUser) ? ', none available for this profile' : '') + ')'
+        : '';
+      throw new Error(
+        isRestrictedProfile(homeUser)
+          ? 'No libraries are available for this profile. Ask your Plex admin to share a library.' + detail
+          : 'No libraries found on this Plex server.' + detail
+      );
+    }
     setState({ libraries: libs, activeLibrary: libs[0] });
     document.getElementById('boot-status').textContent = 'Opening Home…';
     navigate('home', {});
   }).catch(function (err) {
     var msg = err.message || 'Connection failed';
+    if (/directory/i.test(msg) && /not found/i.test(msg)) {
+      msg = 'Libraries for this profile could not be loaded. Try another profile or re-link Plex.';
+    }
     fail(msg);
     var authFailed = err && (err.status === 401 || /auth/i.test(msg));
     var hasHomeProfile = !!(getState().activeHomeUser);
