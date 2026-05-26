@@ -197,29 +197,29 @@ function switchToHomeUser(user, pin, ownerAuthToken) {
     return Promise.reject(new Error('Profile is missing an id. Re-link Plex and try again.'));
   }
 
-  return fetchJson(plexTvUrl('/api/v2/home/users/' + switchId + '/switch'), {
-    method: 'POST',
-    headers: plexHeaders({
-      'Content-Type': 'application/json',
-      'X-Plex-Token': ownerAuthToken
-    }),
-    body: JSON.stringify({ pin: pin || '' }),
-    timeout: HOME_API_TIMEOUT
-  }).then(function (result) {
-    var token = parseSwitchToken(result);
-    if (token) {
+  // Align with Plex clients that successfully use /api/home/users/:id/switch.
+  // Some environments return 404 for v2 even when v1 succeeds.
+  return switchHomeUserV1(user, pin, ownerAuthToken).catch(function (v1err) {
+    if (v1err && v1err.status === 403) {
+      throw new Error('Incorrect PIN. Try again.');
+    }
+    return fetchJson(plexTvUrl('/api/v2/home/users/' + switchId + '/switch'), {
+      method: 'POST',
+      headers: plexHeaders({
+        'Content-Type': 'application/json',
+        'X-Plex-Token': ownerAuthToken
+      }),
+      body: JSON.stringify({ pin: pin || '' }),
+      timeout: HOME_API_TIMEOUT
+    }).then(function (result) {
+      var token = parseSwitchToken(result);
+      if (!token) throw new Error('Profile switch failed.');
       return {
         authToken: token,
         user: Object.assign({}, user, { authToken: token })
       };
-    }
-    return switchHomeUserV1(user, pin, ownerAuthToken);
-  }).catch(function (err) {
-    if (err && err.status === 403) {
-      throw new Error('Incorrect PIN. Try again.');
-    }
-    return switchHomeUserV1(user, pin, ownerAuthToken).catch(function (v1err) {
-      throw new Error(friendlySwitchError(v1err));
+    }).catch(function (v2err) {
+      throw new Error(friendlySwitchError(v2err && v2err.status ? v2err : v1err));
     });
   });
 }
