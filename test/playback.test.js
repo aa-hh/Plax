@@ -505,6 +505,51 @@ test('resolveSubtitleSessionId prefers server transcode session', function () {
   assert.equal(resolveSubtitleSessionId({ sessionId: 'xplay-1' }), 'xplay-1');
 });
 
+test('prepareClientSubtitlePlayback primes direct subtitles with metadata path and headers', async function () {
+  var savedFetch = globalThis.fetch;
+  var calls = [];
+  globalThis.fetch = function (url, init) {
+    calls.push({ url: String(url), init: init || {} });
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: function () { return Promise.resolve('<MediaContainer/>'); },
+      headers: { get: function () { return 'application/xml'; } }
+    });
+  };
+  try {
+    var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+    var session = {
+      item: { key: '/library/metadata/999' },
+      version: { partKey: '/library/parts/42/video.mkv' },
+      subtitleStreamId: 5,
+      transcodeSessionId: 'plex-resource-session',
+      mediaIndex: 0,
+      partIndex: 0
+    };
+    await prepareClientSubtitlePlayback(
+      server,
+      session,
+      { id: 5, codec: 'srt', delivery: 'embedded' },
+      'direct-stream'
+    );
+    var decision = calls.filter(function (call) {
+      return call.url.indexOf('/video/:/transcode/universal/decision') >= 0;
+    })[0];
+    assert.ok(decision);
+    var q = new URL(decision.url).searchParams;
+    assert.equal(q.get('path'), '/library/metadata/999');
+    assert.equal(q.get('transcodeSessionId'), 'plex-resource-session');
+    assert.equal(q.get('X-Plex-Token'), null);
+    assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
+    assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'plex-resource-session');
+    assert.equal(decision.init.headers.Accept, 'application/xml');
+  } finally {
+    if (savedFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = savedFetch;
+  }
+});
+
 test('buildSubtitleFetchPlan includes part path as last resort', function () {
   var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
   var session = {

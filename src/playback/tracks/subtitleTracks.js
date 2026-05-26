@@ -350,8 +350,10 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
   );
 }
 
-function subtitleFetchHeaders(server, session) {
-  var headers = plexHeaders({ Accept: 'text/srt, text/vtt, text/plain;q=0.9, */*;q=0.1' });
+function subtitleFetchHeaders(server, session, accept) {
+  var headers = plexHeaders({
+    Accept: accept || 'text/srt, text/vtt, text/plain;q=0.9, */*;q=0.1'
+  });
   var token = getServerToken(server);
   var playbackSessionId = resolveSubtitleSessionId(session);
   if (token) headers['X-Plex-Token'] = token;
@@ -385,7 +387,7 @@ function buildUniversalDecisionRequest(server, session, mediaPath, track, playba
     url: server.connectionUri.replace(/\/$/, '') +
       '/video/:/transcode/universal/decision' +
       (query ? '?' + query : ''),
-    init: { headers: subtitleFetchHeaders(server, session) }
+    init: { headers: subtitleFetchHeaders(server, session, 'application/xml') }
   };
 }
 
