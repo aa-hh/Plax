@@ -332,30 +332,44 @@ function hasClientSubtitlesLoaded() {
   return !!activeTextTrack;
 }
 
+function normalizeSubtitleFetchAttempts(urls) {
+  if (!urls || !urls.length) return [];
+  return urls.map(function (entry) {
+    if (typeof entry === 'string') return { label: 'subtitle', url: entry };
+    return { label: entry.label || 'subtitle', url: entry.url };
+  }).filter(function (attempt) { return !!attempt.url; });
+}
+
 function loadClientSubtitleFromUrls(urls, offsetMs) {
-  if (!urls || !urls.length) return Promise.reject(new Error('No subtitle URL'));
+  var attempts = normalizeSubtitleFetchAttempts(urls);
+  if (!attempts.length) return Promise.reject(new Error('No subtitle URL'));
   var index = 0;
   function tryNext(lastErr) {
-    if (index >= urls.length) {
+    if (index >= attempts.length) {
       return Promise.reject(lastErr || new Error('No subtitle URL'));
     }
-    var url = urls[index];
+    var entry = attempts[index];
+    var url = entry.url;
+    var label = entry.label;
     var attempt = index + 1;
     index += 1;
-    console.info('[subtitles] fetch ' + attempt + '/' + urls.length, redactPlexUrl(url));
+    console.info(
+      '[subtitles] fetch ' + attempt + '/' + attempts.length + ' (' + label + ')',
+      redactPlexUrl(url)
+    );
     return fetchText(url, { timeout: 20000 }).then(function (text) {
       applySrtText(text, offsetMs);
       if (!hasClientSubtitlesLoaded()) {
         return Promise.reject(new Error('Subtitle file had no parseable cues'));
       }
     }).catch(function (err) {
-      if (index < urls.length && shouldRetrySubtitleFetch(err)) {
+      if (index < attempts.length && shouldRetrySubtitleFetch(err)) {
         console.warn(
-          '[subtitles] HTTP ' + err.status + ' on attempt ' + attempt + ', trying fallback'
+          '[subtitles] HTTP ' + err.status + ' on (' + label + '), trying fallback'
         );
         return tryNext(err);
       }
-      console.warn('[subtitles] failed on attempt ' + attempt, err.message);
+      console.warn('[subtitles] failed on (' + label + ')', err.message);
       return Promise.reject(err);
     });
   }

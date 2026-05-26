@@ -941,11 +941,11 @@ function playerScreen(root, params, navigate) {
     var subtitleSession = Object.assign({}, session, {
       playbackOffsetMs: restartOffsetMs()
     });
-    var urls = buildSubtitleFetchPlan(server, subtitleSession, track, {
+    var subtitleAttempts = buildSubtitleFetchPlan(server, subtitleSession, track, {
       playbackMode: playbackMode
     });
-    if (!urls.length) return Promise.reject(new Error('Could not build subtitle URL'));
-    return player.loadClientSubtitleFromUrls(urls, subtitleOffset).then(function () {
+    if (!subtitleAttempts.length) return Promise.reject(new Error('Could not build subtitle URL'));
+    return player.loadClientSubtitleFromUrls(subtitleAttempts, subtitleOffset).then(function () {
       if (destroyed) return;
       syncSubtitleDelayControls();
     }).catch(function (err) {
@@ -955,8 +955,8 @@ function playerScreen(root, params, navigate) {
       if (isStrictDirectPlay()) {
         var detail = err && err.message ? ' (' + err.message + ')' : '';
         setPlayerMessage(
-          'Subtitles failed in direct play' + detail +
-            ' — try Auto quality or image subtitles (transcode).'
+          'Subtitles unavailable in Original quality' + detail +
+            '. Switch to Auto quality for embedded subtitles, or pick image subtitles (burn-in).'
         );
         return Promise.reject(err);
       }
