@@ -1,5 +1,7 @@
 import { isGraphicalSubtitle } from '../capabilityProbe.js';
-import { serverUrl } from '../../plex/client.js';
+import { serverUrl, plexHeaders } from '../../plex/client.js';
+import { fetchText } from '../../utils/fetch.js';
+import { buildAudioTranscodeParam } from './audioTracks.js';
 import { collectStreamsFromMedia } from './streamUtils.js';
 
 /** @typedef {'graphical'|'embedded'|'sidecar'|'onDemand'} SubtitleDelivery */
@@ -216,6 +218,32 @@ function isClientGeneratedSessionId(sessionId) {
   return !!(sessionId && /^xplay-/i.test(String(sessionId)));
 }
 
+function extractPartIdFromPath(partPath) {
+  if (!partPath) return null;
+  var m = String(partPath).match(/^\/library\/parts\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+/** Tell PMS which subtitle stream is active on this part (PMP does this before universal fetch). */
+function selectPartSubtitleStream(server, session) {
+  if (!server || !session || session.subtitleStreamId == null) {
+    return Promise.resolve();
+  }
+  var partId = extractPartIdFromPath(resolveSessionPartPath(session));
+  if (!partId) return Promise.resolve();
+  var url = serverUrl(server.connectionUri, '/library/parts/' + partId, {
+    subtitleStreamID: String(session.subtitleStreamId),
+    allParts: '1'
+  }, server);
+  return fetch(url, { method: 'PUT', headers: plexHeaders() }).then(function (res) {
+    if (!res.ok) {
+      console.warn('[subtitles] PUT /library/parts/' + partId + ' HTTP ' + res.status);
+    }
+  }).catch(function (err) {
+    console.warn('[subtitles] stream selection failed:', err.message);
+  });
+}
+
 /** Path for GET /library/streams/{streamId}.{ext} per PMS API. */
 function resolveStreamKeyPathWithExt(track) {
   if (!track) return null;
@@ -252,7 +280,12 @@ function isAdvancedSubtitleCodec(track) {
   return codec.indexOf('ass') >= 0 || codec.indexOf('ssa') >= 0;
 }
 
-function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMode, options) {
+function resolveSubtitleSessionId(session) {
+  if (!session) return null;
+  return getActiveTranscodeSession(session) || session.sessionId || null;
+}
+
+function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbackMode, options) {
   options = options || {};
   if (!server || !session || session.subtitleStreamId == null || !mediaPath) return null;
   var directFlags = subtitleDirectFlagsForMode(playbackMode);
@@ -267,9 +300,11 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
     hasMDE: '1',
     location: plexLocationForServer(server),
     protocol: directPlayback ? 'http' : protocolForPlaybackMode(playbackMode),
-    fastSeek: '1',
-    subtitleStreamID: String(session.subtitleStreamId)
+    fastSeek: '1'
   }, directFlags);
+  if (options.omitSubtitleStreamId !== true) {
+    params.subtitleStreamID = String(session.subtitleStreamId);
+  }
   if (!directPlayback) {
     params.encoding = 'utf-8';
     params.directStreamAudio = directFlags.directStreamAudio;
@@ -280,16 +315,14 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
     params.subtitleSize = '100';
     params.audioBoost = '100';
     delete params.directStreamAudio;
+    if (session.audioStreamId != null) {
+      Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
+    }
   }
   if (offsetSec > 0) params.offset = String(offsetSec);
-  var transcodeSession = getActiveTranscodeSession(session);
-  if (directFlags.directPlay === '0') {
-    var sessionId = transcodeSession || session.sessionId || null;
-    if (sessionId && !isClientGeneratedSessionId(sessionId)) {
-      params.session = sessionId;
-    }
-  } else if (transcodeSession && !isClientGeneratedSessionId(transcodeSession)) {
-    params.session = transcodeSession;
+  var playbackSessionId = resolveSubtitleSessionId(session);
+  if (playbackSessionId) {
+    params.session = playbackSessionId;
   }
   if (session.subtitleOffset) {
     params['X-Plex-Subtitle-Offset'] = String(session.subtitleOffset);
@@ -297,12 +330,48 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
   if (isAdvancedSubtitleCodec(track) && options.advancedSubtitles) {
     params.advancedSubtitles = options.advancedSubtitles;
   }
+  return params;
+}
+
+function buildUniversalTranscodeUrl(server, session, mediaPath, track, playbackMode, endpoint, options) {
+  var params = buildUniversalTranscodeQuery(
+    server, session, mediaPath, track, playbackMode, options
+  );
+  if (!params) return null;
   return serverUrl(
     server.connectionUri,
-    '/video/:/transcode/universal/subtitles',
+    '/video/:/transcode/universal/' + endpoint,
     params,
     server
   );
+}
+
+function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMode, options) {
+  return buildUniversalTranscodeUrl(
+    server, session, mediaPath, track, playbackMode, 'subtitles', options
+  );
+}
+
+/** Register the playback session with PMS before subtitle extract (matches Plex Media Player). */
+function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
+  if (!isDirectPlaybackMode(playbackMode) || !resolveSubtitleSessionId(session)) {
+    return Promise.resolve();
+  }
+  var mediaPath = resolveSessionPartPath(session) || resolveSessionMetadataPath(session);
+  var url = buildUniversalTranscodeUrl(
+    server, session, mediaPath, track, playbackMode, 'decision',
+    { subtitles: 'auto', omitSubtitleStreamId: true }
+  );
+  if (!url) return Promise.resolve();
+  return fetchText(url, { timeout: 15000 }).catch(function (err) {
+    console.warn('[subtitles] decision prime failed:', err.message);
+  });
+}
+
+function prepareClientSubtitlePlayback(server, session, track, playbackMode) {
+  return selectPartSubtitleStream(server, session).then(function () {
+    return primeDirectPlaySubtitleSession(server, session, track, playbackMode);
+  });
 }
 
 function pushSubtitleAttempt(list, label, url) {
@@ -338,13 +407,25 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   var partPath = resolveSessionPartPath(session);
   var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'convert' : null;
   var universalOpts = { advancedSubtitles: advanced };
+  var embedded = resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack);
+
+  if (embedded && partPath) {
+    pushSubtitleAttempt(attempts, 'universal-part-embedded', buildUniversalSubtitleUrl(
+      server, session, partPath, resolvedTrack, playbackMode,
+      Object.assign({}, universalOpts, { subtitles: 'embedded' })
+    ));
+    pushSubtitleAttempt(attempts, 'universal-part-embedded-session', buildUniversalSubtitleUrl(
+      server, session, partPath, resolvedTrack, playbackMode,
+      Object.assign({}, universalOpts, { subtitles: 'embedded', omitSubtitleStreamId: true })
+    ));
+  }
 
   pushSubtitleAttempt(attempts, 'universal-metadata-auto', buildUniversalSubtitleUrl(
     server, session, metadataPath, resolvedTrack, playbackMode,
     Object.assign({}, universalOpts, { subtitles: 'auto' })
   ));
 
-  if (!isSidecarSubtitleTrack(resolvedTrack)) {
+  if (embedded) {
     pushSubtitleAttempt(attempts, 'universal-metadata-embedded', buildUniversalSubtitleUrl(
       server, session, metadataPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'embedded' })
@@ -361,14 +442,6 @@ function buildSubtitleFetchPlan(server, session, track, options) {
       server, session, partPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'sidecar' })
     ));
-  }
-
-  if (resolvedTrack && !resolvedTrack.graphical && !isSidecarSubtitleTrack(resolvedTrack)) {
-    pushSubtitleAttempt(
-      attempts,
-      'stream-embedded',
-      buildStreamKeySubtitleUrl(server, resolvedTrack)
-    );
   }
 
   return attempts;
@@ -448,6 +521,9 @@ export {
   plexLocationForServer,
   resolveTranscodeMediaPath,
   buildSubtitleFetchPlan,
+  prepareClientSubtitlePlayback,
+  selectPartSubtitleStream,
+  resolveSubtitleSessionId,
   subtitleFetchUrls,
   buildClientSubtitleUrlCandidates,
   canUseClientSubtitles,

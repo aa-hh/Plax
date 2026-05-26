@@ -1,6 +1,7 @@
 import { keepScreenOn } from '../platform/webos.js';
 import { updateProgress as libraryUpdateProgress, markWatched as libraryMarkWatched } from '../plex/library.js';
 import { redactPlexUrl } from '../plex/client.js';
+import { connectionSchemeLabel } from '../plex/servers/connectionPolicy.js';
 import { fetchText } from '../utils/fetch.js';
 import { describeHlsError, isHlsUrl } from './hlsPolicy.js';
 import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
@@ -112,6 +113,22 @@ function logPlaybackStreamType(mode, url) {
       ' (mode=' + (mode || 'unknown') +
       ', url=' + compactPlaybackUrl(url) + ')'
   );
+}
+
+function resolvePlaybackConnectionScheme(url, session) {
+  var fromUrl = connectionSchemeLabel(url || '');
+  if (fromUrl !== 'unknown') return fromUrl;
+  var server = session && session.server;
+  if (!server) return 'unknown';
+  if (server.activeConnection && server.activeConnection.uri) {
+    var fromActive = connectionSchemeLabel(server.activeConnection.uri);
+    if (fromActive !== 'unknown') return fromActive;
+  }
+  return connectionSchemeLabel(server.connectionUri || '');
+}
+
+function logPlaybackConnection(url, session) {
+  console.info('[playback] connection: ' + resolvePlaybackConnectionScheme(url, session));
 }
 
 function notifyBuffering(show) {
@@ -352,12 +369,14 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       }
     }).catch(function (err) {
       if (index < attempts.length && shouldRetrySubtitleFetch(err)) {
+        var detail = err.body ? ' — ' + String(err.body).slice(0, 120) : '';
         console.warn(
-          '[subtitles] HTTP ' + err.status + ' on (' + label + '), trying fallback'
+          '[subtitles] HTTP ' + err.status + ' on (' + label + '), trying fallback' + detail
         );
         return tryNext(err);
       }
-      console.warn('[subtitles] failed on (' + label + ')', err.message);
+      var failDetail = err.body ? ' — ' + String(err.body).slice(0, 120) : '';
+      console.warn('[subtitles] failed on (' + label + ')', err.message + failDetail);
       return Promise.reject(err);
     });
   }
@@ -421,6 +440,7 @@ function play(url, session, options) {
   lastPlaybackUrl = url;
   playbackModeRef = mode;
   logPlaybackStreamType(mode, url);
+  logPlaybackConnection(url, session);
   rebufferWatchdog.resetEpisode();
   notifyBuffering(true);
   videoEl.classList.remove('hidden');

@@ -5,7 +5,8 @@ import {
   rankConnections,
   pickBestConnection,
   httpsRankingRejections,
-  scoreConnection
+  scoreConnection,
+  connectionSchemeLabel
 } from '../src/plex/servers/connectionPolicy.js';
 import { redactPlexUrl } from '../src/plex/client.js';
 
@@ -100,6 +101,13 @@ test('scoreConnection penalizes HTTP when allowInsecure is off', function () {
   var httpScore = scoreConnection(REMOTE_HTTP, { allowInsecure: false });
   var httpsScore = scoreConnection(REMOTE_HTTPS, { allowInsecure: false });
   assert.ok(httpsScore > httpScore);
+});
+
+test('connectionSchemeLabel detects HTTP and HTTPS URIs', function () {
+  assert.equal(connectionSchemeLabel(REMOTE_HTTPS.uri), 'HTTPS');
+  assert.equal(connectionSchemeLabel(REMOTE_HTTP.uri), 'HTTP');
+  assert.equal(connectionSchemeLabel(''), 'unknown');
+  assert.equal(connectionSchemeLabel(null), 'unknown');
 });
 
 test('redactPlexUrl strips token from probe URLs', function () {

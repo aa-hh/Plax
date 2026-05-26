@@ -4,7 +4,8 @@ import {
   rankConnections,
   httpsRankingRejections,
   isHttpsUri,
-  isHttpUri
+  isHttpUri,
+  connectionSchemeLabel
 } from './connectionPolicy.js';
 import { normalizeSectionType } from '../../security/libraryAccess.js';
 import { getState } from '../../core/store.js';
@@ -96,6 +97,11 @@ function logHttpFallbackAfterHttps(httpUri) {
   );
 }
 
+function logUsingConnection(uri) {
+  var scheme = connectionSchemeLabel(uri);
+  console.info('[plex] using ' + scheme + ' connection: ' + redactPlexUrl(uri));
+}
+
 function probeServerWithToken(server, ranked, token) {
   var idx = 0;
   var loggedHttpFallback = false;
@@ -109,6 +115,7 @@ function probeServerWithToken(server, ranked, token) {
     var url = serverUrl(base, '/', {}, { accessToken: token });
     var connIsHttps = isHttpsUri(conn.uri);
     return fetchPlexXml(url, { timeout: 8000 }).then(function () {
+      logUsingConnection(base);
       return Object.assign({}, server, {
         connectionUri: base,
         activeConnection: conn,
@@ -410,6 +417,7 @@ export {
   testServerConnection,
   logHttpsRejected,
   logHttpFallbackAfterHttps,
+  logUsingConnection,
   isFolderBackedLibrarySection,
   librarySectionIdFromItem,
   sectionFolderPaths,

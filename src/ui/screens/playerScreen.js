@@ -21,6 +21,7 @@ import {
   isDirectPlaybackMode,
   shouldBurnInSubtitle,
   buildSubtitleFetchPlan,
+  prepareClientSubtitlePlayback,
   parseTranscodeSessionFromUrl,
   pickDefaultSubtitleTrack,
   subtitleDisplayTitle,
@@ -942,11 +943,16 @@ function playerScreen(root, params, navigate) {
     var subtitleSession = Object.assign({}, session, {
       playbackOffsetMs: restartOffsetMs()
     });
-    var subtitleAttempts = buildSubtitleFetchPlan(server, subtitleSession, track, {
-      playbackMode: playbackMode
-    });
-    if (!subtitleAttempts.length) return Promise.reject(new Error('Could not build subtitle URL'));
-    return player.loadClientSubtitleFromUrls(subtitleAttempts, subtitleOffset).then(function () {
+    return prepareClientSubtitlePlayback(server, subtitleSession, track, playbackMode)
+      .then(function () {
+        var subtitleAttempts = buildSubtitleFetchPlan(server, subtitleSession, track, {
+          playbackMode: playbackMode
+        });
+        if (!subtitleAttempts.length) {
+          return Promise.reject(new Error('Could not build subtitle URL'));
+        }
+        return player.loadClientSubtitleFromUrls(subtitleAttempts, subtitleOffset);
+      }).then(function () {
       if (destroyed) return;
       syncSubtitleDelayControls();
     }).catch(function (err) {

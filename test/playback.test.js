@@ -20,6 +20,8 @@ import {
   buildSubtitleTranscodeParams,
   buildClientSubtitleUrl,
   buildSubtitleFetchPlan,
+  prepareClientSubtitlePlayback,
+  resolveSubtitleSessionId,
   buildClientSubtitleUrlCandidates,
   classifySubtitleDelivery,
   isSidecarSubtitleTrack,
@@ -324,7 +326,7 @@ test('subtitleDirectFlagsForMode matches transcode vs direct play', function () 
   });
 });
 
-test('buildSubtitleFetchPlan tries universal then stream GET for embedded text subs', function () {
+test('buildSubtitleFetchPlan tries part-embedded then metadata for embedded text subs', function () {
   var server = {
     connectionUri: 'http://plex.local:32400',
     accessToken: 'tok',
@@ -333,7 +335,9 @@ test('buildSubtitleFetchPlan tries universal then stream GET for embedded text s
   var session = {
     item: { key: '/library/metadata/999', ratingKey: '999' },
     version: { partKey: '/library/parts/abc/video.mkv' },
+    sessionId: 'xplay-test-session',
     subtitleStreamId: 1893985,
+    audioStreamId: 100,
     mediaIndex: 0,
     partIndex: 0
   };
@@ -345,9 +349,17 @@ test('buildSubtitleFetchPlan tries universal then stream GET for embedded text s
     delivery: 'embedded'
   };
   var attempts = buildSubtitleFetchPlan(server, session, track);
-  assert.ok(attempts.length >= 4);
-  assert.equal(attempts[0].label, 'universal-metadata-auto');
-  var first = attempts[0].url;
+  assert.ok(attempts.length >= 5);
+  assert.equal(attempts[0].label, 'universal-part-embedded');
+  assert.ok(attempts[0].url.indexOf('subtitles=embedded') >= 0);
+  assert.ok(attempts[0].url.indexOf('path=' + encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
+  assert.ok(attempts[0].url.indexOf('session=xplay-test-session') >= 0);
+  assert.ok(attempts[0].url.indexOf('X-Plex-Audio-Stream=100') >= 0);
+  var autoAttempt = attempts.filter(function (a) {
+    return a.label === 'universal-metadata-auto';
+  })[0];
+  assert.ok(autoAttempt);
+  var first = autoAttempt.url;
   assert.ok(first.indexOf('/video/:/transcode/universal/subtitles') >= 0);
   assert.ok(first.indexOf('subtitles=auto') >= 0);
   assert.ok(first.indexOf('hasMDE=1') >= 0);
@@ -362,13 +374,9 @@ test('buildSubtitleFetchPlan tries universal then stream GET for embedded text s
   assert.ok(first.indexOf('X-Plex-Subtitle-Stream=') < 0);
   assert.ok(first.indexOf('subtitleFormat=') < 0);
   assert.ok(first.indexOf('directStreamAudio=') < 0);
-  assert.ok(first.indexOf('session=') < 0);
+  assert.ok(first.indexOf('session=xplay-test-session') >= 0);
   assert.ok(first.indexOf('directPlay=1') >= 0);
-  assert.equal(attempts[1].label, 'universal-metadata-embedded');
-  assert.ok(attempts[1].url.indexOf('subtitles=embedded') >= 0);
-  var streamAttempt = attempts[attempts.length - 1];
-  assert.equal(streamAttempt.label, 'stream-embedded');
-  assert.ok(streamAttempt.url.indexOf('/library/streams/1893985.srt') >= 0);
+  assert.ok(attempts.filter(function (a) { return a.label === 'stream-embedded'; }).length === 0);
 });
 
 test('buildSubtitleFetchPlan uses location=wan for remote PMS connection', function () {
@@ -416,6 +424,7 @@ test('buildSubtitleFetchPlan uses transcode session and flags when transcoding',
     item: { key: '/library/metadata/999' },
     subtitleStreamId: 2,
     transcodeSessionId: 'plex-server-session',
+    sessionId: 'xplay-should-not-win',
     mediaIndex: 0,
     partIndex: 0
   };
@@ -426,8 +435,17 @@ test('buildSubtitleFetchPlan uses transcode session and flags when transcoding',
   var first = attempts[0].url;
   assert.ok(first.indexOf('directPlay=0') >= 0);
   assert.ok(first.indexOf('session=plex-server-session') >= 0);
+  assert.ok(first.indexOf('session=xplay-should-not-win') < 0);
   assert.ok(first.indexOf('protocol=hls') >= 0);
   assert.ok(first.indexOf('X-Plex-Subtitle-Stream=2') >= 0);
+});
+
+test('resolveSubtitleSessionId prefers server transcode session', function () {
+  assert.equal(
+    resolveSubtitleSessionId({ sessionId: 'xplay-1', transcodeSessionId: 'plex-abc' }),
+    'plex-abc'
+  );
+  assert.equal(resolveSubtitleSessionId({ sessionId: 'xplay-1' }), 'xplay-1');
 });
 
 test('buildSubtitleFetchPlan includes part path as last resort', function () {
@@ -440,10 +458,10 @@ test('buildSubtitleFetchPlan includes part path as last resort', function () {
     partIndex: 0
   };
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
+  assert.equal(attempts[0].label, 'universal-part-embedded');
   var partAttempt = attempts.filter(function (a) { return a.label === 'universal-part-sidecar'; })[0];
   assert.ok(partAttempt);
   assert.ok(partAttempt.url.indexOf('path=' + encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
-  assert.equal(attempts[attempts.length - 1].label, 'stream-embedded');
   assert.ok(partAttempt.url.indexOf(encodeURIComponent('http://plex.local:32400/library/parts/abc/video.mkv')) < 0);
 });
 

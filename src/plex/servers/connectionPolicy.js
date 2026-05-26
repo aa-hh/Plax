@@ -75,6 +75,13 @@ function pickBestConnection(connections, prefs) {
   return ranked[0] || null;
 }
 
+/** 'HTTPS' | 'HTTP' | 'unknown' for console logging. */
+function connectionSchemeLabel(uri) {
+  if (isHttpsUri(uri)) return 'HTTPS';
+  if (isHttpUri(uri)) return 'HTTP';
+  return 'unknown';
+}
+
 export {
   rankConnections,
   pickBestConnection,
@@ -82,5 +89,6 @@ export {
   httpsRankingRejections,
   isHttpsUri,
   isHttpUri,
-  rankSkipReasonForHttps
+  rankSkipReasonForHttps,
+  connectionSchemeLabel
 };

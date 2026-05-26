@@ -121,10 +121,46 @@ test('play logs stream type with mode and redacted url', function () {
     console.info = origInfo;
   }
 
-  assert.equal(logs.length, 1);
+  assert.equal(logs.length, 2);
   assert.match(logs[0], /^\[playback\] stream type: pure-transcode \(mode=transcode-hls, url=/);
   assert.ok(logs[0].indexOf('abc123') < 0);
   assert.ok(logs[0].indexOf('X-Plex-Token=%5Bredacted%5D') >= 0);
+  assert.equal(logs[1], '[playback] connection: HTTP');
+});
+
+test('play logs connection scheme from HTTPS playback URL', function () {
+  var logs = [];
+  var origInfo = console.info;
+  console.info = function () {
+    logs.push(Array.prototype.join.call(arguments, ' '));
+  };
+  try {
+    playerModule.play('https://plex.example/video.m3u8', session, { mode: 'direct' });
+  } finally {
+    console.info = origInfo;
+  }
+  assert.ok(logs.some(function (line) { return line === '[playback] connection: HTTPS'; }));
+});
+
+test('play logs connection scheme from server when URL has no scheme', function () {
+  var logs = [];
+  var origInfo = console.info;
+  console.info = function () {
+    logs.push(Array.prototype.join.call(arguments, ' '));
+  };
+  var httpsSession = {
+    server: {
+      connectionUri: 'https://plex.example:32400',
+      activeConnection: { uri: 'https://plex.example:32400', local: false }
+    },
+    item: session.item
+  };
+  try {
+    playerModule.play('/library/metadata/1/file.mkv', httpsSession, { mode: 'direct' });
+  } finally {
+    console.info = origInfo;
+  }
+  assert.ok(logs.some(function (line) { return line === '[playback] connection: HTTPS'; }));
 });
 
 test('timeupdate at zero does not sync playing before progress', async function () {
