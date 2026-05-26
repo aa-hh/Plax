@@ -523,6 +523,10 @@ function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
     }
     return burned;
   }
+  /* Plex-for-Kodi: soft subs loaded client-side use skipSubtitles on HLS remux. */
+  if (options.clientSubtitles === true) {
+    return { skipSubtitles: '1' };
+  }
   if (options.remux === true) {
     var remux = {
       subtitleStreamID: String(streamId),

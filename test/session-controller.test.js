@@ -147,7 +147,8 @@ test('buildPlaybackUrl simulator Plex Web omits profile extra on HLS', function 
   assert.equal(q.path, partKey);
   assert.equal(q.location, 'wan');
   assert.equal(q.directStream, '1');
-  assert.equal(q.subtitles, 'auto');
+  assert.equal(q.skipSubtitles, '1');
+  assert.equal(q.subtitles, undefined);
 });
 
 test('buildPlaybackUrl transcode query includes offset seconds and fastSeek', function () {
@@ -201,16 +202,16 @@ test('buildPlaybackUrl includes location=lan for local PMS', function () {
   assert.equal(q.location, 'lan');
 });
 
-test('buildPlaybackUrl direct-stream with text subs includes soft subtitle params', function () {
+test('buildPlaybackUrl direct-stream with text subs skips server HLS subs', function () {
   var session = baseSession({
     playbackStrategy: 'direct-stream',
     subtitleStreamId: 1894297,
     subtitleBurnIn: false
   });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
-  assert.equal(q.subtitles, 'auto');
-  assert.equal(q.subtitleStreamID, '1894297');
-  assert.equal(q['X-Plex-Subtitle-Stream'], '1894297');
+  assert.equal(q.skipSubtitles, '1');
+  assert.equal(q.subtitleStreamID, undefined);
+  assert.equal(q['X-Plex-Subtitle-Stream'], undefined);
   assert.notEqual(q.subtitles, 'burn');
 });
 

@@ -270,6 +270,13 @@ test('buildSubtitleTranscodeParams remux passes soft subtitle stream to HLS sess
   assert.equal(remux.subtitleFormat, undefined);
 });
 
+test('buildSubtitleTranscodeParams clientSubtitles skips server HLS subs', function () {
+  var skip = buildSubtitleTranscodeParams(3, 50, { clientSubtitles: true });
+  assert.equal(skip.skipSubtitles, '1');
+  assert.equal(skip.subtitleStreamID, undefined);
+  assert.equal(skip.subtitles, undefined);
+});
+
 test('upgradeStrategyForTextSubtitles promotes direct to direct-stream when subs selected', function () {
   var session = { subtitleStreamId: 2, subtitleBurnIn: false };
   assert.equal(upgradeStrategyForTextSubtitles('direct', session), 'direct-stream');

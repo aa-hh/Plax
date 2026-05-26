@@ -12,7 +12,8 @@ import {
   offsetSecondsForPlex,
   getActiveTranscodeSession,
   upgradeStrategyForTextSubtitles,
-  plexLocationForServer
+  plexLocationForServer,
+  selectPartSubtitleStream
 } from './tracks/subtitleTracks.js';
 import {
   applyWebOsHlsTranscodeParams,
@@ -52,12 +53,15 @@ function buildTranscodeParams(server, partKey, session, protocol) {
   if (offsetSec > 0) params.offset = String(offsetSec);
   applyProfileToParams(params, session.quality || prefs.quality, prefs);
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
+  var softTextSubs = directStream && session.subtitleStreamId != null &&
+    session.subtitleBurnIn !== true;
   Object.assign(params, buildSubtitleTranscodeParams(
     session.subtitleStreamId,
     session.subtitleOffset,
     {
       burnIn: session.subtitleBurnIn === true,
-      remux: directStream && session.subtitleStreamId != null && session.subtitleBurnIn !== true
+      clientSubtitles: softTextSubs,
+      remux: false
     }
   ));
 
@@ -115,21 +119,35 @@ function resolveStreamMode(strategy, protocol) {
   return 'transcode-hls';
 }
 
+function shouldSelectPartSubtitleBeforePlay(session, strategy) {
+  return session.subtitleStreamId != null && (
+    strategy === 'direct' || strategy === 'direct-stream'
+  );
+}
+
 function resolveStreamUrl(session) {
   var server = session.server;
   var partKey = resolveSessionPartPath(session);
 
   var strategy = resolvePlaybackStrategy(session);
-  if (strategy === 'direct') {
-    return Promise.resolve({
-      url: buildDirectPlayUrl(server, partKey),
-      mode: 'direct'
-    });
+  function buildResult() {
+    if (strategy === 'direct') {
+      return {
+        url: buildDirectPlayUrl(server, partKey),
+        mode: 'direct'
+      };
+    }
+    var protocol = strategy === 'http-transcode' ? 'http' : (session.transcodeProtocol || 'hls');
+    return {
+      url: buildPlaybackUrl(server, partKey, session, protocol),
+      mode: resolveStreamMode(strategy, protocol)
+    };
   }
-  var protocol = strategy === 'http-transcode' ? 'http' : (session.transcodeProtocol || 'hls');
-  return Promise.resolve({
-    url: buildPlaybackUrl(server, partKey, session, protocol),
-    mode: resolveStreamMode(strategy, protocol)
+  if (!shouldSelectPartSubtitleBeforePlay(session, strategy)) {
+    return Promise.resolve(buildResult());
+  }
+  return selectPartSubtitleStream(server, session).then(function () {
+    return buildResult();
   });
 }
 
