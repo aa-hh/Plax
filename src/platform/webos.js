@@ -6,7 +6,7 @@
 import { loadDeviceDisplay, applyGraphicsViewport } from './deviceDisplay.js';
 import { initMotionCursor } from './motionCursor.js';
 import { getWebOSVersion, isSimulatorRuntime } from './webosRuntime.js';
-import { setPlexDeviceInfo } from '../plex/clientIdentity.js';
+import { setPlexDeviceInfo, logPlexClientIdentityOnce } from '../plex/clientIdentity.js';
 
 function getDeviceInfo(callback) {
   if (typeof webOS !== 'undefined' && webOS.deviceInfo) {
@@ -34,7 +34,10 @@ function initPlatform() {
   if (typeof webOS !== 'undefined' && webOS.deviceInfo) {
     webOS.deviceInfo(function (device) {
       setPlexDeviceInfo(device);
+      logPlexClientIdentityOnce();
     });
+  } else if (typeof webOS === 'undefined') {
+    logPlexClientIdentityOnce();
   }
 
   var el = document.getElementById('compat-marker');

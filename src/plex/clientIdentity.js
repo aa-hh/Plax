@@ -1,5 +1,6 @@
 import { getState } from '../core/store.js';
 import { isTvRuntime } from '../platform/versionGate.js';
+import { isSimulatorRuntime } from '../platform/webosRuntime.js';
 
 /** Product string for plex.tv pairing / account device list. */
 var AUTH_PRODUCT = 'XPlay Lite';
@@ -13,6 +14,7 @@ var PMS_PRODUCT = 'Plex for LG';
 var PMS_PLATFORM = 'webOS';
 
 var deviceSnapshot = null;
+var identityLogged = false;
 
 function setPlexDeviceInfo(device) {
   deviceSnapshot = device || null;
@@ -20,6 +22,11 @@ function setPlexDeviceInfo(device) {
 
 function resetPlexDeviceInfoForTest() {
   deviceSnapshot = null;
+  identityLogged = false;
+}
+
+function resetPlexIdentityLogForTest() {
+  identityLogged = false;
 }
 
 function firstNonEmpty() {
@@ -32,17 +39,33 @@ function firstNonEmpty() {
   return '';
 }
 
+function semverMajor(raw) {
+  if (raw == null || raw === '') return 0;
+  var parts = String(raw).split('.');
+  var n = parseInt(parts[0], 10);
+  return isNaN(n) ? 0 : n;
+}
+
+function looksLikeWebOsSemver(raw) {
+  return semverMajor(raw) >= 4;
+}
+
 function platformVersionFromDevice(device) {
-  var raw = firstNonEmpty(
-    device && device.platformVersion,
+  var candidates = [
     device && device.version,
+    device && device.sdkVersion,
     device && device.firmwareVersion,
-    device && device.sdkVersion
-  );
-  if (raw) return raw.split('+')[0].trim();
+    device && device.platformVersion
+  ];
+  var i;
+  for (i = 0; i < candidates.length; i++) {
+    if (candidates[i] && looksLikeWebOsSemver(candidates[i])) {
+      return String(candidates[i]).split('+')[0].trim();
+    }
+  }
   if (device && device.versionMajor != null) {
     var major = parseInt(device.versionMajor, 10);
-    if (!isNaN(major)) return String(major) + '.0';
+    if (!isNaN(major) && major >= 4) return String(major) + '.0';
   }
   return '4.0';
 }
@@ -66,21 +89,35 @@ function browserChromeVersion() {
   return '120.0';
 }
 
+function plexWebIdentity() {
+  return {
+    product: 'Plex Web',
+    platform: 'Chrome',
+    platformVersion: browserChromeVersion(),
+    device: 'Computer',
+    model: 'Browser',
+    deviceName: 'XPlay Lite (' + AUTH_PRODUCT + ')',
+    deviceVendor: ''
+  };
+}
+
+function isSimulatorPlexIdentity(device) {
+  if (!isTvRuntime()) return false;
+  if (isSimulatorRuntime()) return true;
+  var model = firstNonEmpty(device && device.modelName, device && device.model);
+  return /simulator|emulator/i.test(model);
+}
+
 function getPlexClientIdentity() {
   if (!isTvRuntime()) {
-    var chromeVer = browserChromeVersion();
-    return {
-      product: 'Plex Web',
-      platform: 'Chrome',
-      platformVersion: chromeVer,
-      device: 'Computer',
-      model: 'Browser',
-      deviceName: 'XPlay Lite (' + AUTH_PRODUCT + ')',
-      deviceVendor: ''
-    };
+    return plexWebIdentity();
   }
 
   var device = deviceSnapshot;
+  if (isSimulatorPlexIdentity(device)) {
+    return plexWebIdentity();
+  }
+
   var model = modelFromDevice(device);
   return {
     product: PMS_PRODUCT,
@@ -91,6 +128,21 @@ function getPlexClientIdentity() {
     deviceName: deviceNameFromDevice(device, model),
     deviceVendor: 'LG'
   };
+}
+
+function logPlexClientIdentityOnce() {
+  if (identityLogged) return;
+  identityLogged = true;
+  var identity = getPlexClientIdentity();
+  try {
+    if (isSimulatorPlexIdentity(deviceSnapshot)) {
+      console.info('[plex] client identity: simulator → Plex Web');
+    } else if (isTvRuntime()) {
+      console.info('[plex] client identity: TV → Plex for LG (model=' + identity.model + ')');
+    } else {
+      console.info('[plex] client identity: browser → Plex Web');
+    }
+  } catch (e) { /* ignore */ }
 }
 
 function getClientId() {
@@ -134,7 +186,10 @@ export {
   PMS_PLATFORM,
   setPlexDeviceInfo,
   resetPlexDeviceInfoForTest,
+  resetPlexIdentityLogForTest,
+  isSimulatorPlexIdentity,
   getPlexClientIdentity,
+  logPlexClientIdentityOnce,
   plexClientFields,
   applyPlexClientFields
 };
