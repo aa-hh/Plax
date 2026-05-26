@@ -374,18 +374,36 @@ function buildUniversalSubtitleRequest(server, session, mediaPath, track, playba
   };
 }
 
+function buildUniversalDecisionRequest(server, session, mediaPath, track, playbackMode, options) {
+  var params = buildUniversalTranscodeQuery(
+    server, session, mediaPath, track, playbackMode,
+    Object.assign({}, options || {}, { subtitleEndpoint: true })
+  );
+  if (!params) return null;
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/video/:/transcode/universal/decision' +
+      (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session) }
+  };
+}
+
 /** Register the playback session with PMS before subtitle extract (matches Plex Media Player). */
 function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
   if (!isDirectPlaybackMode(playbackMode) || !resolveSubtitleSessionId(session)) {
     return Promise.resolve();
   }
-  var mediaPath = resolveSessionPartPath(session) || resolveSessionMetadataPath(session);
-  var url = buildUniversalTranscodeUrl(
-    server, session, mediaPath, track, playbackMode, 'decision',
+  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
+  var request = buildUniversalDecisionRequest(
+    server, session, mediaPath, track, playbackMode,
     { subtitles: 'auto', omitSubtitleStreamId: true }
   );
-  if (!url) return Promise.resolve();
-  return fetchText(url, { timeout: 15000 }).catch(function (err) {
+  if (!request) return Promise.resolve();
+  return fetchText(
+    request.url,
+    Object.assign({ timeout: 15000 }, request.init || {})
+  ).catch(function (err) {
     console.warn('[subtitles] decision prime failed:', err.message);
   });
 }
