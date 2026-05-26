@@ -354,6 +354,55 @@ function normalizeSubtitleFetchAttempts(urls) {
   }).filter(function (attempt) { return !!attempt.url; });
 }
 
+function xhrSubtitleText(url, options, originalErr) {
+  if (typeof XMLHttpRequest === 'undefined') {
+    return Promise.reject(originalErr);
+  }
+  return new Promise(function (resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    var timeoutMs = options && options.timeout ? options.timeout : 20000;
+    var done = false;
+    function finishWithText() {
+      if (done) return;
+      done = true;
+      var text = xhr.responseText || '';
+      if (text && (!xhr.status || (xhr.status >= 200 && xhr.status < 300))) {
+        resolve(text);
+        return;
+      }
+      if (xhr.status >= 400) {
+        var statusErr = new Error('HTTP ' + xhr.status);
+        statusErr.status = xhr.status;
+        statusErr.body = text;
+        reject(statusErr);
+        return;
+      }
+      reject(originalErr);
+    }
+    xhr.open(options && options.method ? options.method : 'GET', url, true);
+    xhr.timeout = timeoutMs;
+    var headers = (options && options.headers) || {};
+    Object.keys(headers).forEach(function (key) {
+      try { xhr.setRequestHeader(key, headers[key]); } catch (e) { /* forbidden header */ }
+    });
+    xhr.onload = finishWithText;
+    xhr.onerror = finishWithText;
+    xhr.ontimeout = function () {
+      if (done) return;
+      done = true;
+      reject(new Error('Request timeout'));
+    };
+    xhr.send(options && options.body ? options.body : null);
+  });
+}
+
+function fetchSubtitleText(url, options) {
+  return fetchText(url, options).catch(function (err) {
+    if (err && err.status) return Promise.reject(err);
+    return xhrSubtitleText(url, options || {}, err);
+  });
+}
+
 function loadClientSubtitleFromUrls(urls, offsetMs) {
   var attempts = normalizeSubtitleFetchAttempts(urls);
   if (!attempts.length) return Promise.reject(new Error('No subtitle URL'));
@@ -372,7 +421,7 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       redactPlexUrl(url)
     );
     var fetchOptions = Object.assign({ timeout: 20000 }, entry.init || {});
-    return fetchText(url, fetchOptions).then(function (text) {
+    return fetchSubtitleText(url, fetchOptions).then(function (text) {
       applySrtText(text, offsetMs);
       if (!hasClientSubtitlesLoaded()) {
         var parseErr = new Error('Subtitle file had no parseable cues');

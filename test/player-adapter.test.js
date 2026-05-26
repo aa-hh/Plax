@@ -70,6 +70,22 @@ function setupVideo(overrides) {
   video.readyState = overrides.readyState != null ? overrides.readyState : 1;
   video.currentTime = overrides.currentTime != null ? overrides.currentTime : 0;
   video.paused = overrides.paused != null ? overrides.paused : true;
+  video.textTracks = [];
+  video.addTextTrack = function (kind, label, language) {
+    var track = {
+      kind: kind,
+      label: label,
+      language: language,
+      mode: 'disabled',
+      cues: [],
+      addCue: function (cue) { track.cues.push(cue); },
+      removeCue: function (cue) {
+        track.cues = track.cues.filter(function (candidate) { return candidate !== cue; });
+      }
+    };
+    video.textTracks.push(track);
+    return track;
+  };
   document.body.children.length = 0;
   document.body.appendChild(video);
   if (document.registerPlayer) document.registerPlayer(video);
@@ -384,4 +400,80 @@ test('stop cancels pending seek listener', function () {
 
   playerModule.stop({ skipTimeline: true });
   assert.equal(video.getListenerCount('loadedmetadata'), 0);
+});
+
+test('loadClientSubtitleFromUrls renders WebVTT cues from fetch text', async function () {
+  var savedFetch = globalThis.fetch;
+  globalThis.VTTCue = globalThis.VTTCue || function VTTCue(startTime, endTime, text) {
+    this.startTime = startTime;
+    this.endTime = endTime;
+    this.text = text;
+  };
+  globalThis.fetch = function () {
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: function () {
+        return Promise.resolve('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHello from Plex');
+      }
+    });
+  };
+  try {
+    await playerModule.loadClientSubtitleFromUrls(['http://plex.local/subtitles.vtt'], 500);
+    var track = playerModule.getVideoElement().textTracks[0];
+    assert.equal(track.mode, 'showing');
+    assert.equal(track.cues.length, 1);
+    assert.equal(track.cues[0].startTime, 1.5);
+    assert.equal(track.cues[0].text, 'Hello from Plex');
+  } finally {
+    if (savedFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = savedFetch;
+  }
+});
+
+test('loadClientSubtitleFromUrls salvages chunked WebVTT responseText after fetch failure', async function () {
+  var savedFetch = globalThis.fetch;
+  var savedXhr = globalThis.XMLHttpRequest;
+  var xhrHeaders = {};
+  globalThis.VTTCue = globalThis.VTTCue || function VTTCue(startTime, endTime, text) {
+    this.startTime = startTime;
+    this.endTime = endTime;
+    this.text = text;
+  };
+  globalThis.fetch = function () {
+    return Promise.reject(new TypeError('Failed to fetch'));
+  };
+  globalThis.XMLHttpRequest = function XMLHttpRequest() {
+    this.status = 200;
+    this.responseText = 'WEBVTT\n\n00:00:04.000 --> 00:00:05.000\nRecovered cue';
+    this.open = function (method, url) {
+      this.method = method;
+      this.url = url;
+    };
+    this.setRequestHeader = function (key, value) {
+      xhrHeaders[key] = value;
+    };
+    this.send = function () {
+      this.onerror();
+    };
+  };
+  try {
+    await playerModule.loadClientSubtitleFromUrls([{
+      label: 'universal-metadata-auto',
+      url: 'http://plex.local/video/:/transcode/universal/subtitles',
+      init: { headers: { Accept: 'text/vtt', 'X-Plex-Session-Identifier': 'xplay-test' } }
+    }], 0);
+    var track = playerModule.getVideoElement().textTracks[0];
+    assert.equal(track.mode, 'showing');
+    assert.equal(track.cues.length, 1);
+    assert.equal(track.cues[0].startTime, 4);
+    assert.equal(track.cues[0].text, 'Recovered cue');
+    assert.equal(xhrHeaders.Accept, 'text/vtt');
+    assert.equal(xhrHeaders['X-Plex-Session-Identifier'], 'xplay-test');
+  } finally {
+    if (savedFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = savedFetch;
+    if (savedXhr === undefined) delete globalThis.XMLHttpRequest;
+    else globalThis.XMLHttpRequest = savedXhr;
+  }
 });
