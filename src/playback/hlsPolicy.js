@@ -10,11 +10,13 @@
  */
 
 import { getPlexClientIdentity, PMS_PRODUCT } from '../plex/clientIdentity.js';
+import { isTvRuntime } from '../platform/versionGate.js';
 
 /**
  * Plex ClientProfileExtra: append-transcode-target-codec requires videoCodec and/or
  * audioCodec (not `codec=`). type=audioProfile is invalid for this directive.
- * Plex Web / Chrome already ships a suitable profile — do not override on simulator.
+ * Apply this on real TVs and the webOS simulator; both use LG's native HLS
+ * path and need Plex to emit webOS-compatible master playlists with CODECS.
  */
 var WEBOS_HLS_PROFILE_EXTRA =
   'append-transcode-target-codec(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec=h264&audioCodec=aac)';
@@ -23,13 +25,17 @@ function usesWebOsTvPmsProfile() {
   return getPlexClientIdentity().product === PMS_PRODUCT;
 }
 
+function shouldUseWebOsHlsProfileExtra() {
+  return isTvRuntime();
+}
+
 function applyWebOsHlsTranscodeParams(params) {
   params = params || {};
   /* Plex universal transcode: HLS with contained A/V where possible */
   params.protocol = 'hls';
   params.fastSeek = '1';
   /* Encourage muxed output; reduces audio-only EXT-X-STREAM-INF entries on LG TVs */
-  if (usesWebOsTvPmsProfile()) {
+  if (shouldUseWebOsHlsProfileExtra()) {
     params['X-Plex-Client-Profile-Extra'] = WEBOS_HLS_PROFILE_EXTRA;
   }
   return params;
@@ -97,6 +103,7 @@ function formatDirectPlayOnlyError(probe) {
 export {
   WEBOS_HLS_PROFILE_EXTRA,
   usesWebOsTvPmsProfile,
+  shouldUseWebOsHlsProfileExtra,
   applyWebOsHlsTranscodeParams,
   buildHttpTranscodeFallbackParams,
   isHlsUrl,

@@ -126,7 +126,7 @@ test('buildPlaybackUrl HLS includes webOS profile extra only for Plex for LG', f
   assert.equal(q.location, 'wan');
 });
 
-test('buildPlaybackUrl simulator Plex Web omits profile extra on HLS', function () {
+test('buildPlaybackUrl simulator Plex Web adds webOS HLS profile extra', function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
     platform: { tv: true },
@@ -150,7 +150,7 @@ test('buildPlaybackUrl simulator Plex Web omits profile extra on HLS', function 
   });
   var q = parseQuery(buildPlaybackUrl(remote, partKey, session, 'hls'));
   assert.equal(q['X-Plex-Product'], 'Plex Web');
-  assert.equal(q['X-Plex-Client-Profile-Extra'], undefined);
+  assert.equal(q['X-Plex-Client-Profile-Extra'], WEBOS_HLS_PROFILE_EXTRA);
   assert.equal(q.path, '/library/metadata/12345');
   assert.equal(q.location, 'wan');
   assert.equal(q.directStream, '1');

@@ -5,6 +5,7 @@ import {
   applyWebOsHlsTranscodeParams,
   buildHttpTranscodeFallbackParams,
   usesWebOsTvPmsProfile,
+  shouldUseWebOsHlsProfileExtra,
   WEBOS_HLS_PROFILE_EXTRA
 } from '../src/playback/hlsPolicy.js';
 import {
@@ -55,16 +56,17 @@ test('WEBOS_HLS_PROFILE_EXTRA uses videoCodec and audioCodec with protocol=hls',
   assert.ok(WEBOS_HLS_PROFILE_EXTRA.indexOf('type=audioProfile') < 0);
 });
 
-test('applyWebOsHlsTranscodeParams omits profile extra for Plex Web identity', function () {
+test('applyWebOsHlsTranscodeParams includes profile extra for webOS simulator HLS', function () {
   setPlexDeviceInfo({
     modelName: 'WEBOS26_SIMULATOR',
     version: '26.0.0'
   });
   assert.equal(usesWebOsTvPmsProfile(), false);
+  assert.equal(shouldUseWebOsHlsProfileExtra(), true);
 
   var params = applyWebOsHlsTranscodeParams({});
   assert.equal(params.protocol, 'hls');
-  assert.equal(params['X-Plex-Client-Profile-Extra'], undefined);
+  assert.equal(params['X-Plex-Client-Profile-Extra'], WEBOS_HLS_PROFILE_EXTRA);
 });
 
 test('applyWebOsHlsTranscodeParams sets profile extra for Plex for LG', function () {
