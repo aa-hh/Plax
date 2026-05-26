@@ -87,6 +87,42 @@ function buildProbeTokens(server) {
   return tokens;
 }
 
+function formatProbeFailure(err) {
+  if (!err) return 'unknown error';
+  if (err.message === 'Request timeout') return 'timeout';
+  if (err.status) {
+    if (err.status === 401) return 'HTTP 401 (auth)';
+    return 'HTTP ' + err.status;
+  }
+  var msg = err.message || String(err);
+  return msg.length > 80 ? msg.slice(0, 77) + '...' : msg;
+}
+
+function probeTimeoutMs(conn) {
+  if (isHttpsUri(conn.uri) && !conn.local && !conn.relay) return 15000;
+  return 8000;
+}
+
+function logConnectionCandidates(connections) {
+  var list = connections || [];
+  var httpsCount = 0;
+  var httpCount = 0;
+  list.forEach(function (c) {
+    if (isHttpsUri(c.uri)) httpsCount++;
+    else if (isHttpUri(c.uri)) httpCount++;
+  });
+  if (!httpsCount) {
+    console.info(
+      '[plex] no HTTPS connection published for server (' +
+      httpCount + ' HTTP candidate' + (httpCount === 1 ? '' : 's') + ')'
+    );
+    return;
+  }
+  console.info(
+    '[plex] connection candidates: ' + httpsCount + ' HTTPS, ' + httpCount + ' HTTP'
+  );
+}
+
 function logHttpsRejected(reason, uri) {
   console.info('[plex] HTTPS connection rejected: ' + reason + ' (' + redactPlexUrl(uri) + ')');
 }
@@ -114,16 +150,16 @@ function probeServerWithToken(server, ranked, token) {
     var base = conn.uri.replace(/\/$/, '');
     var url = serverUrl(base, '/', {}, { accessToken: token });
     var connIsHttps = isHttpsUri(conn.uri);
-    return fetchPlexXml(url, { timeout: 8000 }).then(function () {
+    return fetchPlexXml(url, { timeout: probeTimeoutMs(conn) }).then(function () {
       logUsingConnection(base);
       return Object.assign({}, server, {
         connectionUri: base,
         activeConnection: conn,
         accessToken: token
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (connIsHttps) {
-        logHttpsRejected('probe failed', base);
+        logHttpsRejected('probe failed: ' + formatProbeFailure(err), base);
         if (!loggedHttpFallback && idx < ranked.length && isHttpUri(ranked[idx].uri)) {
           loggedHttpFallback = true;
           logHttpFallbackAfterHttps(ranked[idx].uri);
@@ -152,6 +188,7 @@ function findOwnerServer(profileServer, ownerServers) {
 }
 
 function testServerConnection(server, prefs, ownerServers) {
+  logConnectionCandidates(server.connections);
   logHttpsRankingSkips(server, server.connections, prefs);
   var ranked = rankConnections(server.connections, prefs);
   var state = getState();
@@ -415,6 +452,9 @@ export {
   librarySectionsCacheKey,
   resolveServersForDiscovery,
   testServerConnection,
+  formatProbeFailure,
+  probeTimeoutMs,
+  logConnectionCandidates,
   logHttpsRejected,
   logHttpFallbackAfterHttps,
   logUsingConnection,
