@@ -5,7 +5,10 @@ import {
   isDirectPlayOnlyQuality
 } from './qualityProfiles.js';
 import { buildAudioTranscodeParam } from './tracks/audioTracks.js';
-import { buildSubtitleTranscodeParams } from './tracks/subtitleTracks.js';
+import {
+  buildSubtitleTranscodeParams,
+  resolveSessionPartPath
+} from './tracks/subtitleTracks.js';
 import {
   applyWebOsHlsTranscodeParams,
   buildHttpTranscodeFallbackParams
@@ -109,14 +112,7 @@ function resolveStreamMode(strategy, protocol) {
 
 function resolveStreamUrl(session) {
   var server = session.server;
-  var partKey = session.version && session.version.partKey;
-  if (!partKey && session.item && session.item.media && session.item.media[0]) {
-    var media = session.item.media[session.mediaIndex || 0] || session.item.media[0];
-    var parts = media._children || media._nested || [];
-    var part = parts[session.partIndex || 0] || parts[0];
-    if (part) partKey = part.key;
-  }
-  if (!partKey) partKey = '/library/metadata/' + session.item.ratingKey;
+  var partKey = resolveSessionPartPath(session);
 
   var strategy = resolvePlaybackStrategy(session);
   if (strategy === 'direct') {

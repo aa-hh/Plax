@@ -347,30 +347,6 @@ html { min-width: 1280px; min-height: 720px; }
   margin-bottom: var(--space-3);
 }
 
-.bootstrap-screen {
-  max-width: 920px;
-  margin: 0 auto;
-}
-
-.bootstrap-screen #boot-loader {
-  margin-top: var(--space-2);
-}
-
-.bootstrap-screen .screen-subtitle {
-  margin-bottom: var(--space-6);
-  max-width: 820px;
-}
-
-.bootstrap-status {
-  margin-top: var(--space-6);
-  min-height: 1.5em;
-  color: var(--text-secondary);
-}
-
-.bootstrap-actions {
-  margin-top: var(--space-6);
-}
-
 .home-feed-host {
   flex: 1;
   min-height: 0;
@@ -1922,21 +1898,31 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-control-bar {
-  display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(420px, 1fr);
-  align-items: center;
-  gap: var(--space-5);
+  position: relative;
+  display: block;
   padding: 12px 14px;
   border-radius: var(--radius-lg);
   background: rgba(8, 10, 16, 0.76);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  min-height: 76px;
 }
 
 .player-meta-col {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  max-width: min(42%, 520px);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.player-meta-col .player-retry-btn {
+  pointer-events: auto;
 }
 
 .player-now-playing-title {
@@ -2066,9 +2052,11 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-seek-bar:focus {
-  outline: 3px solid var(--border-focus);
-  outline-offset: 4px;
-  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.player-seek-bar:focus-visible {
+  outline: none;
 }
 
 .player-seek-bar--scrubbing .player-seek-played {
@@ -2107,13 +2095,16 @@ html { min-width: 1280px; min-height: 720px; }
   background: #fff;
   border: 2px solid var(--accent);
   pointer-events: none;
+  transition: width 0.12s ease, height 0.12s ease, margin 0.12s ease, box-shadow 0.12s ease;
 }
 
-.player-seek-bar:focus .player-seek-thumb {
-  width: 22px;
-  height: 22px;
-  margin-top: -11px;
-  margin-left: -11px;
+.player-seek-bar:focus .player-seek-thumb,
+.player-seek-bar--scrubbing .player-seek-thumb {
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  margin-left: -14px;
+  box-shadow: 0 0 0 3px var(--border-focus);
 }
 
 .player-subtitle-delay {
@@ -2150,20 +2141,47 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-taskbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-5);
+  width: 100%;
+  min-height: 52px;
   min-width: 0;
-  flex: 1;
 }
 
 .player-transport-col {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.player-transport-wing {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.player-transport-wing--left {
+  justify-content: flex-end;
+}
+
+.player-transport-wing--right {
+  justify-content: flex-start;
+}
+
+.player-transport-center {
+  justify-self: center;
+  pointer-events: auto;
 }
 
 .player-control-pill {
@@ -2217,11 +2235,14 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-settings-col {
+  position: relative;
+  z-index: 3;
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
   min-width: 0;
+  margin-left: auto;
 }
 
 .player-stream-pill {
@@ -2248,6 +2269,13 @@ html { min-width: 1280px; min-height: 720px; }
   outline-offset: 3px;
 }
 
+.player-stream-pill--icon {
+  gap: 0;
+  min-width: 52px;
+  padding: 12px;
+  justify-content: center;
+}
+
 .player-stream-pill--on {
   background: rgba(255, 255, 255, 0.28);
 }
@@ -2272,6 +2300,11 @@ html { min-width: 1280px; min-height: 720px; }
   width: 26px;
   height: 26px;
   flex-shrink: 0;
+}
+
+.player-stream-icon--cc {
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .player-stream-label {
@@ -2696,6 +2729,10 @@ html { min-width: 1280px; min-height: 720px; }
   text-align: left;
 }
 
+.profile-picker--awaiting-size .profile-picker-main {
+  visibility: hidden;
+}
+
 .profile-picker-header {
   display: flex;
   align-items: center;
@@ -2727,6 +2764,10 @@ html { min-width: 1280px; min-height: 720px; }
 .profile-picker-body {
   width: 100%;
   position: relative;
+}
+
+.profile-picker--loading .profile-picker-row {
+  visibility: hidden;
 }
 
 .profile-picker-row {

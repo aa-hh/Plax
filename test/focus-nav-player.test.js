@@ -43,16 +43,31 @@ function buildPlayerOverlayFixture() {
   var taskbar = createElement('div');
   taskbar.className = 'player-taskbar';
   taskbar.setAttribute('data-focus-zone', 'player-taskbar');
+  taskbar.setAttribute('data-focus-mode', 'sequential');
+  taskbar.setAttribute('data-focus-sequential-axis', 'horizontal');
 
   var transport = createElement('div');
   transport.className = 'player-transport-col';
-  ['btn-prev', 'btn-rewind', 'btn-pause', 'btn-forward', 'btn-next', 'btn-stop'].forEach(function (id) {
-    transport.appendChild(pill(id, 'player-control-pill'));
+  var wingLeft = createElement('div');
+  wingLeft.className = 'player-transport-wing player-transport-wing--left';
+  var wingRight = createElement('div');
+  wingRight.className = 'player-transport-wing player-transport-wing--right';
+  var transportCenter = createElement('div');
+  transportCenter.className = 'player-transport-center';
+  ['btn-prev', 'btn-rewind'].forEach(function (id) {
+    wingLeft.appendChild(pill(id, 'player-control-pill'));
   });
+  transportCenter.appendChild(pill('btn-pause', 'player-control-pill'));
+  ['btn-forward', 'btn-next', 'btn-stop'].forEach(function (id) {
+    wingRight.appendChild(pill(id, 'player-control-pill'));
+  });
+  transport.appendChild(wingLeft);
+  transport.appendChild(transportCenter);
+  transport.appendChild(wingRight);
 
   var settings = createElement('div');
   settings.className = 'player-settings-col';
-  ['btn-quality', 'btn-audio', 'btn-subtitles', 'btn-more'].forEach(function (id) {
+  ['btn-quality', 'btn-audio', 'btn-subtitles'].forEach(function (id) {
     settings.appendChild(pill(id, 'player-stream-pill'));
   });
 
@@ -92,8 +107,7 @@ test('player taskbar includes transport and settings controls', function () {
     'btn-stop',
     'btn-quality',
     'btn-audio',
-    'btn-subtitles',
-    'btn-more'
+    'btn-subtitles'
   ]);
 });
 
@@ -117,6 +131,26 @@ test('Left from first settings pill returns to last transport control', function
   var handled = handleKeyNav(overlay, keyEvent(ARROW_LEFT));
   assert.equal(handled, true);
   assert.equal(document.activeElement.id, 'btn-stop');
+});
+
+test('Left/Right on seek bar does not move focus to taskbar', function () {
+  installMinimalDom();
+  var overlay = buildPlayerOverlayFixture();
+  document.registerTree(overlay);
+  overlay.addEventListener('keydown', function (e) {
+    if ([ARROW_LEFT, ARROW_UP, ARROW_RIGHT, ARROW_DOWN].indexOf(e.keyCode) >= 0) {
+      handleKeyNav(overlay, e);
+    }
+  });
+
+  overlay.querySelector('#player-seek').focus();
+  var handled = handleKeyNav(overlay, keyEvent(ARROW_RIGHT));
+  assert.equal(handled, false);
+  assert.equal(document.activeElement.id, 'player-seek');
+
+  handled = handleKeyNav(overlay, keyEvent(ARROW_LEFT));
+  assert.equal(handled, false);
+  assert.equal(document.activeElement.id, 'player-seek');
 });
 
 test('Down from seek row focuses first taskbar control', function () {
@@ -153,8 +187,7 @@ test('Right steps through every taskbar control in order', function () {
     'btn-stop',
     'btn-quality',
     'btn-audio',
-    'btn-subtitles',
-    'btn-more'
+    'btn-subtitles'
   ];
 
   overlay.querySelector('#btn-prev').focus();
@@ -171,11 +204,13 @@ test('Left steps backward through taskbar controls', function () {
   var overlay = buildPlayerOverlayFixture();
   document.registerTree(overlay);
 
-  overlay.querySelector('#btn-more').focus();
-  handleKeyNav(overlay, keyEvent(ARROW_LEFT));
-  assert.equal(document.activeElement.id, 'btn-subtitles');
+  overlay.querySelector('#btn-subtitles').focus();
   handleKeyNav(overlay, keyEvent(ARROW_LEFT));
   assert.equal(document.activeElement.id, 'btn-audio');
+  handleKeyNav(overlay, keyEvent(ARROW_LEFT));
+  assert.equal(document.activeElement.id, 'btn-quality');
+  handleKeyNav(overlay, keyEvent(ARROW_LEFT));
+  assert.equal(document.activeElement.id, 'btn-stop');
 });
 
 test('getFocusables skips controls with tabindex -1', function () {

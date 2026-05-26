@@ -74,7 +74,7 @@ Based on LG's [Simulator Developer Guide](https://webostv.developer.lge.com/deve
 Download a webOS TV Simulator (one `.dmg`/`.exe` per webOS version) from:
 [Simulator installation](https://webostv.developer.lge.com/develop/tools/simulator-installation)
 
-On macOS, just drop the `webOS_TV_<VER>_Simulator_<X.Y.Z>.app` into `/Applications` — `npm run sim` will auto-detect it.
+On macOS, install the simulator from LG’s `.dmg` (often creates a folder under `/Applications`, e.g. `webOS_TV_26_Simulator_1.5.0/webOS_TV_26_Simulator_1.5.0.app`). `npm run sim` auto-detects either layout.
 
 (Optional — only needed to install on a real TV, not for simulator testing: install LG's actively maintained CLI [`@webos-tools/cli`](https://github.com/webos-tools/cli):
 ```bash
@@ -85,6 +85,14 @@ npm install -g @webos-tools/cli
 )
 
 ### Launching
+
+| Command | What it does |
+|--------|----------------|
+| `npm run sim` | `npm run build` then launch (recommended) |
+| `npm run sim:launch` | Launch only — run `npm run build` first |
+| `npm run sim:26` (etc.) | Build + launch a specific webOS TV version |
+
+There is no `npm sim-launch` script; use `npm run sim:launch`.
 
 ```bash
 npm run sim        # build + auto-detect newest installed simulator
@@ -101,21 +109,22 @@ npm run sim:24
 npm run sim:26
 ```
 
-Or point at a specific simulator binary:
+Point at a simulator `.app` or its install folder (both work):
 
 ```bash
-WEBOS_SIM_PATH="/Applications/webOS_TV_6.0_Simulator_1.4.1.app" npm run sim
-# or
-npm run sim -- --simulator-path "/Applications/webOS_TV_6.0_Simulator_1.4.1.app"
+WEBOS_SIM_PATH="/Applications/webOS_TV_26_Simulator_1.5.0" npm run sim
+# or the .app inside that folder:
+WEBOS_SIM_PATH="/Applications/webOS_TV_26_Simulator_1.5.0/webOS_TV_26_Simulator_1.5.0.app" npm run sim
 ```
 
 You can also open the Simulator manually and use **File → Launch App** on the `dist/` folder (the directory that contains `appinfo.json`) after `npm run build`.
 
 Tips:
-- `npm run sim` always rebuilds, verifies `dist/app.js` markers (`Select User`, spinners), quits any running simulator, then launches via `ares-launch`.
+- Each `npm run build` writes `dist/.xplay-build-stamp.json` with a **change summary** (files/areas touched since the last build). `npm run sim` / `npm run sim:launch` print that summary once before launch (not duplicated during `npm run build`).
+- **Verify you are on the latest bundle:** open devtools and check `window.__XPLAY_BUILD__` (also logged at boot as `[XPlay Lite] build …`). `builtAt` / `gitCommit` should match the stamp printed by `npm run sim`. If `build-info missing` appears, the simulator is serving an old folder — remove the home-screen icon, reset the simulator DB, and run `npm run sim` again.
 - `npm run sim:watch` only rebuilds `dist/`; the simulator does **not** pick up changes until you re-run `npm run sim` or use **File → Launch App** on `dist/` again. Saving files may auto-reload only if that exact folder is already the launched app.
 - If you still see the old **Who's watching?** screen, remove the XPlay icon from the simulator home screen (right-click → Remove), then **Action → Database Reset**, and run `npm run sim` again. Do not launch from an old home-screen icon after renaming the project folder.
-- `npm run sim:launch` skips the rebuild step (run `npm run build` first).
+- `npm run sim:launch` skips the rebuild step — run `npm run build` first so `dist/` is current.
 
 ## Install on TV
 

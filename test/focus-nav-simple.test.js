@@ -15,11 +15,6 @@ var pairingSrc = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '../src/ui/screens/pairingScreen.js'),
   'utf8'
 );
-var bootstrapSrc = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '../src/ui/screens/bootstrapScreen.js'),
-  'utf8'
-);
-
 function keyEvent(code) {
   return { keyCode: code, preventDefault: function () {} };
 }
@@ -32,11 +27,9 @@ function btn(id) {
   return el;
 }
 
-test('pairing and bootstrap screens use sequential focus mode', function () {
+test('pairing screen uses sequential focus mode', function () {
   assert.match(pairingSrc, /setAttribute\('data-focus-mode',\s*'sequential'\)/);
-  assert.match(bootstrapSrc, /setAttribute\('data-focus-mode',\s*'sequential'\)/);
-  assert.match(bootstrapSrc, /attachFocusNav\(screen\)/);
-  assert.match(bootstrapSrc, /btn-boot-continue/);
+  assert.match(pairingSrc, /attachFocusNav\(screen\)/);
 });
 
 test('sequential mode: Down moves to next focusable in DOM order', function () {
@@ -92,6 +85,26 @@ test('sequential mode: single focusable does not trap arrow keys', function () {
   var ev = keyEvent(ARROW_DOWN);
   assert.equal(handleKeyNav(screen, ev), false);
   assert.equal(document.activeElement.id, 'only');
+});
+
+test('sequential root requires active element inside sequential zone', function () {
+  installMinimalDom();
+  var overlay = createElement('div');
+  overlay.className = 'player-overlay';
+  var seek = btn('player-seek');
+  seek.className = 'player-seek-bar';
+  var taskbar = createElement('div');
+  taskbar.setAttribute('data-focus-mode', 'sequential');
+  taskbar.appendChild(btn('btn-pause'));
+  overlay.appendChild(seek);
+  overlay.appendChild(taskbar);
+  document.registerTree(overlay);
+
+  seek.focus();
+  var ev = keyEvent(ARROW_RIGHT);
+  var handled = handleKeyNav(overlay, ev);
+  assert.equal(handled, false);
+  assert.equal(document.activeElement.id, 'player-seek');
 });
 
 test('sequential mode: zone nav does not apply on pairing fixture', function () {

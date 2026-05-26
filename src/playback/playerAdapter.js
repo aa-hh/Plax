@@ -24,6 +24,8 @@ var bufferingShown = false;
 var scrobbled = false;
 var lastTimelineMs = -1;
 var lastKnownPositionMs = 0;
+/** Plex offset baked into transcode URL; element currentTime is relative to that point. */
+var streamBaseOffsetMs = 0;
 /** @see docs/caching-and-buffering.md */
 var REBUFFER_TIMEOUT_MS = 12000;
 
@@ -307,11 +309,43 @@ function hasClientSubtitlesLoaded() {
   return !!activeTextTrack;
 }
 
+function isSubtitleFetchFallbackStatus(err) {
+  return !!(err && (err.status === 400 || err.status === 404));
+}
+
+function loadClientSubtitleFromUrls(urls, offsetMs) {
+  if (!urls || !urls.length) return Promise.reject(new Error('No subtitle URL'));
+  var index = 0;
+  function tryNext(lastErr) {
+    if (index >= urls.length) {
+      return Promise.reject(lastErr || new Error('No subtitle URL'));
+    }
+    var url = urls[index];
+    var attempt = index + 1;
+    index += 1;
+    console.info('[subtitles] fetch ' + attempt + '/' + urls.length, redactPlexUrl(url));
+    return fetchText(url, { timeout: 20000 }).then(function (text) {
+      applySrtText(text, offsetMs);
+      if (!hasClientSubtitlesLoaded()) {
+        return Promise.reject(new Error('Subtitle file had no parseable cues'));
+      }
+    }).catch(function (err) {
+      if (index < urls.length && isSubtitleFetchFallbackStatus(err)) {
+        console.warn(
+          '[subtitles] HTTP ' + err.status + ' on attempt ' + attempt + ', trying fallback'
+        );
+        return tryNext(err);
+      }
+      console.warn('[subtitles] failed on attempt ' + attempt, err.message);
+      return Promise.reject(err);
+    });
+  }
+  return tryNext();
+}
+
 function loadClientSubtitle(url, offsetMs) {
   if (!url) return Promise.reject(new Error('No subtitle URL'));
-  return fetchText(url, { timeout: 20000 }).then(function (text) {
-    applySrtText(text, offsetMs);
-  });
+  return loadClientSubtitleFromUrls([url], offsetMs);
 }
 
 function applyPlaybackOffset(offsetMs) {
@@ -354,11 +388,17 @@ function play(url, session, options) {
   sessionRef = session;
   scrobbled = false;
   lastTimelineMs = -1;
-  lastKnownPositionMs = options.offset || (session && session.offset) || 0;
+  var offsetMs = options.offset || (session && session.offset) || 0;
+  var mode = options.mode || playbackModeRef;
+  streamBaseOffsetMs = 0;
+  if (offsetMs > 0 && shouldSkipClientPlaybackOffset(url, mode, offsetMs)) {
+    streamBaseOffsetMs = offsetMs;
+  }
+  lastKnownPositionMs = offsetMs;
   initialPlayingTimelineSynced = false;
   firstFrameFired = false;
   lastPlaybackUrl = url;
-  playbackModeRef = options.mode || playbackModeRef;
+  playbackModeRef = mode;
   rebufferWatchdog.resetEpisode();
   notifyBuffering(true);
   videoEl.classList.remove('hidden');
@@ -366,8 +406,6 @@ function play(url, session, options) {
   keepScreenOn(true);
   videoEl.addEventListener('canplay', notifyFirstFrame, { once: true });
   videoEl.addEventListener('playing', notifyFirstFrame, { once: true });
-  var offsetMs = options.offset || (session && session.offset) || 0;
-  var mode = options.mode || playbackModeRef;
   if (offsetMs > 0 && !shouldSkipClientPlaybackOffset(url, mode, offsetMs)) {
     applyPlaybackOffset(offsetMs);
   }
@@ -434,6 +472,7 @@ function stop(options) {
   initialPlayingTimelineSynced = false;
   lastPlaybackUrl = null;
   playbackModeRef = 'unknown';
+  streamBaseOffsetMs = 0;
 
   if (server && ratingKey && !options.skipTimeline) {
     var continuing = options.continuing != null ? options.continuing : 0;
@@ -511,7 +550,10 @@ function seek(seconds) {
 }
 
 function seekMs(ms) {
-  seek((ms || 0) / 1000);
+  var targetMs = Math.max(0, ms || 0);
+  var relMs = Math.max(0, targetMs - (streamBaseOffsetMs || 0));
+  seek(relMs / 1000);
+  if (targetMs > 0) lastKnownPositionMs = targetMs;
 }
 
 function seekBy(secondsDelta) {
@@ -529,12 +571,21 @@ function togglePlayPause() {
   else pause();
 }
 
+function mediaPositionMsFromVideo() {
+  if (!videoEl) return 0;
+  return Math.floor(videoEl.currentTime * 1000) + (streamBaseOffsetMs || 0);
+}
+
 function getCurrentTimeMs() {
   if (!videoEl) {
     return lastKnownPositionMs > 0 ? lastKnownPositionMs : 0;
   }
-  var ms = Math.floor(videoEl.currentTime * 1000);
+  var ms = mediaPositionMsFromVideo();
   if (ms > 0) {
+    if (lastKnownPositionMs > 0 && ms < lastKnownPositionMs &&
+        streamBaseOffsetMs > 0 && ms <= streamBaseOffsetMs) {
+      return lastKnownPositionMs;
+    }
     lastKnownPositionMs = ms;
     return ms;
   }
@@ -653,6 +704,7 @@ export {
   clearSubtitles,
   hasClientSubtitlesLoaded,
   loadClientSubtitle,
+  loadClientSubtitleFromUrls,
   setPlaybackMode,
   getPlaybackMode,
   getPlaybackStats,

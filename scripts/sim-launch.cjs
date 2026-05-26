@@ -1,8 +1,11 @@
 /**
  * Launch XPlay Lite in the webOS TV Simulator.
  *
- * Prefers `ares-launch -s <version> <APP_DIR>` (official CLI) so the simulator
- * always loads the requested dist/ folder. Falls back to macOS `open -a … --args`.
+ * Prefers `ares-launch -s <version> <APP_DIR> -sp <INSTALL_DIR>` (official CLI).
+ * `-sp` must be the simulator *install folder* (contains a `webOS_TV_*_Simulator_*.app`),
+ * not the `.app` bundle — nested LG installs use e.g.
+ * `/Applications/webOS_TV_26_Simulator_1.5.0/webOS_TV_26_Simulator_1.5.0.app`.
+ * Falls back to macOS `open -n -a <.app> --args <APP_DIR>` when ares-launch fails.
  *
  * The simulator caches apps on its home screen; re-launching from an old icon can
  * show a stale bundle even after `npm run build`. This script quits running
@@ -19,7 +22,7 @@ var fs = require('fs');
 var cp = require('child_process');
 
 var APP_ID = 'com.xplay.lite';
-var DIST_MARKERS = ['Select User', 'Enter PIN', 'profile-spinner', 'fetchHomeSize', 'xplay-spinner'];
+var stampLib = require('./build-stamp-lib.cjs');
 
 function parseArg(name, fallback) {
   var idx = process.argv.indexOf('--' + name);
@@ -38,32 +41,22 @@ function hasAresLaunch() {
 
 function verifyDistBundle(appDir) {
   var appJsPath = path.join(appDir, 'app.js');
-  var cssPath = path.join(appDir, 'app.css');
+  var indexPath = path.join(appDir, 'index.html');
   var stampPath = path.join(appDir, '.xplay-build-stamp.json');
+  var buildInfoPath = path.join(appDir, 'build-info.js');
 
   if (!fs.existsSync(appJsPath)) {
     console.error('Missing dist/app.js. Run `npm run build` from the project root first.');
     process.exit(1);
   }
-
-  var appJs = fs.readFileSync(appJsPath, 'utf8');
-  var missing = DIST_MARKERS.filter(function (needle) { return appJs.indexOf(needle) < 0; });
-  if (missing.length) {
-    console.error('dist/app.js is missing profile-picker markers:', missing.join(', '));
-    console.error('Run `npm run build` in:', path.dirname(appDir));
+  if (!fs.existsSync(indexPath)) {
+    console.error('Missing dist/index.html. Run `npm run build`.');
     process.exit(1);
   }
 
-  if (fs.existsSync(cssPath)) {
-    var css = fs.readFileSync(cssPath, 'utf8');
-    if (css.indexOf('.profile-picker-header') < 0) {
-      console.error('dist/app.css is missing profile-picker styles. Run `npm run build`.');
-      process.exit(1);
-    }
-  }
-
+  var appJs = fs.readFileSync(appJsPath, 'utf8');
   if (appJs.indexOf("Who's watching?") >= 0) {
-    console.error('dist/app.js still contains the old profile-picker title.');
+    console.error('dist/app.js still contains the old profile-picker title (stale bundle).');
     console.error('Run `npm run build` from the project root (not an older clone).');
     process.exit(1);
   }
@@ -71,12 +64,16 @@ function verifyDistBundle(appDir) {
   var stamp = null;
   if (fs.existsSync(stampPath)) {
     try { stamp = JSON.parse(fs.readFileSync(stampPath, 'utf8')); } catch (_) {}
+  } else {
+    console.warn('No .xplay-build-stamp.json in dist — run `npm run build` for change summary.');
+  }
+  if (!fs.existsSync(buildInfoPath)) {
+    console.warn('No build-info.js in dist — run `npm run build` (runtime build check unavailable).');
   }
 
-  var appStat = fs.statSync(appJsPath);
-  console.log('Bundle OK: Select User + PIN spinner markers present in dist/app.js');
-  console.log('  app.js modified:', appStat.mtime.toISOString());
-  if (stamp && stamp.builtAt) console.log('  build stamp:', stamp.builtAt);
+  stampLib.formatStampDetail(stamp).forEach(function (line) {
+    console.log(line);
+  });
 }
 
 function printStaleSimHints() {
@@ -89,6 +86,7 @@ function printStaleSimHints() {
   console.log('     ' + path.resolve(process.cwd(), parseArg('app-dir', process.env.WEBOS_APP_DIR || 'dist')));
   console.log('');
   console.log('Do not rely on the home-screen app icon after moving or renaming the project folder.');
+  console.log('In devtools: window.__XPLAY_BUILD__ should match the build stamp above.');
 }
 
 function quitRunningSimulators() {
@@ -117,34 +115,54 @@ function closeSimApp(version) {
   } catch (_) {}
 }
 
-function launchViaAres(version, appDir, simulatorPath) {
-  var args = ['-s', String(version), appDir];
-  if (simulatorPath) args.push('-sp', simulatorPath);
-  console.log('Launching via ares-launch ' + args.join(' '));
-  cp.spawnSync('ares-launch', args, { stdio: 'inherit' });
+/**
+ * ares-launch -sp expects a directory that contains webOS_TV_<ver>_Simulator_*.app.
+ * Users often pass the .app bundle; normalize to { appPath, aresDir }.
+ */
+function resolveSimulatorPaths(simulatorPath) {
+  var resolved = path.resolve(simulatorPath);
+  var ext = path.extname(resolved).toLowerCase();
+  if (ext === '.app') {
+    return { appPath: resolved, aresDir: path.dirname(resolved) };
+  }
+
+  if (!fs.existsSync(resolved)) {
+    return { appPath: resolved, aresDir: resolved };
+  }
+
+  if (!fs.statSync(resolved).isDirectory()) {
+    return { appPath: resolved, aresDir: path.dirname(resolved) };
+  }
+
+  var entries;
+  try { entries = fs.readdirSync(resolved); } catch (_) { entries = []; }
+  var appName = null;
+  for (var i = 0; i < entries.length; i++) {
+    if (/^webOS_TV_[0-9.]+\_Simulator.*\.app$/i.test(entries[i])) {
+      appName = entries[i];
+      break;
+    }
+  }
+  if (appName) {
+    return { appPath: path.join(resolved, appName), aresDir: resolved };
+  }
+  return { appPath: resolved, aresDir: resolved };
 }
 
-function launchViaOpen(simulatorPath, appDir) {
-  console.log('Launching via open -n (install @webos-tools/cli for ares-launch)');
-  var result = cp.spawnSync('open', ['-n', '-a', simulatorPath, '--args', appDir], {
+function launchViaAres(version, appDir, aresDir) {
+  var args = ['-s', String(version), appDir, '-sp', aresDir];
+  console.log('Launching via ares-launch ' + args.join(' '));
+  return cp.spawnSync('ares-launch', args, { stdio: 'inherit' });
+}
+
+function launchViaOpen(appPath, appDir) {
+  console.log('Launching via open -n -a "' + appPath + '" --args "' + appDir + '"');
+  var result = cp.spawnSync('open', ['-n', '-a', appPath, '--args', appDir], {
     stdio: 'inherit'
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error('open exited with code ' + result.status);
 }
-
-var version = parseArg('version', process.env.WEBOS_SIM_VERSION || '');
-var appDirArg = parseArg('app-dir', process.env.WEBOS_APP_DIR || 'dist');
-var simulatorPath = parseArg('simulator-path', process.env.WEBOS_SIM_PATH || '');
-var appDir = path.resolve(process.cwd(), appDirArg);
-
-if (!fs.existsSync(path.join(appDir, 'appinfo.json'))) {
-  console.error('Simulator app dir must contain appinfo.json:', appDir);
-  console.error('Run `npm run build` first, or pass --app-dir to a valid app root.');
-  process.exit(1);
-}
-
-verifyDistBundle(appDir);
 
 function findSimulator(ver) {
   var roots = [];
@@ -184,7 +202,13 @@ function findSimulator(ver) {
       var m;
       if (isExecMatch(name)) {
         m = name.match(prefixPattern);
-        if (m) found.push({ version: m[1], fullPath: full });
+        if (m) {
+          found.push({
+            version: m[1],
+            appPath: full,
+            aresDir: path.dirname(full)
+          });
+        }
         continue;
       }
       if (depth > 0 && prefixPattern.test(name)) {
@@ -218,57 +242,104 @@ function findSimulator(ver) {
   return matches[0];
 }
 
-if (!simulatorPath) {
-  var detected = findSimulator(version);
-  if (detected) {
-    simulatorPath = detected.fullPath;
-    if (!version) version = detected.version;
-    console.log('Detected webOS TV ' + detected.version + ' Simulator: ' + simulatorPath);
-  }
-}
-
-if (!simulatorPath) {
-  console.error('No webOS TV Simulator found.');
-  console.error('');
-  if (process.platform === 'darwin') {
-    console.error('Install one from:');
-    console.error('  https://webostv.developer.lge.com/develop/tools/simulator-installation');
-    console.error('Then drop the .app into /Applications and re-run, or pass --simulator-path.');
-  } else {
-    console.error('Set WEBOS_SIM_PATH or pass --simulator-path to point at your simulator binary.');
-  }
-  process.exit(1);
-}
-
-if (!fs.existsSync(simulatorPath)) {
-  console.error('Simulator path does not exist:', simulatorPath);
-  process.exit(1);
-}
-
-if (!version) {
-  var m = path.basename(simulatorPath).match(/webOS_TV_([0-9.]+)_Simulator/i);
-  version = m ? m[1] : '23';
-}
-
-quitRunningSimulators();
-closeSimApp(version);
-
-console.log('Loading app from: ' + appDir);
-
-try {
+function runLaunch(version, appDir, paths) {
   if (hasAresLaunch()) {
-    launchViaAres(version, appDir, simulatorPath);
-  } else if (process.platform === 'darwin') {
-    launchViaOpen(simulatorPath, appDir);
-  } else if (process.platform === 'win32') {
-    cp.spawnSync(simulatorPath, [appDir], { stdio: 'inherit' });
-  } else {
-    cp.spawnSync(simulatorPath, [appDir], { stdio: 'inherit' });
+    var aresResult = launchViaAres(version, appDir, paths.aresDir);
+    if (!aresResult.error && (aresResult.status === 0 || aresResult.status === null)) {
+      return;
+    }
+    var aresErr = aresResult.error
+      ? (aresResult.error.message || String(aresResult.error))
+      : 'exit code ' + aresResult.status;
+    console.warn('ares-launch failed (' + aresErr + '), trying open fallback...');
   }
-} catch (e) {
-  console.error('Simulator launch failed:', e.message || e);
-  console.error('Open the Simulator manually and use File → Launch App on:', appDir);
-  process.exit(1);
+
+  if (process.platform === 'darwin') {
+    launchViaOpen(paths.appPath, appDir);
+    return;
+  }
+  if (process.platform === 'win32') {
+    cp.spawnSync(paths.appPath, [appDir], { stdio: 'inherit' });
+    return;
+  }
+  cp.spawnSync(paths.appPath, [appDir], { stdio: 'inherit' });
 }
 
-printStaleSimHints();
+function main() {
+  var version = parseArg('version', process.env.WEBOS_SIM_VERSION || '');
+  var appDirArg = parseArg('app-dir', process.env.WEBOS_APP_DIR || 'dist');
+  var simulatorPath = parseArg('simulator-path', process.env.WEBOS_SIM_PATH || '');
+  var appDir = path.resolve(process.cwd(), appDirArg);
+
+  if (!fs.existsSync(path.join(appDir, 'appinfo.json'))) {
+    console.error('Simulator app dir must contain appinfo.json:', appDir);
+    console.error('Run `npm run build` first, or pass --app-dir to a valid app root.');
+    process.exit(1);
+  }
+
+  verifyDistBundle(appDir);
+
+  var paths;
+  if (!simulatorPath) {
+    var detected = findSimulator(version);
+    if (detected) {
+      paths = { appPath: detected.appPath, aresDir: detected.aresDir };
+      if (!version) version = detected.version;
+      console.log('Detected webOS TV ' + detected.version + ' Simulator: ' + paths.appPath);
+    }
+  } else {
+    paths = resolveSimulatorPaths(simulatorPath);
+  }
+
+  if (!paths) {
+    console.error('No webOS TV Simulator found.');
+    console.error('');
+    if (process.platform === 'darwin') {
+      console.error('Install one from:');
+      console.error('  https://webostv.developer.lge.com/develop/tools/simulator-installation');
+      console.error('Then install to /Applications and re-run, or pass --simulator-path.');
+      console.error('LG often installs a folder such as:');
+      console.error('  /Applications/webOS_TV_26_Simulator_1.5.0/webOS_TV_26_Simulator_1.5.0.app');
+    } else {
+      console.error('Set WEBOS_SIM_PATH or pass --simulator-path to your simulator install.');
+    }
+    process.exit(1);
+  }
+
+  if (!fs.existsSync(paths.appPath)) {
+    console.error('Simulator app does not exist:', paths.appPath);
+    process.exit(1);
+  }
+
+  if (!version) {
+    var m = path.basename(paths.appPath).match(/webOS_TV_([0-9.]+)_Simulator/i);
+    version = m ? m[1] : '23';
+  }
+
+  quitRunningSimulators();
+  closeSimApp(version);
+
+  console.log('Loading app from: ' + appDir);
+  if (paths.aresDir !== paths.appPath) {
+    console.log('ares-launch install dir (-sp): ' + paths.aresDir);
+  }
+
+  try {
+    runLaunch(version, appDir, paths);
+  } catch (e) {
+    console.error('Simulator launch failed:', e.message || e);
+    console.error('Open the Simulator manually and use File → Launch App on:', appDir);
+    process.exit(1);
+  }
+
+  printStaleSimHints();
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  findSimulator: findSimulator,
+  resolveSimulatorPaths: resolveSimulatorPaths
+};

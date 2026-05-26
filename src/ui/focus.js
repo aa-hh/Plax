@@ -342,11 +342,23 @@ function findSequentialRoot(container, active) {
     return container;
   }
   var screen = container.querySelector('[data-focus-mode="sequential"]');
-  if (screen && container.contains(screen)) return screen;
+  if (screen && container.contains(screen) && active && active.closest && screen.contains(active)) {
+    return screen;
+  }
   return null;
 }
 
+function sequentialAxisFor(root) {
+  var axis = root && root.getAttribute ? root.getAttribute('data-focus-sequential-axis') : null;
+  if (axis === 'horizontal' || axis === 'vertical') return axis;
+  return 'both';
+}
+
 function handleSequentialNav(root, active, key) {
+  var axis = sequentialAxisFor(root);
+  if (axis === 'horizontal' && key !== ARROW_LEFT && key !== ARROW_RIGHT) return false;
+  if (axis === 'vertical' && key !== ARROW_UP && key !== ARROW_DOWN) return false;
+
   var list = getFocusables(root);
   if (list.length <= 1) return false;
   var idx = list.indexOf(active);
@@ -561,19 +573,24 @@ function handlePlaybackColumnsNav(container, zone, active, key) {
   return false;
 }
 
+function isPlayerSeekBar(el) {
+  return !!(el && el.classList && el.classList.contains('player-seek-bar'));
+}
+
 function handleKeyNav(container, e) {
   var key = e.keyCode;
   if ([ARROW_LEFT, ARROW_UP, ARROW_RIGHT, ARROW_DOWN].indexOf(key) < 0) return false;
 
   var active = document.activeElement;
 
-  var sequentialRoot = findSequentialRoot(container, active);
-  if (sequentialRoot) {
-    if (handleSequentialNav(sequentialRoot, active, key)) {
-      e.preventDefault();
-      return true;
-    }
+  if (isPlayerSeekBar(active) && (key === ARROW_LEFT || key === ARROW_RIGHT)) {
     return false;
+  }
+
+  var sequentialRoot = findSequentialRoot(container, active);
+  if (sequentialRoot && handleSequentialNav(sequentialRoot, active, key)) {
+    e.preventDefault();
+    return true;
   }
 
   var zone = getFocusZone(active);

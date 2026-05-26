@@ -59,10 +59,9 @@ function back() {
 }
 
 // webOS remote "Search" key — surface from any screen except the player
-// (where it conflicts with playback) and the pairing / bootstrap flows
-// (no server yet to search).
+// (where it conflicts with playback) and pairing / profile-picker (no server yet).
 var SEARCH_KEYCODE = 84;
-var SEARCH_BLOCKED_ROUTES = { player: 1, pairing: 1, bootstrap: 1, search: 1, 'profile-picker': 1 };
+var SEARCH_BLOCKED_ROUTES = { player: 1, pairing: 1, search: 1, 'profile-picker': 1 };
 
 function init(root) {
   rootEl = root;

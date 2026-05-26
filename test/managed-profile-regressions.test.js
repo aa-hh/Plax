@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { mapFallbackOwnerToHomeUser } from '../src/plex/users/homeUsers.js';
 import { shouldRejectManagedSwitchToken } from '../src/ui/screens/profilePickerScreen.js';
-import { shouldBlockIncompleteRestrictedSession } from '../src/ui/screens/bootstrapScreen.js';
+import { shouldBlockIncompleteRestrictedSession } from '../src/core/appBootstrap.js';
 import { hasIncompleteRestrictedSession, resolveStartupRoute } from '../src/core/startupRouting.js';
 
 test('home user fallback preserves non-admin state', function () {

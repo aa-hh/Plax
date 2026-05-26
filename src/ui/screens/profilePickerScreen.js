@@ -5,6 +5,7 @@ import {
   readSessionHomeSize,
   writeSessionHomeSize
 } from '../../core/storage.js';
+import { runAppBootstrap } from '../../core/appBootstrap.js';
 import { fetchHomeSize } from '../../plex/auth/pinAuth.js';
 import { fetchHomeUsers, switchToHomeUser } from '../../plex/users/homeUsers.js';
 import { createPinEntry, isNumericKeyCode } from '../pinEntry.js';
@@ -23,11 +24,15 @@ function clampProfilePickerCols(count) {
 
 function profilePickerCols(homeSize, userCount) {
   var fromHome = homeSize != null ? clampProfilePickerCols(homeSize) : null;
-  var fromUsers = userCount != null ? clampProfilePickerCols(userCount) : null;
-  if (fromHome != null && fromUsers != null) {
-    return Math.min(Math.max(fromHome, fromUsers), PROFILE_PICKER_MAX_COLS);
+  if (userCount == null) {
+    return fromHome || 1;
   }
-  return fromUsers || fromHome || 1;
+  var fromUsers = clampProfilePickerCols(userCount);
+  if (fromHome == null) return fromUsers;
+  if (fromUsers > fromHome) {
+    return Math.min(fromUsers, PROFILE_PICKER_MAX_COLS);
+  }
+  return fromHome;
 }
 
 function profileInitials(user) {
@@ -65,7 +70,7 @@ function shouldRejectManagedSwitchToken(user, switchedToken, ownerToken) {
 
 function profilePickerScreen(root, params, navigate) {
   var screen = document.createElement('div');
-  screen.className = 'screen profile-picker-screen';
+  screen.className = 'screen profile-picker-screen profile-picker--loading profile-picker--awaiting-size';
   screen.innerHTML =
     '<div class="profile-picker-main" id="profile-picker-main">' +
     '<div class="profile-picker-header" id="profile-header">' +
@@ -102,7 +107,8 @@ function profilePickerScreen(root, params, navigate) {
   var selectedUser = null;
   var selectedCard = null;
   var switching = false;
-  var profilesLoading = false;
+  var profilesLoading = true;
+  var sizeReady = false;
   var resolvedHomeSize = readSessionHomeSize();
 
   function applyProfilePickerCols(cols) {
@@ -111,18 +117,38 @@ function profilePickerScreen(root, params, navigate) {
     if (rowEl) rowEl.setAttribute('data-cols', String(n));
   }
 
-  if (resolvedHomeSize != null) {
+  function commitPickerSize(homeSize) {
+    if (homeSize != null) {
+      resolvedHomeSize = homeSize;
+      writeSessionHomeSize(homeSize);
+    }
     applyProfilePickerCols(profilePickerCols(resolvedHomeSize, null));
+  }
+
+  function revealPickerChrome() {
+    if (sizeReady) return;
+    sizeReady = true;
+    screen.classList.remove('profile-picker--awaiting-size');
+    syncHeaderSpinner();
+    if (params._retry) {
+      setStatus('Session expired. Choose your profile again.', true);
+    }
+  }
+
+  if (resolvedHomeSize != null) {
+    commitPickerSize(resolvedHomeSize);
+    revealPickerChrome();
   }
 
   function spinnerLabel() {
     if (profilesLoading) return 'Loading profiles';
     if (mode === 'pinEntry' && switching) return 'Verifying PIN';
+    if (switching) return 'Signing in';
     return 'Loading';
   }
 
   function syncHeaderSpinner() {
-    var show = profilesLoading || (mode === 'pinEntry' && switching);
+    var show = profilesLoading || switching;
     if (!profileSpinner) return;
     profileSpinner.hidden = !show;
     var ring = profileSpinner.querySelector('.xplay-spinner');
@@ -131,6 +157,7 @@ function profilePickerScreen(root, params, navigate) {
 
   function setProfileLoading(loading) {
     profilesLoading = !!loading;
+    screen.classList.toggle('profile-picker--loading', profilesLoading);
     syncHeaderSpinner();
   }
 
@@ -219,6 +246,7 @@ function profilePickerScreen(root, params, navigate) {
   }
 
   function enterPinMode(user, card) {
+    if (!sizeReady) return;
     mode = 'pinEntry';
     syncHeaderTitle();
     selectedUser = user;
@@ -253,14 +281,20 @@ function profilePickerScreen(root, params, navigate) {
     }
   }
 
+  function openHomeAfterBootstrap() {
+    switching = true;
+    syncHeaderSpinner();
+    return runAppBootstrap().then(function () {
+      switching = false;
+      syncHeaderSpinner();
+      navigate('home', {});
+    });
+  }
+
   function completeSwitch(user, pin) {
     if (switching) return;
     switching = true;
-    if (mode === 'pinEntry') {
-      syncHeaderSpinner();
-    } else {
-      setStatus('Switching profile…', false);
-    }
+    syncHeaderSpinner();
     var ownerToken = getOwnerToken();
     var switchTimeout = setTimeout(function () {
       if (!switching) return;
@@ -294,7 +328,7 @@ function profilePickerScreen(root, params, navigate) {
         authToken: token,
         ownerAuthToken: ownerToken
       });
-      navigate('bootstrap', {});
+      return openHomeAfterBootstrap();
     }).catch(function (err) {
       clearTimeout(switchTimeout);
       switching = false;
@@ -380,27 +414,39 @@ function profilePickerScreen(root, params, navigate) {
     }
   }
 
+  function bootstrapWithoutProfiles() {
+    switching = true;
+    syncHeaderSpinner();
+    openHomeAfterBootstrap().catch(function (err) {
+      switching = false;
+      syncHeaderSpinner();
+      if (params._from) {
+        showLoadError(err.message || 'Could not connect.');
+      } else {
+        setStatus(err.message || 'Could not connect.', true);
+      }
+    });
+  }
+
   function loadProfiles() {
     setProfileLoading(true);
     rowEl.innerHTML = '';
     switching = false;
+    setStatus('', false);
     var ownerToken = getOwnerToken();
     var clientId = getState().clientId;
     var loadTimeout = setTimeout(function () {
       if (profilesLoading && rowEl.innerHTML === '') {
         setProfileLoading(false);
         if (params._from) showLoadError('Loading profiles timed out. Check your connection.');
-        else navigate('bootstrap', {});
+        else bootstrapWithoutProfiles();
       }
     }, 20000);
 
     fetchHomeSize(ownerToken, clientId)
       .then(function (homeSize) {
-        if (homeSize != null) {
-          resolvedHomeSize = homeSize;
-          writeSessionHomeSize(homeSize);
-          applyProfilePickerCols(profilePickerCols(homeSize, null));
-        }
+        commitPickerSize(homeSize);
+        revealPickerChrome();
         return fetchHomeUsers(ownerToken, clientId);
       })
       .then(function (homeUsers) {
@@ -411,10 +457,9 @@ function profilePickerScreen(root, params, navigate) {
             showLoadError('No Plex Home profiles found.');
             return;
           }
-          navigate('bootstrap', {});
+          bootstrapWithoutProfiles();
           return;
         }
-        setStatus('', false);
         renderProfiles(homeUsers);
       }).catch(function (err) {
         clearTimeout(loadTimeout);
@@ -423,12 +468,8 @@ function profilePickerScreen(root, params, navigate) {
           showLoadError(err.message || 'Could not load profiles.');
           return;
         }
-        navigate('bootstrap', {});
+        bootstrapWithoutProfiles();
       });
-  }
-
-  if (params._retry) {
-    setStatus('Session expired. Choose your profile again.', true);
   }
 
   loadProfiles();

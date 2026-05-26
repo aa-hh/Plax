@@ -11,7 +11,6 @@ import { initResourceMonitor, isPerfEnabled, mark, startSampling } from '../perf
 import { initPerfHud } from '../perf/perfHud.js';
 import * as player from '../playback/playerAdapter.js';
 import { pairingScreen, generateClientId } from '../ui/screens/pairingScreen.js';
-import { bootstrapScreen } from '../ui/screens/bootstrapScreen.js';
 import { homeScreen } from '../ui/screens/homeScreen.js';
 import { libraryScreen } from '../ui/screens/libraryScreen.js';
 import { detailScreen } from '../ui/screens/detailScreen.js';
@@ -48,7 +47,6 @@ function startApp() {
 
   register('pairing', pairingScreen);
   register('profile-picker', profilePickerScreen);
-  register('bootstrap', bootstrapScreen);
   register('home', homeScreen);
   register('library', libraryScreen);
   register('detail', detailScreen);
@@ -98,6 +96,12 @@ function startApp() {
     hideSplash();
   });
 
+  if (typeof window !== 'undefined' && window.__XPLAY_BUILD__) {
+    var b = window.__XPLAY_BUILD__;
+    console.info('[XPlay Lite] build', b.builtAt, b.gitCommit || 'no-git', b.summary || '');
+  } else {
+    console.warn('[XPlay Lite] build-info missing — run npm run build (stale simulator bundle?)');
+  }
   if (typeof performance !== 'undefined') {
     console.log('[XPlay Lite] boot ms:', Math.round(performance.now()));
   }

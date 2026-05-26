@@ -13,10 +13,19 @@ import { checkBitrate } from '../src/playback/lgBitrateLimits.js';
 import { probePlayback } from '../src/playback/capabilityProbe.js';
 import {
   pickDefaultSubtitleTrack,
+  findSubtitleTrack,
   canUseClientSubtitles,
   isClientSubtitlePlaybackMode,
   shouldBurnInSubtitle,
-  buildSubtitleTranscodeParams
+  buildSubtitleTranscodeParams,
+  buildClientSubtitleUrl,
+  buildClientSubtitleUrlCandidates,
+  resolveStreamKeyPath,
+  subtitleDirectFlagsForMode,
+  resolveSessionPartPath,
+  resolveSessionMetadataPath,
+  subtitleFormatLabel,
+  subtitleMenuOptionLabel
 } from '../src/playback/tracks/subtitleTracks.js';
 import {
   snapOffsetMs,
@@ -237,4 +246,145 @@ test('buildSubtitleTranscodeParams omits burn-in when burnIn is false', function
   var burned = buildSubtitleTranscodeParams(3, 100, { burnIn: true });
   assert.equal(burned['X-Plex-Subtitle-Stream'], '3');
   assert.equal(burned.subtitleFormat, 'srt');
+});
+
+test('resolveSessionPartPath prefers version partKey over metadata key', function () {
+  var path = resolveSessionPartPath({
+    item: { key: '/library/metadata/999', ratingKey: '999' },
+    version: { partKey: '/library/parts/abc/video.mkv' }
+  });
+  assert.equal(path, '/library/parts/abc/video.mkv');
+});
+
+test('resolveSessionMetadataPath uses item key or ratingKey', function () {
+  assert.equal(
+    resolveSessionMetadataPath({ item: { key: '/library/metadata/999' } }),
+    '/library/metadata/999'
+  );
+  assert.equal(
+    resolveSessionMetadataPath({ item: { ratingKey: '42' } }),
+    '/library/metadata/42'
+  );
+});
+
+test('resolveStreamKeyPath synthesizes /library/streams/{id} when key is missing', function () {
+  assert.equal(resolveStreamKeyPath({ id: 1893985, codec: 'srt' }), '/library/streams/1893985');
+  assert.equal(resolveStreamKeyPath({ key: '/library/streams/2' }), '/library/streams/2');
+  assert.equal(resolveStreamKeyPath({}), null);
+});
+
+test('subtitleDirectFlagsForMode matches transcode vs direct play', function () {
+  assert.deepEqual(subtitleDirectFlagsForMode('transcode-hls'), {
+    directPlay: '0', directStream: '0', directStreamAudio: '1'
+  });
+  assert.deepEqual(subtitleDirectFlagsForMode('direct-stream'), {
+    directPlay: '0', directStream: '1', directStreamAudio: '1'
+  });
+  assert.deepEqual(subtitleDirectFlagsForMode('direct'), {
+    directPlay: '1', directStream: '1', directStreamAudio: '1'
+  });
+});
+
+test('buildClientSubtitleUrlCandidates prefers stream key then metadata transcode path', function () {
+  var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+  var session = {
+    item: { key: '/library/metadata/999', ratingKey: '999' },
+    version: { partKey: '/library/parts/abc/video.mkv' },
+    subtitleStreamId: 1893985,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var track = {
+    id: 1893985,
+    key: '/library/streams/1893985',
+    codec: 'srt',
+    format: 'srt',
+    graphical: false
+  };
+  var urls = buildClientSubtitleUrlCandidates(server, session, track);
+  assert.equal(urls.length, 3);
+  assert.ok(urls[0].indexOf('/library/streams/1893985') >= 0);
+  assert.ok(urls[0].indexOf('encoding=utf-8') >= 0);
+  assert.ok(urls[0].indexOf('format=srt') >= 0);
+  assert.ok(urls[1].indexOf('/video/:/transcode/universal/subtitles') >= 0);
+  assert.ok(urls[1].indexOf(encodeURIComponent('/library/metadata/999')) >= 0);
+  assert.ok(urls[1].indexOf('X-Plex-Subtitle-Stream=1893985') >= 0);
+  assert.ok(urls[1].indexOf('subtitleFormat=srt') >= 0);
+  assert.ok(urls[1].indexOf('directPlay=1') >= 0);
+  assert.ok(urls[2].indexOf(encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
+});
+
+test('buildClientSubtitleUrlCandidates uses transcode directPlay flags when transcoding', function () {
+  var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+  var session = {
+    item: { key: '/library/metadata/999' },
+    subtitleStreamId: 2,
+    sessionId: 'xplay-test',
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var track = { id: 2, codec: 'srt' };
+  var urls = buildClientSubtitleUrlCandidates(server, session, track, {
+    playbackMode: 'transcode-hls'
+  });
+  assert.equal(urls.length, 2);
+  assert.ok(urls[0].indexOf('/library/streams/2') >= 0);
+  assert.ok(urls[1].indexOf('directPlay=0') >= 0);
+  assert.ok(urls[1].indexOf('session=xplay-test') >= 0);
+});
+
+test('buildClientSubtitleUrlCandidates falls back to part path when stream key missing', function () {
+  var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+  var session = {
+    item: { key: '/library/metadata/999' },
+    version: { partKey: '/library/parts/abc/video.mkv' },
+    subtitleStreamId: 2,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var urls = buildClientSubtitleUrlCandidates(server, session, { id: 2, codec: 'srt' });
+  assert.equal(urls.length, 3);
+  assert.ok(urls[0].indexOf('/library/streams/2') >= 0);
+  assert.ok(urls[1].indexOf('/video/:/transcode/universal/subtitles') >= 0);
+  assert.ok(urls[1].indexOf(encodeURIComponent('/library/metadata/999')) >= 0);
+  assert.ok(urls[2].indexOf(encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
+});
+
+test('buildClientSubtitleUrl returns first candidate', function () {
+  var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+  var session = {
+    item: { key: '/library/metadata/999' },
+    subtitleStreamId: 2,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var track = { id: 2, key: '/library/streams/2', codec: 'srt' };
+  var url = buildClientSubtitleUrl(server, session, track);
+  assert.ok(url.indexOf('/library/streams/2') >= 0);
+});
+
+test('findSubtitleTrack matches string and numeric stream ids', function () {
+  var tracks = [{ id: 5, title: 'English' }];
+  assert.equal(findSubtitleTrack(tracks, '5').title, 'English');
+  assert.equal(findSubtitleTrack(tracks, 5).title, 'English');
+});
+
+test('subtitleFormatLabel maps Plex codec tokens to readable types', function () {
+  assert.equal(subtitleFormatLabel({ codec: 'srt' }), 'SRT');
+  assert.equal(subtitleFormatLabel({ codec: 'subrip' }), 'SRT');
+  assert.equal(subtitleFormatLabel({ codec: 'ass' }), 'ASS');
+  assert.equal(subtitleFormatLabel({ codec: 'hdmv_pgs_subtitle' }), 'PGS');
+  assert.equal(subtitleFormatLabel({ codec: 'dvd_subtitle' }), 'VOBSUB');
+  assert.equal(subtitleFormatLabel({ codec: 'webvtt' }), 'VTT');
+});
+
+test('subtitleMenuOptionLabel shows type beside language title', function () {
+  assert.equal(
+    subtitleMenuOptionLabel({ title: 'English', codec: 'srt', forced: false, hearingImpaired: false }),
+    'English · SRT'
+  );
+  assert.equal(
+    subtitleMenuOptionLabel({ title: 'English', codec: 'hdmv_pgs_subtitle', forced: true }),
+    'English (Forced) · PGS'
+  );
 });

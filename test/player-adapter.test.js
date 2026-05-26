@@ -250,6 +250,35 @@ test('getCurrentTimeMs retains position after stop teardown', function () {
   assert.equal(playerModule.getCurrentTimeMs(), 42500);
 });
 
+test('getCurrentTimeMs adds stream base offset for transcode URL offset', function () {
+  var url = 'http://127.0.0.1/video.m3u8?offset=60000';
+  playerModule.play(url, session, { offset: 60000, mode: 'transcode-hls' });
+  var video = playerModule.getVideoElement();
+  assert.equal(playerModule.getCurrentTimeMs(), 60000);
+  video.currentTime = 5;
+  assert.equal(playerModule.getCurrentTimeMs(), 65000);
+});
+
+test('getCurrentTimeMs keeps last position when element currentTime resets on resume', function () {
+  var url = 'http://127.0.0.1/video.m3u8?offset=60000';
+  playerModule.play(url, session, { offset: 60000, mode: 'transcode-hls' });
+  var video = playerModule.getVideoElement();
+  video.currentTime = 12;
+  assert.equal(playerModule.getCurrentTimeMs(), 72000);
+  video.currentTime = 0;
+  assert.equal(playerModule.getCurrentTimeMs(), 72000);
+});
+
+test('seekMs maps absolute media position to relative element time for transcode offset', function () {
+  var url = 'http://127.0.0.1/video.m3u8?offset=60000';
+  var video = playerModule.getVideoElement();
+  video.duration = 3600;
+  video.readyState = 1;
+  playerModule.play(url, session, { offset: 60000, mode: 'transcode-hls' });
+  playerModule.seekMs(90000);
+  assert.equal(Math.floor(video.currentTime), 30);
+});
+
 test('scrobble resets after seek back below threshold', async function () {
   var markCount = 0;
   playerModule.setProgressApiForTest({

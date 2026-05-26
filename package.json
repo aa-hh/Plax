@@ -12,7 +12,7 @@
     "validate": "node scripts/validate-compat.cjs && node scripts/validate-intro-markers.mjs && node scripts/validate-library-access.mjs",
     "icons": "node scripts/generate-icons.cjs",
     "prebuild": "node scripts/generate-icons.cjs",
-    "postbuild": "node scripts/write-build-stamp.cjs",
+    "postbuild": "node scripts/write-build-stamp.cjs --quiet",
     "sim": "npm run build && node scripts/sim-launch.cjs",
     "sim:5": "npm run build && node scripts/sim-launch.cjs --version 5",
     "sim:6": "npm run build && node scripts/sim-launch.cjs --version 6",

@@ -116,14 +116,34 @@ test('profile picker: PIN mode header title and header spinner during switch', f
   assert.match(screenSrc, /Enter PIN/);
   assert.match(screenSrc, /syncHeaderTitle/);
   assert.match(screenSrc, /syncHeaderSpinner/);
+  assert.match(screenSrc, /profilesLoading \|\| switching/);
   assert.match(screenSrc, /mode === 'pinEntry' && switching/);
   assert.match(screenSrc, /Verifying PIN/);
-  var completeSwitchStart = screenSrc.indexOf('function completeSwitch(');
-  var completeSwitchBlock = screenSrc.slice(completeSwitchStart, completeSwitchStart + 1200);
-  assert.match(
-    completeSwitchBlock,
-    /if \(mode === 'pinEntry'\) \{\s*syncHeaderSpinner\(\);\s*\} else \{\s*setStatus\('Switching profile/
-  );
+  assert.match(screenSrc, /runAppBootstrap/);
+  assert.doesNotMatch(screenSrc, /navigate\(['"]bootstrap/);
+  assert.doesNotMatch(screenSrc, /Switching profile/);
+  assert.doesNotMatch(screenSrc, /loading user/i);
+  assert.match(screenSrc, /function openHomeAfterBootstrap/);
+  assert.match(screenSrc, /return openHomeAfterBootstrap\(\)/);
+});
+
+test('profile picker: starts loading with empty grid hidden until users arrive', function () {
+  assert.match(screenSrc, /var profilesLoading = true/);
+  assert.match(screenSrc, /profile-picker--loading/);
+  assert.match(cssSrc, /\.profile-picker--loading \.profile-picker-row/);
+});
+
+test('profile picker: hides chrome until column width is known', function () {
+  assert.match(screenSrc, /profile-picker--awaiting-size/);
+  assert.match(screenSrc, /function revealPickerChrome/);
+  assert.match(screenSrc, /function commitPickerSize/);
+  assert.match(screenSrc, /if \(resolvedHomeSize != null\)[\s\S]*commitPickerSize[\s\S]*revealPickerChrome/);
+  var loadProfilesStart = screenSrc.indexOf('function loadProfiles()');
+  var loadProfilesBlock = screenSrc.slice(loadProfilesStart, loadProfilesStart + 1200);
+  assert.match(loadProfilesBlock, /commitPickerSize\(homeSize\)[\s\S]*revealPickerChrome\(\)[\s\S]*fetchHomeUsers/);
+  assert.doesNotMatch(screenSrc, /syncHeaderSpinner\(\);\s*\n\s*var pinEntry/);
+  assert.match(cssSrc, /\.profile-picker--awaiting-size \.profile-picker-main/);
+  assert.match(screenSrc, /if \(!sizeReady\) return/);
 });
 
 test('profile picker: CSS grid uses dynamic column count for max-width', function () {
@@ -151,13 +171,15 @@ test('profilePickerCols: homeSize 2 vs 5 width behavior', function () {
 
   assert.equal(profilePickerCols(5, 3), 4);
   assert.equal(profilePickerCols(2, 3), 3);
+  assert.equal(profilePickerCols(2, 2), 2);
+  assert.equal(profilePickerCols(4, 2), 4);
   assert.equal(profilePickerCols(null, 2), 2);
   assert.equal(clampProfilePickerCols(9), 4);
 });
 
 test('profile picker screen: sequential homeSize then users load', function () {
-  assert.match(screenSrc, /applyProfilePickerCols\(profilePickerCols\(resolvedHomeSize, null\)\)/);
-  assert.match(screenSrc, /applyProfilePickerCols\(profilePickerCols\(homeSize, null\)\)/);
+  assert.match(screenSrc, /commitPickerSize\(resolvedHomeSize\)/);
+  assert.match(screenSrc, /commitPickerSize\(homeSize\)/);
   assert.doesNotMatch(screenSrc, /Promise\.all\(\[\s*homeSizePromise,\s*fetchHomeUsers/);
   assert.doesNotMatch(screenSrc, /Promise\.all\(\[\s*[\s\S]*fetchHomeSize[\s\S]*fetchHomeUsers/);
   var homeSizeIdx = screenSrc.indexOf('fetchHomeSize(ownerToken, clientId)');
@@ -165,7 +187,10 @@ test('profile picker screen: sequential homeSize then users load', function () {
   assert.ok(homeSizeIdx >= 0 && usersIdx > homeSizeIdx, 'fetchHomeUsers runs after fetchHomeSize');
   var loadProfilesStart = screenSrc.indexOf('function loadProfiles()');
   var loadProfilesBlock = screenSrc.slice(loadProfilesStart, loadProfilesStart + 2500);
-  assert.match(loadProfilesBlock, /fetchHomeSize\(ownerToken, clientId\)[\s\S]*\.then\([\s\S]*fetchHomeUsers\(ownerToken, clientId\)/);
+  assert.match(
+    loadProfilesBlock,
+    /fetchHomeSize\(ownerToken, clientId\)[\s\S]*commitPickerSize\(homeSize\)[\s\S]*revealPickerChrome\(\)[\s\S]*fetchHomeUsers\(ownerToken, clientId\)/
+  );
 });
 
 test('profile picker screen: profile row and PIN pad use grid focus attrs', function () {
