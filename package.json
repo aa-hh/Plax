@@ -1,0 +1,36 @@
+{
+  "name": "xplay-lite",
+  "version": "0.1.0",
+  "description": "Lightweight Plex client for LG webOS TV 5.0+",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c build/rollup.config.js",
+    "watch": "rollup -c build/rollup.config.js -w",
+    "package": "npm run build && node scripts/package-ipk.cjs",
+    "validate": "node scripts/validate-compat.cjs && node scripts/validate-intro-markers.mjs",
+    "icons": "node scripts/generate-icons.cjs",
+    "prebuild": "node scripts/generate-icons.cjs",
+    "sim": "npm run build && node scripts/sim-launch.cjs",
+    "sim:5": "npm run build && node scripts/sim-launch.cjs --version 5",
+    "sim:6": "npm run build && node scripts/sim-launch.cjs --version 6",
+    "sim:22": "npm run build && node scripts/sim-launch.cjs --version 22",
+    "sim:23": "npm run build && node scripts/sim-launch.cjs --version 23",
+    "sim:24": "npm run build && node scripts/sim-launch.cjs --version 24",
+    "sim:26": "npm run build && node scripts/sim-launch.cjs --version 26",
+    "sim:launch": "node scripts/sim-launch.cjs",
+    "sim:watch": "npm run watch",
+    "install:cli": "npm install -g @webos-tools/cli"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-env": "^7.24.0",
+    "@rollup/plugin-babel": "^6.0.4",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^1.0.0",
+    "rollup": "^4.12.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "rollup-plugin-postcss": "^4.0.2"
+  }
+}

@@ -1,0 +1,65 @@
+import { createLoadingIndicator, setLoadingLabel } from './components/loadingIndicator.js';
+
+var overlayEl = null;
+var loaderWrap = null;
+var bufferDepth = 0;
+
+function ensureOverlay() {
+  if (overlayEl) return overlayEl;
+  overlayEl = document.getElementById('loading-overlay');
+  if (!overlayEl) {
+    overlayEl = document.createElement('div');
+    overlayEl.id = 'loading-overlay';
+    overlayEl.className = 'loading-overlay hidden';
+    var inner = document.createElement('div');
+    inner.className = 'loading-overlay-inner';
+    overlayEl.appendChild(inner);
+    document.body.appendChild(overlayEl);
+  }
+  var inner = overlayEl.querySelector('.loading-overlay-inner');
+  if (inner && !loaderWrap) {
+    loaderWrap = createLoadingIndicator({ size: 'large', label: 'Buffering…' });
+    inner.appendChild(loaderWrap);
+  }
+  return overlayEl;
+}
+
+function showLoadingOverlay(message, mode) {
+  var el = ensureOverlay();
+  mode = mode || 'loading';
+  el.setAttribute('data-mode', mode);
+  if (loaderWrap) setLoadingLabel(loaderWrap, message || 'Loading…');
+  el.classList.remove('hidden');
+}
+
+function hideLoadingOverlay() {
+  if (!overlayEl) return;
+  overlayEl.classList.add('hidden');
+  bufferDepth = 0;
+}
+
+/** Player teardown: hide overlay and drop any buffering refcount. */
+function resetBufferingOverlay() {
+  bufferDepth = 0;
+  hideLoadingOverlay();
+}
+
+function showBuffering(message) {
+  bufferDepth += 1;
+  showLoadingOverlay(message || 'Buffering…', 'buffering');
+}
+
+function hideBuffering() {
+  bufferDepth = Math.max(0, bufferDepth - 1);
+  if (bufferDepth === 0 && overlayEl) {
+    overlayEl.classList.add('hidden');
+  }
+}
+
+export {
+  showLoadingOverlay,
+  hideLoadingOverlay,
+  showBuffering,
+  hideBuffering,
+  resetBufferingOverlay
+};

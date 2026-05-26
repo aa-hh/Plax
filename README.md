@@ -12,7 +12,10 @@ Ultra-lightweight Plex client for **LG webOS TV 5.0+** Smart TVs. Playback-first
 
 - Plex account sign-in via QR / PIN (`plex.tv/link`)
 - Movies and TV show libraries with side navigation
-- Direct Play and Direct Stream with HLS transcode fallback (per LG streaming spec)
+- **Direct play** (original Plex file, progressive URL, zero server transcode) when the TV supports container/codecs/bitrate
+- **Auto** quality: direct play → HLS direct stream (remux) → transcode fallbacks (per LG streaming spec)
+- **Direct play only** / **Original** quality: never auto-fallback to remux or transcode
+- Transcode presets (4K / 1080p / 720p / 480p) for capped server transcode
 - Custom quality profiles and version selection
 - Audio / SRT subtitle track selection with subtitle timing offset
 - Plex Home user switching (Plex Pass)
@@ -22,7 +25,7 @@ Ultra-lightweight Plex client for **LG webOS TV 5.0+** Smart TVs. Playback-first
 - Search: multi-type Plex search via `/hubs/search` (Movies, Shows, Episodes) with a section-scoped fallback when a library is active; opens from the top nav or the Magic Remote Search key (84); debounced input (~350 ms) with brief in-memory result cache
 - Watch status: timeline sync during playback, scrobble near completion, mark watched / unwatched on detail; badges and progress on cards
 - Library refresh: **Scan for new media** in the library sidebar triggers a server-side section scan (`GET /library/sections/{id}/refresh`); detail-screen **Refresh metadata** triggers `PUT /library/metadata/{ratingKey}/refresh` and re-fetches metadata after a short delay. Permission errors (e.g. restricted Plex Home users) are surfaced inline.
-- Skip intro: uses Plex-detected `Marker` tags (`type=intro`, `startTimeOffset`/`endTimeOffset` ms) from `GET /library/metadata/{id}`; on-screen button, Channel Up / Yellow remote keys, optional auto-skip after 2.5s in intro (no client PUT to PMS)
+- Skip intro / skip credits: Plex-detected `Marker` tags (`type=intro` or `type=credit`, `startTimeOffset`/`endTimeOffset` ms) from `GET /library/metadata/{id}`; standalone on-screen prompt during each segment (OK to confirm, Channel Up / Yellow); per-marker skip state; no client PUT to PMS
 - All artwork and metadata from Plex Media Server (no external TMDB lookups)
 - Native HTML5 video (LG media engine) — single video element per platform rules
 - [webOSTV.js](https://webostv.developer.lge.com/develop/references/webostvjs-introduction) integration (back key, deviceInfo, Luna services)
@@ -63,32 +66,53 @@ npm run build && npm run validate
 
 ## Simulator testing (webOS TV)
 
-Based on LG's [Simulator Developer Guide](https://webostv.developer.lge.com/develop/tools/simulator-dev-guide), launch from the app root that contains `appinfo.json` (`dist/` in this project):
+Based on LG's [Simulator Developer Guide](https://webostv.developer.lge.com/develop/tools/simulator-dev-guide).
+
+### One-time setup
+
+Download a webOS TV Simulator (one `.dmg`/`.exe` per webOS version) from:
+[Simulator installation](https://webostv.developer.lge.com/develop/tools/simulator-installation)
+
+On macOS, just drop the `webOS_TV_<VER>_Simulator_<X.Y.Z>.app` into `/Applications` — `npm run sim` will auto-detect it.
+
+(Optional — only needed to install on a real TV, not for simulator testing: install LG's actively maintained CLI [`@webos-tools/cli`](https://github.com/webos-tools/cli):
+```bash
+# If you previously installed the deprecated package, remove it first:
+npm uninstall -g @webosose/ares-cli
+npm install -g @webos-tools/cli
+```
+)
+
+### Launching
 
 ```bash
-cd "XPlay 2"
-npm run sim:23     # default simulator target
+npm run sim        # build + auto-detect newest installed simulator
 ```
 
-Other versions:
+Pin to a specific webOS version (must be installed):
 
 ```bash
 npm run sim:5
 npm run sim:6
 npm run sim:22
+npm run sim:23
 npm run sim:24
+npm run sim:26
 ```
 
-Manual launch command:
+Or point at a specific simulator binary:
 
 ```bash
-ares-launch -s 23 ./dist
+WEBOS_SIM_PATH="/Applications/webOS_TV_6.0_Simulator_1.4.1.app" npm run sim
+# or
+npm run sim -- --simulator-path "/Applications/webOS_TV_6.0_Simulator_1.4.1.app"
 ```
 
+You can also just open the Simulator app yourself and use **File → Open** on `dist/appinfo.json` after running `npm run build`.
+
 Tips:
-- Keep one simulator run open and use `npm run sim:watch` in another terminal to rebuild quickly.
-- The simulator can auto-reload app file changes; if not, relaunch with `npm run sim:launch`.
-- If `ares-launch` is missing: `npm run install:cli`.
+- Keep one simulator window open and use `npm run sim:watch` in another terminal to rebuild quickly.
+- `npm run sim:launch` skips the rebuild step.
 
 ## Install on TV
 
@@ -103,6 +127,8 @@ For browser dev, serve `dist/` over HTTP (version gate skipped outside TV runtim
 
 - [webOS TV spec compliance](docs/webos-tv-spec-compliance.md) — mapping to LG specification pages
 - [Compatibility matrix](docs/compatibility-matrix.md)
+- [TV design system](docs/design-system.md) — core principles, component specs, and real UX examples for consistent screens
+- [Screen review playbook](docs/screen-review-playbook.md) — route-by-route simulator checklist to visually QA every screen
 - [Performance budgets](docs/perf-budgets.md)
 - [Caching and buffering rules](docs/caching-and-buffering.md) — namespace TTLs and re-buffer fallback policy
 - [Resource monitor playbook](docs/resource-monitor-playbook.md) — repeatable CPU/memory profiling workflow for simulator/device

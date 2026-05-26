@@ -1,0 +1,17 @@
+{
+  "id": "com.xplay.lite",
+  "version": "0.1.0",
+  "vendor": "XPlayLite",
+  "type": "web",
+  "main": "index.html",
+  "title": "XPlay Lite",
+  "icon": "assets/icon.png",
+  "largeIcon": "assets/icon-large.png",
+  "resolution": "1920x1080",
+  "bgColor": "#0a0a0f",
+  "iconColor": "#e50914",
+  "splashBackground": "#0a0a0f",
+  "disableBackHistoryAPI": true,
+  "supportQuickStart": true,
+  "handlesRelaunch": true
+}

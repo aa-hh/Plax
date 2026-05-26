@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>XPlay Lite</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div id="compat-marker" data-webos-version="" data-min-webos="5" hidden></div>
+
+  <div id="splash-screen" class="splash-screen" aria-live="polite">
+    <div class="splash-brand">
+      <h1 class="splash-title">X<span class="brand-accent">Play</span> Lite</h1>
+      <p class="splash-tagline">Plex for LG webOS TV</p>
+    </div>
+    <div class="splash-loader-slot"></div>
+    <p id="splash-status" class="splash-status">Loading…</p>
+  </div>
+
+  <div id="app-root"></div>
+  <div id="loading-overlay" class="loading-overlay hidden" aria-live="polite">
+    <div class="loading-overlay-inner"></div>
+  </div>
+  <video id="native-player" class="native-player hidden" playsinline webkit-playsinline preload="metadata"></video>
+  <script src="webOSTV.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
