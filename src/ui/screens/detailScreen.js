@@ -22,7 +22,12 @@ import {
   subtitleDisplayTitle
 } from '../../playback/tracks/subtitleTracks.js';
 import { probePlayback } from '../../playback/capabilityProbe.js';
-import { isDirectPlayOnlyQuality } from '../../playback/qualityProfiles.js';
+import {
+  listProfiles,
+  getProfile,
+  isDirectPlayOnlyQuality
+} from '../../playback/qualityProfiles.js';
+import { setPlaybackPrefs } from '../../settings/playbackSettings.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
 import { formatDuration } from '../format.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
@@ -65,6 +70,7 @@ function detailScreen(root, params, navigate) {
   var selectedVersion = null;
   var selectedAudio = null;
   var selectedSubtitle = null;
+  var selectedQuality = null;
   var metadata = null;
   var deviceInfo = { uhd: false };
   var currentProbe = null;
@@ -256,6 +262,10 @@ function detailScreen(root, params, navigate) {
     '<button type="button" class="detail-file-row" id="detail-file-subtitles" tabindex="0">' +
     '<span class="detail-file-label">Subtitles</span>' +
     '<span class="detail-file-value" id="detail-file-subtitles-value"></span>' +
+    '</button>' +
+    '<button type="button" class="detail-file-row" id="detail-file-quality" tabindex="0">' +
+    '<span class="detail-file-label">Quality</span>' +
+    '<span class="detail-file-value" id="detail-file-quality-value"></span>' +
     '</button></section>';
 
   function buildPlaybackColumnsHtml() {
@@ -296,7 +306,57 @@ function detailScreen(root, params, navigate) {
       escapeHtml(seriesBreadcrumbLabel(item)) + '</button></nav>';
   }
 
+  function syncSelectedQualityFromPrefs() {
+    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
+    selectedQuality = quality === 'directOnly' ? 'original' : quality;
+  }
+
+  function getDetailQuality() {
+    return selectedQuality || 'auto';
+  }
+
+  function getDetailPlaybackPrefs() {
+    return Object.assign({}, getState().playbackPrefs, { quality: getDetailQuality() });
+  }
+
+  function qualityProfileLabel(key) {
+    return getProfile(key).label;
+  }
+
+  function updateQualityRowLabel() {
+    var valueEl = screen.querySelector('#detail-file-quality-value');
+    if (valueEl) valueEl.textContent = qualityProfileLabel(getDetailQuality());
+    var currentEl = screen.querySelector('#detail-quality-current');
+    if (currentEl) {
+      currentEl.textContent = 'Playback quality: ' + qualityProfileLabel(getDetailQuality());
+    }
+  }
+
+  function wireQualityRow() {
+    var btn = screen.querySelector('#detail-file-quality');
+    if (!btn || btn._xplayQualityWired) return;
+    btn._xplayQualityWired = true;
+    btn.addEventListener('click', function () {
+      openDetailModal('quality', 'Quality', listProfiles().map(function (p) {
+        return { id: p.id, label: p.label };
+      }), getDetailQuality(), function (id) {
+        selectedQuality = id;
+        setPlaybackPrefs({ quality: id });
+        updateQualityRowLabel();
+        updateDirectPlayNotice();
+        updateNetworkQualityUI();
+        if (metadata) {
+          currentProbe = probePlayback(metadata, selectedVersion, null, deviceInfo);
+        }
+        prefetchItemNetworkProbe();
+      });
+    });
+    updateQualityRowLabel();
+  }
+
   function wirePlaybackDetailCommon(item) {
+    syncSelectedQualityFromPrefs();
+    wireQualityRow();
     wireNetworkQualitySection();
     attachNetworkQualityObserver();
     prefetchItemNetworkProbe();
@@ -340,6 +400,7 @@ function detailScreen(root, params, navigate) {
   var NETWORK_QUALITY_SECTION_HTML =
     '<section class="detail-network-section" id="detail-network-section" aria-labelledby="detail-network-heading">' +
     '<h2 class="detail-file-heading" id="detail-network-heading">Connection</h2>' +
+    '<p class="detail-quality-current" id="detail-quality-current"></p>' +
     '<p class="detail-network-status" id="detail-network-status">Checking connection…</p>' +
     '<div class="detail-network-recommend-row" id="detail-network-recommend-row" hidden>' +
     '<p class="detail-network-recommend" id="detail-network-recommend"></p>' +
@@ -446,10 +507,14 @@ function detailScreen(root, params, navigate) {
       statusEl.classList.toggle('detail-network-status--testing', testing);
     }
 
-    var showRec = cache && cache.status === 'done' && cache.recommendedLabel;
+    updateQualityRowLabel();
+
+    var showRec = cache && cache.status === 'done' && cache.recommendedLabel &&
+      getDetailQuality() === 'auto';
     if (recRow) recRow.hidden = !showRec;
     if (recEl && showRec) {
-      recEl.innerHTML = '<strong>Recommended quality:</strong> ' + escapeHtml(cache.recommendedLabel);
+      recEl.innerHTML = '<strong>Suggested for this connection:</strong> ' +
+        escapeHtml(cache.recommendedLabel);
     }
     if (infoBtn) infoBtn.disabled = !showRec;
 
@@ -496,8 +561,7 @@ function detailScreen(root, params, navigate) {
   }
 
   function prefetchItemNetworkProbe() {
-    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
-    if (quality !== 'auto' || !server || !metadata || !selectedVersion) return;
+    if (getDetailQuality() !== 'auto' || !server || !metadata || !selectedVersion) return;
     if (getCachedProbeResult(server, metadata.ratingKey, selectedVersion.id)) return;
     startNetworkProbeIfNeeded(server, {
       item: metadata,
@@ -507,15 +571,14 @@ function detailScreen(root, params, navigate) {
   }
 
   function buildAutoQualityHintHtml() {
-    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
-    if (quality !== 'auto') return '';
+    if (getDetailQuality() !== 'auto') return '';
     return '<p class="direct-play-auto-hint">Auto tries progressive direct play first, then HLS remux ' +
       '(stream copy, not full transcode), then server transcode if needed.</p>';
   }
 
   function buildNoticeHtml(probe) {
     if (!probe || !probe.warnings.length) return '';
-    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
+    var quality = getDetailQuality();
     var strictDirect = isDirectPlayOnlyQuality(quality);
     var blocked = !probe.canDirectPlay;
     var cls = 'direct-play-notice' + (blocked ? ' direct-play-blocked' : '');
@@ -655,7 +718,7 @@ function detailScreen(root, params, navigate) {
     runProbe();
     return buildPlayerParamsFromMetadata(metadata, {
       deviceInfo: deviceInfo,
-      playbackPrefs: getState().playbackPrefs,
+      playbackPrefs: getDetailPlaybackPrefs(),
       offset: offset,
       version: selectedVersion,
       audioStreamId: selectedAudio,
@@ -915,6 +978,7 @@ function detailScreen(root, params, navigate) {
       });
     }
     updateEpisodeFileRowLabels();
+    updateQualityRowLabel();
     updateNetworkQualityUI();
   }
 

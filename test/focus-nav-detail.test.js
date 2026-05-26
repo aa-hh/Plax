@@ -77,6 +77,7 @@ function buildDetailFixture(opts) {
   file.appendChild(btn('detail-file-video', 'detail-file-row'));
   file.appendChild(btn('detail-file-audio', 'detail-file-row'));
   file.appendChild(btn('detail-file-subtitles', 'detail-file-row'));
+  file.appendChild(btn('detail-file-quality', 'detail-file-row'));
   var network = createElement('section');
   network.className = 'detail-network-section';
   if (opts.withNetworkInfo !== false) {
@@ -166,7 +167,7 @@ test('Right from last file row focuses first network control', function () {
   var screen = buildDetailFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#detail-file-subtitles').focus();
+  screen.querySelector('#detail-file-quality').focus();
   handleKeyNav(screen, keyEvent(ARROW_RIGHT));
   assert.equal(document.activeElement.id, 'btn-network-info');
 });
@@ -178,7 +179,7 @@ test('Left from first network control returns to last file row', function () {
 
   screen.querySelector('#btn-network-info').focus();
   handleKeyNav(screen, keyEvent(ARROW_LEFT));
-  assert.equal(document.activeElement.id, 'detail-file-subtitles');
+  assert.equal(document.activeElement.id, 'detail-file-quality');
 });
 
 test('Down from action row reaches playback columns', function () {
@@ -326,7 +327,7 @@ test('Down from last file row reaches first related rail card', function () {
   var screen = buildFilmDetailFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#detail-file-subtitles').focus();
+  screen.querySelector('#detail-file-quality').focus();
   handleKeyNav(screen, keyEvent(ARROW_DOWN));
   assert.equal(document.activeElement.id, 'related-card-1');
 });
@@ -348,5 +349,5 @@ test('Up from first network control focuses last file row', function () {
 
   screen.querySelector('#btn-network-info').focus();
   handleKeyNav(screen, keyEvent(ARROW_UP));
-  assert.equal(document.activeElement.id, 'detail-file-subtitles');
+  assert.equal(document.activeElement.id, 'detail-file-quality');
 });

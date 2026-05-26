@@ -1222,6 +1222,11 @@ html { min-width: 1280px; min-height: 720px; }
   margin-bottom: var(--space-3);
 }
 
+.detail-playback-columns .detail-quality-current {
+  font-size: 20px;
+  line-height: 1.4;
+}
+
 .detail-playback-columns .detail-network-status {
   font-size: 20px;
   line-height: 1.4;
@@ -1589,6 +1594,14 @@ html { min-width: 1280px; min-height: 720px; }
   padding-top: var(--space-4);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   max-width: 880px;
+}
+
+.detail-quality-current {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-meta);
+  line-height: 1.45;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .detail-network-status {
