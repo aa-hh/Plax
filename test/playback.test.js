@@ -486,13 +486,15 @@ test('buildSubtitleFetchPlan uses server-relative path even on remote direct-pla
       attempt.url.indexOf(encodeURIComponent('http://185.203.56.20:17054/library')) < 0,
       'path must not include the public server URL (PMS rejects with HTTP 400): ' + attempt.url
     );
+    assert.ok(attempt.url.indexOf('location=wan') >= 0);
   });
-  assert.ok(attempts[0].url.indexOf('path=' + encodeURIComponent('/library/metadata/33612')) >= 0);
-  var partAttempt = attempts.filter(function (a) { return a.label === 'universal-part-sidecar'; })[0];
-  assert.ok(partAttempt);
-  assert.ok(partAttempt.url.indexOf(
+  assert.equal(attempts[0].label, 'universal-part-embedded');
+  assert.ok(attempts[0].url.indexOf(
     'path=' + encodeURIComponent('/library/parts/231199/1779144329/file.mkv')
   ) >= 0);
+  var autoAttempt = attempts.filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
+  assert.ok(autoAttempt);
+  assert.ok(autoAttempt.url.indexOf('path=' + encodeURIComponent('/library/metadata/33612')) >= 0);
 });
 
 test('buildClientSubtitleUrl returns first fetch plan candidate', function () {
