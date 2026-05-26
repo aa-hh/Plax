@@ -12,6 +12,7 @@ import {
 var ARROW_DOWN = 40;
 var ARROW_RIGHT = 39;
 var ARROW_LEFT = 37;
+var ARROW_UP = 38;
 
 function keyEvent(code) {
   return { keyCode: code, preventDefault: function () {} };
@@ -71,6 +72,9 @@ function buildDetailFixture(opts) {
   file.appendChild(btn('detail-file-subtitles', 'detail-file-row'));
   var network = createElement('section');
   network.className = 'detail-network-section';
+  if (opts.withNetworkInfo !== false) {
+    network.appendChild(btn('btn-network-info', 'btn detail-network-info-btn'));
+  }
   network.appendChild(btn('btn-test-connection', 'btn detail-network-retest'));
   playback.appendChild(file);
   playback.appendChild(network);
@@ -78,6 +82,21 @@ function buildDetailFixture(opts) {
 
   layout.appendChild(main);
   screen.appendChild(layout);
+  return screen;
+}
+
+function buildFilmDetailFixture(opts) {
+  var screen = buildDetailFixture(opts);
+  var main = screen.querySelector('.detail-home-main');
+
+  var rails = zone('detail-rails', 'detail-rails detail-rails--movie');
+  rails.id = 'detail-rails';
+  var row = createElement('div');
+  row.className = 'row-scroll';
+  row.appendChild(btn('related-card-1', 'card row-item'));
+  rails.appendChild(row);
+  main.appendChild(rails);
+
   return screen;
 }
 
@@ -135,22 +154,22 @@ test('Episode action row cycles left and right', function () {
   assert.equal(document.activeElement.id, 'detail-watchlist-btn');
 });
 
-test('Right from last file row focuses network column', function () {
+test('Right from last file row focuses first network control', function () {
   installMinimalDom();
   var screen = buildDetailFixture();
   document.registerTree(screen);
 
   screen.querySelector('#detail-file-subtitles').focus();
   handleKeyNav(screen, keyEvent(ARROW_RIGHT));
-  assert.equal(document.activeElement.id, 'btn-test-connection');
+  assert.equal(document.activeElement.id, 'btn-network-info');
 });
 
-test('Left from network column returns to last file row', function () {
+test('Left from first network control returns to last file row', function () {
   installMinimalDom();
   var screen = buildDetailFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#btn-test-connection').focus();
+  screen.querySelector('#btn-network-info').focus();
   handleKeyNav(screen, keyEvent(ARROW_LEFT));
   assert.equal(document.activeElement.id, 'detail-file-subtitles');
 });
@@ -187,4 +206,106 @@ test('without hub Down from breadcrumb reaches actions not sidebar', function ()
   screen.querySelector('#detail-breadcrumb').focus();
   handleKeyNav(screen, keyEvent(ARROW_DOWN));
   assert.equal(document.activeElement.id, 'btn-start');
+});
+
+test('Down from middle file row focuses next file row', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#detail-file-audio').focus();
+  handleKeyNav(screen, keyEvent(ARROW_DOWN));
+  assert.equal(document.activeElement.id, 'detail-file-subtitles');
+});
+
+test('Up from middle file row focuses previous file row', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#detail-file-audio').focus();
+  handleKeyNav(screen, keyEvent(ARROW_UP));
+  assert.equal(document.activeElement.id, 'detail-file-video');
+});
+
+test('Down from middle file row does not focus network', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#detail-file-audio').focus();
+  handleKeyNav(screen, keyEvent(ARROW_DOWN));
+  assert.notEqual(document.activeElement.id, 'btn-network-info');
+  assert.notEqual(document.activeElement.id, 'btn-test-connection');
+});
+
+test('Up from middle file row does not focus sidebar', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#detail-file-audio').focus();
+  handleKeyNav(screen, keyEvent(ARROW_UP));
+  assert.ok(document.activeElement.className.indexOf('browsing-hub-item') < 0);
+});
+
+test('Right between network controls focuses next network control', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#btn-network-info').focus();
+  handleKeyNav(screen, keyEvent(ARROW_RIGHT));
+  assert.equal(document.activeElement.id, 'btn-test-connection');
+});
+
+test('Left between network controls focuses previous network control', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#btn-test-connection').focus();
+  handleKeyNav(screen, keyEvent(ARROW_LEFT));
+  assert.equal(document.activeElement.id, 'btn-network-info');
+});
+
+test('getZones orders playback columns before detail rails', function () {
+  installMinimalDom();
+  var screen = buildFilmDetailFixture();
+  document.registerTree(screen);
+
+  var zones = getZones(screen);
+  var playZone = screen.querySelector('[data-focus-zone="detail-playback-columns"]');
+  var railsZone = screen.querySelector('[data-focus-zone="detail-rails"]');
+  assert.ok(zones.indexOf(playZone) < zones.indexOf(railsZone));
+});
+
+test('Down from last file row reaches first related rail card', function () {
+  installMinimalDom();
+  var screen = buildFilmDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#detail-file-subtitles').focus();
+  handleKeyNav(screen, keyEvent(ARROW_DOWN));
+  assert.equal(document.activeElement.id, 'related-card-1');
+});
+
+test('Down from last network control reaches first related rail card', function () {
+  installMinimalDom();
+  var screen = buildFilmDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#btn-test-connection').focus();
+  handleKeyNav(screen, keyEvent(ARROW_DOWN));
+  assert.equal(document.activeElement.id, 'related-card-1');
+});
+
+test('Up from first network control focuses last file row', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#btn-network-info').focus();
+  handleKeyNav(screen, keyEvent(ARROW_UP));
+  assert.equal(document.activeElement.id, 'detail-file-subtitles');
 });

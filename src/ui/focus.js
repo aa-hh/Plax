@@ -170,6 +170,25 @@ function handlePlaybackColumnsNav(container, zone, active, key) {
   var column = getPlaybackColumn(active);
   if (!column) return false;
 
+  if (key === ARROW_UP || key === ARROW_DOWN) {
+    var vDelta = key === ARROW_DOWN ? 1 : -1;
+    var columnList = column === 'file' ? fileList : netList;
+    var columnIdx = columnList.indexOf(active);
+    if (columnIdx < 0) return false;
+    var columnNext = columnIdx + vDelta;
+    if (columnNext >= 0 && columnNext < columnList.length) {
+      columnList[columnNext].focus();
+      scrollFocusedIntoView(columnList[columnNext]);
+      return true;
+    }
+    if (key === ARROW_UP && column === 'network' && columnIdx === 0) {
+      fileList[fileList.length - 1].focus();
+      scrollFocusedIntoView(fileList[fileList.length - 1]);
+      return true;
+    }
+    return false;
+  }
+
   if (key === ARROW_RIGHT && column === 'file') {
     var fileIdx = fileList.indexOf(active);
     if (fileIdx === fileList.length - 1) {
@@ -224,7 +243,8 @@ function handleKeyNav(container, e) {
     return false;
   }
 
-  if ((key === ARROW_LEFT || key === ARROW_RIGHT) && isPlaybackColumnsZone(zone)) {
+  if ((key === ARROW_LEFT || key === ARROW_RIGHT || key === ARROW_UP || key === ARROW_DOWN) &&
+      isPlaybackColumnsZone(zone)) {
     if (handlePlaybackColumnsNav(container, zone, active, key)) {
       e.preventDefault();
       return true;
