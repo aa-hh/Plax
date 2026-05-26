@@ -7,7 +7,9 @@ import {
 import { buildAudioTranscodeParam } from './tracks/audioTracks.js';
 import {
   buildSubtitleTranscodeParams,
-  resolveSessionPartPath
+  resolveSessionPartPath,
+  offsetSecondsForPlex,
+  getActiveTranscodeSession
 } from './tracks/subtitleTracks.js';
 import {
   applyWebOsHlsTranscodeParams,
@@ -40,14 +42,15 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     fastSeek: '1',
     directPlay: fullTranscode ? '0' : (directStream ? '0' : '1'),
     directStream: fullTranscode ? '0' : '1',
-    session: session.sessionId || 'xplay-' + Date.now(),
+    session: getActiveTranscodeSession(session) || session.sessionId || 'xplay-' + Date.now(),
     'X-Plex-Client-Identifier': getClientId(),
     'X-Plex-Product': PRODUCT,
     'X-Plex-Version': VERSION,
     'X-Plex-Platform': 'LG webOS',
     'X-Plex-Device': 'TV'
   };
-  if (session.offset) params.offset = String(session.offset);
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
   applyProfileToParams(params, session.quality || prefs.quality, prefs);
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
   Object.assign(params, buildSubtitleTranscodeParams(

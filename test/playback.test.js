@@ -19,13 +19,20 @@ import {
   shouldBurnInSubtitle,
   buildSubtitleTranscodeParams,
   buildClientSubtitleUrl,
+  buildSubtitleFetchPlan,
   buildClientSubtitleUrlCandidates,
+  classifySubtitleDelivery,
+  isSidecarSubtitleTrack,
   resolveStreamKeyPath,
+  resolveStreamKeyPathWithExt,
   subtitleDirectFlagsForMode,
   resolveSessionPartPath,
   resolveSessionMetadataPath,
+  parseTranscodeSessionFromUrl,
+  offsetSecondsForPlex,
   subtitleFormatLabel,
-  subtitleMenuOptionLabel
+  subtitleMenuOptionLabel,
+  shouldRetrySubtitleFetch
 } from '../src/playback/tracks/subtitleTracks.js';
 import {
   snapOffsetMs,
@@ -273,6 +280,35 @@ test('resolveStreamKeyPath synthesizes /library/streams/{id} when key is missing
   assert.equal(resolveStreamKeyPath({}), null);
 });
 
+test('resolveStreamKeyPathWithExt uses .srt path per PMS stream API', function () {
+  assert.equal(
+    resolveStreamKeyPathWithExt({ id: 1893985, codec: 'srt' }),
+    '/library/streams/1893985.srt'
+  );
+  assert.equal(
+    resolveStreamKeyPathWithExt({ key: '/library/streams/2', codec: 'ass' }),
+    '/library/streams/2.ass'
+  );
+});
+
+test('classifySubtitleDelivery distinguishes embedded vs sidecar', function () {
+  assert.equal(classifySubtitleDelivery({ location: 'embedded' }, false), 'embedded');
+  assert.equal(classifySubtitleDelivery({ location: 'external' }, false), 'sidecar');
+  assert.equal(classifySubtitleDelivery({ codec: 'hdmv_pgs_subtitle' }, true), 'graphical');
+  assert.equal(classifySubtitleDelivery({ providerTitle: 'OpenSubtitles' }, false), 'onDemand');
+});
+
+test('offsetSecondsForPlex converts viewOffset ms to seconds', function () {
+  assert.equal(offsetSecondsForPlex({ offset: 3776897 }), 3776.897);
+  assert.equal(offsetSecondsForPlex({ offset: 90 }), 90);
+});
+
+test('parseTranscodeSessionFromUrl reads session query param', function () {
+  var url = 'http://plex:32400/video/:/transcode/universal/start.m3u8?session=abc123&directPlay=0';
+  assert.equal(parseTranscodeSessionFromUrl(url), 'abc123');
+  assert.equal(parseTranscodeSessionFromUrl('http://plex/file.mkv'), null);
+});
+
 test('subtitleDirectFlagsForMode matches transcode vs direct play', function () {
   assert.deepEqual(subtitleDirectFlagsForMode('transcode-hls'), {
     directPlay: '0', directStream: '0', directStreamAudio: '1'
@@ -285,7 +321,7 @@ test('subtitleDirectFlagsForMode matches transcode vs direct play', function () 
   });
 });
 
-test('buildClientSubtitleUrlCandidates prefers stream key then metadata transcode path', function () {
+test('buildSubtitleFetchPlan skips stream GET for embedded text subs', function () {
   var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
   var session = {
     item: { key: '/library/metadata/999', ratingKey: '999' },
@@ -296,44 +332,62 @@ test('buildClientSubtitleUrlCandidates prefers stream key then metadata transcod
   };
   var track = {
     id: 1893985,
-    key: '/library/streams/1893985',
     codec: 'srt',
     format: 'srt',
-    graphical: false
+    graphical: false,
+    delivery: 'embedded'
   };
-  var urls = buildClientSubtitleUrlCandidates(server, session, track);
-  assert.equal(urls.length, 3);
-  assert.ok(urls[0].indexOf('/library/streams/1893985') >= 0);
-  assert.ok(urls[0].indexOf('encoding=utf-8') >= 0);
-  assert.ok(urls[0].indexOf('format=srt') >= 0);
-  assert.ok(urls[1].indexOf('/video/:/transcode/universal/subtitles') >= 0);
-  assert.ok(urls[1].indexOf(encodeURIComponent('/library/metadata/999')) >= 0);
-  assert.ok(urls[1].indexOf('X-Plex-Subtitle-Stream=1893985') >= 0);
-  assert.ok(urls[1].indexOf('subtitleFormat=srt') >= 0);
-  assert.ok(urls[1].indexOf('directPlay=1') >= 0);
-  assert.ok(urls[2].indexOf(encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
+  var urls = buildSubtitleFetchPlan(server, session, track);
+  assert.ok(urls.length >= 2);
+  assert.ok(urls[0].indexOf('/video/:/transcode/universal/subtitles') >= 0);
+  assert.ok(urls.every(function (u) { return u.indexOf('/library/streams/') < 0; }));
+  assert.ok(urls[0].indexOf('subtitles=sidecar') >= 0);
+  assert.ok(urls[0].indexOf('hasMDE=1') >= 0);
+  assert.ok(urls[0].indexOf('location=lan') >= 0);
+  assert.ok(urls[0].indexOf(encodeURIComponent('/library/metadata/999')) >= 0);
+  assert.ok(urls[0].indexOf('X-Plex-Subtitle-Stream=1893985') >= 0);
+  assert.ok(urls[0].indexOf('directPlay=1') >= 0);
 });
 
-test('buildClientSubtitleUrlCandidates uses transcode directPlay flags when transcoding', function () {
+test('buildSubtitleFetchPlan tries stream path first for sidecar subs', function () {
+  var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+  var session = {
+    item: { key: '/library/metadata/999', ratingKey: '999' },
+    subtitleStreamId: 2,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var track = {
+    id: 2,
+    key: '/library/streams/2',
+    codec: 'srt',
+    delivery: 'sidecar'
+  };
+  assert.equal(isSidecarSubtitleTrack(track), true);
+  var urls = buildSubtitleFetchPlan(server, session, track);
+  assert.ok(urls[0].indexOf('/library/streams/2.srt') >= 0);
+  assert.ok(urls[1].indexOf('/video/:/transcode/universal/subtitles') >= 0);
+});
+
+test('buildSubtitleFetchPlan uses transcode session and flags when transcoding', function () {
   var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
   var session = {
     item: { key: '/library/metadata/999' },
     subtitleStreamId: 2,
-    sessionId: 'xplay-test',
+    transcodeSessionId: 'plex-server-session',
     mediaIndex: 0,
     partIndex: 0
   };
-  var track = { id: 2, codec: 'srt' };
-  var urls = buildClientSubtitleUrlCandidates(server, session, track, {
+  var track = { id: 2, codec: 'srt', delivery: 'embedded' };
+  var urls = buildSubtitleFetchPlan(server, session, track, {
     playbackMode: 'transcode-hls'
   });
-  assert.equal(urls.length, 2);
-  assert.ok(urls[0].indexOf('/library/streams/2') >= 0);
-  assert.ok(urls[1].indexOf('directPlay=0') >= 0);
-  assert.ok(urls[1].indexOf('session=xplay-test') >= 0);
+  assert.ok(urls[0].indexOf('directPlay=0') >= 0);
+  assert.ok(urls[0].indexOf('session=plex-server-session') >= 0);
+  assert.ok(urls[0].indexOf('protocol=hls') >= 0);
 });
 
-test('buildClientSubtitleUrlCandidates falls back to part path when stream key missing', function () {
+test('buildSubtitleFetchPlan includes part path as last resort', function () {
   var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
   var session = {
     item: { key: '/library/metadata/999' },
@@ -342,15 +396,12 @@ test('buildClientSubtitleUrlCandidates falls back to part path when stream key m
     mediaIndex: 0,
     partIndex: 0
   };
-  var urls = buildClientSubtitleUrlCandidates(server, session, { id: 2, codec: 'srt' });
-  assert.equal(urls.length, 3);
-  assert.ok(urls[0].indexOf('/library/streams/2') >= 0);
-  assert.ok(urls[1].indexOf('/video/:/transcode/universal/subtitles') >= 0);
-  assert.ok(urls[1].indexOf(encodeURIComponent('/library/metadata/999')) >= 0);
-  assert.ok(urls[2].indexOf(encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
+  var urls = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
+  var last = urls[urls.length - 1];
+  assert.ok(last.indexOf(encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
 });
 
-test('buildClientSubtitleUrl returns first candidate', function () {
+test('buildClientSubtitleUrl returns first fetch plan candidate', function () {
   var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
   var session = {
     item: { key: '/library/metadata/999' },
@@ -358,9 +409,28 @@ test('buildClientSubtitleUrl returns first candidate', function () {
     mediaIndex: 0,
     partIndex: 0
   };
-  var track = { id: 2, key: '/library/streams/2', codec: 'srt' };
+  var track = { id: 2, key: '/library/streams/2', codec: 'srt', delivery: 'sidecar' };
   var url = buildClientSubtitleUrl(server, session, track);
-  assert.ok(url.indexOf('/library/streams/2') >= 0);
+  assert.ok(url.indexOf('/library/streams/2.srt') >= 0);
+});
+
+test('buildClientSubtitleUrlCandidates aliases buildSubtitleFetchPlan', function () {
+  var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+  var session = { item: { key: '/library/metadata/1' }, subtitleStreamId: 1, mediaIndex: 0, partIndex: 0 };
+  var track = { id: 1, codec: 'srt', delivery: 'embedded' };
+  assert.deepEqual(
+    buildClientSubtitleUrlCandidates(server, session, track),
+    buildSubtitleFetchPlan(server, session, track)
+  );
+});
+
+test('shouldRetrySubtitleFetch retries 501 and 400 but not auth errors', function () {
+  assert.equal(shouldRetrySubtitleFetch({ status: 501 }), true);
+  assert.equal(shouldRetrySubtitleFetch({ status: 400 }), true);
+  assert.equal(shouldRetrySubtitleFetch({ status: 404 }), true);
+  assert.equal(shouldRetrySubtitleFetch({ status: 401 }), false);
+  assert.equal(shouldRetrySubtitleFetch({ status: 403 }), false);
+  assert.equal(shouldRetrySubtitleFetch(null), false);
 });
 
 test('findSubtitleTrack matches string and numeric stream ids', function () {

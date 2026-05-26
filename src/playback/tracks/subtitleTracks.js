@@ -2,6 +2,19 @@ import { isGraphicalSubtitle } from '../capabilityProbe.js';
 import { serverUrl } from '../../plex/client.js';
 import { collectStreamsFromMedia } from './streamUtils.js';
 
+/** @typedef {'graphical'|'embedded'|'sidecar'|'onDemand'} SubtitleDelivery */
+
+function classifySubtitleDelivery(stream, graphical) {
+  if (graphical) return 'graphical';
+  if (stream.transient === '1' || stream.transient === true || stream.providerTitle) {
+    return 'onDemand';
+  }
+  var loc = String(stream.location || '').toLowerCase();
+  if (loc === 'embedded' || loc === 'internal') return 'embedded';
+  if (loc === 'external' || loc === 'sidecar' || loc === 'downloaded') return 'sidecar';
+  return 'embedded';
+}
+
 function parseSubtitleStreams(media, options) {
   options = options || {};
   return collectStreamsFromMedia(media, 3).map(function (s, i) {
@@ -19,6 +32,7 @@ function parseSubtitleStreams(media, options) {
       title: s.title || s.language || ('Subtitle ' + (i + 1)),
       format: codec.indexOf('srt') >= 0 ? 'srt' : (s.format || codec),
       graphical: graphical,
+      delivery: classifySubtitleDelivery(s, graphical),
       requiresTranscode: graphical,
       forced: forced,
       hearingImpaired: hearingImpaired,
@@ -28,6 +42,10 @@ function parseSubtitleStreams(media, options) {
     if (options.includeGraphical) return true;
     return !s.graphical;
   });
+}
+
+function isSidecarSubtitleTrack(track) {
+  return !!(track && (track.delivery === 'sidecar' || track.delivery === 'onDemand'));
 }
 
 function subtitleDisplayTitle(track) {
@@ -136,11 +154,31 @@ function subtitleOutputFormat(track) {
   return 'srt';
 }
 
-function resolveStreamKeyPath(track) {
-  if (!track) return null;
-  if (track.key) return normalizePlexPath(track.key);
-  if (track.id != null) return '/library/streams/' + track.id;
-  return null;
+/** Plex transcode offset query param is in seconds; viewOffset is ms. */
+function offsetSecondsForPlex(session) {
+  if (!session) return 0;
+  var raw = session.playbackOffsetMs != null ? session.playbackOffsetMs : (session.offset || 0);
+  if (!raw) return 0;
+  if (raw > 10000) return raw / 1000;
+  return raw;
+}
+
+function parseTranscodeSessionFromUrl(url) {
+  if (!url) return null;
+  var m = String(url).match(/[?&]session=([^&]+)/i);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function getActiveTranscodeSession(session) {
+  if (!session) return null;
+  if (session.transcodeSessionId) return session.transcodeSessionId;
+  return session.sessionId || null;
+}
+
+function protocolForPlaybackMode(playbackMode) {
+  if (playbackMode === 'transcode-http') return 'http';
+  if (playbackMode === 'direct-stream' || playbackMode === 'transcode-hls') return 'hls';
+  return 'http';
 }
 
 /** directPlay flags for universal/subtitle transcode — match active playback mode. */
@@ -154,10 +192,29 @@ function subtitleDirectFlagsForMode(playbackMode) {
   return { directPlay: '1', directStream: '1', directStreamAudio: '1' };
 }
 
-/** Direct stream fetch — same approach as Plex clients (stream.key + encoding/format). */
+/** Path for GET /library/streams/{streamId}.{ext} per PMS API. */
+function resolveStreamKeyPathWithExt(track) {
+  if (!track) return null;
+  var fmt = subtitleOutputFormat(track);
+  if (track.key) {
+    var key = normalizePlexPath(track.key);
+    if (/\.[a-z0-9]{2,5}$/i.test(key)) return key;
+    return key + '.' + fmt;
+  }
+  if (track.id != null) return '/library/streams/' + track.id + '.' + fmt;
+  return null;
+}
+
+function resolveStreamKeyPath(track) {
+  var path = resolveStreamKeyPathWithExt(track);
+  if (!path) return null;
+  return path.replace(/\.[a-z0-9]{2,5}$/i, '');
+}
+
+/** Sidecar stream fetch — PMS GET /library/streams/{id}.{ext}. */
 function buildStreamKeySubtitleUrl(server, track) {
   if (!server || !track) return null;
-  var path = resolveStreamKeyPath(track);
+  var path = resolveStreamKeyPathWithExt(track);
   if (!path) return null;
   var params = {
     encoding: 'utf-8',
@@ -166,22 +223,41 @@ function buildStreamKeySubtitleUrl(server, track) {
   return serverUrl(server.connectionUri, path, params, server);
 }
 
-function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMode) {
+function isAdvancedSubtitleCodec(track) {
+  var codec = (track && track.codec || '').toLowerCase();
+  return codec.indexOf('ass') >= 0 || codec.indexOf('ssa') >= 0;
+}
+
+function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMode, options) {
+  options = options || {};
   if (!server || !session || session.subtitleStreamId == null || !mediaPath) return null;
   var directFlags = subtitleDirectFlagsForMode(playbackMode);
+  var offsetSec = offsetSecondsForPlex(session);
   var params = Object.assign({
     path: mediaPath,
     mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
     partIndex: session.partIndex != null ? session.partIndex : 0,
     encoding: 'utf-8',
     subtitleFormat: subtitleOutputFormat(track),
+    subtitles: options.subtitles || 'sidecar',
+    hasMDE: '1',
+    location: 'lan',
+    protocol: protocolForPlaybackMode(playbackMode),
+    fastSeek: '1',
     'X-Plex-Subtitle-Stream': String(session.subtitleStreamId)
   }, directFlags);
-  if (session.sessionId && directFlags.directPlay === '0') {
-    params.session = session.sessionId;
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  var transcodeSession = getActiveTranscodeSession(session);
+  if (transcodeSession && directFlags.directPlay === '0') {
+    params.session = transcodeSession;
+  } else if (transcodeSession && playbackMode === 'direct') {
+    params.session = transcodeSession;
   }
   if (session.subtitleOffset) {
     params['X-Plex-Subtitle-Offset'] = String(session.subtitleOffset);
+  }
+  if (isAdvancedSubtitleCodec(track) && options.advancedSubtitles) {
+    params.advancedSubtitles = options.advancedSubtitles;
   }
   return serverUrl(
     server.connectionUri,
@@ -196,8 +272,8 @@ function pushUniqueUrl(list, url) {
   list.push(url);
 }
 
-/** Ordered subtitle URL candidates — try stream key first, then metadata/part transcode paths. */
-function buildClientSubtitleUrlCandidates(server, session, track, options) {
+/** Mode-aware ordered subtitle fetch URLs (embedded → universal; sidecar → stream then universal). */
+function buildSubtitleFetchPlan(server, session, track, options) {
   options = options || {};
   var urls = [];
   if (!server || !session || session.subtitleStreamId == null) return urls;
@@ -205,21 +281,35 @@ function buildClientSubtitleUrlCandidates(server, session, track, options) {
   var resolvedTrack = track || null;
   var playbackMode = options.playbackMode || 'direct';
 
-  pushUniqueUrl(urls, buildStreamKeySubtitleUrl(server, resolvedTrack));
+  if (isSidecarSubtitleTrack(resolvedTrack)) {
+    pushUniqueUrl(urls, buildStreamKeySubtitleUrl(server, resolvedTrack));
+  }
 
   var metadataPath = resolveSessionMetadataPath(session);
+  var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'convert' : null;
   pushUniqueUrl(urls, buildUniversalSubtitleUrl(
-    server, session, metadataPath, resolvedTrack, playbackMode
+    server, session, metadataPath, resolvedTrack, playbackMode,
+    { subtitles: 'sidecar', advancedSubtitles: advanced }
+  ));
+  pushUniqueUrl(urls, buildUniversalSubtitleUrl(
+    server, session, metadataPath, resolvedTrack, playbackMode,
+    { subtitles: 'auto', advancedSubtitles: advanced }
   ));
 
   var partPath = resolveSessionPartPath(session);
   if (partPath && partPath !== metadataPath) {
     pushUniqueUrl(urls, buildUniversalSubtitleUrl(
-      server, session, partPath, resolvedTrack, playbackMode
+      server, session, partPath, resolvedTrack, playbackMode,
+      { subtitles: 'sidecar', advancedSubtitles: advanced }
     ));
   }
 
   return urls;
+}
+
+/** @deprecated Use buildSubtitleFetchPlan */
+function buildClientSubtitleUrlCandidates(server, session, track, options) {
+  return buildSubtitleFetchPlan(server, session, track, options);
 }
 
 /** Playback modes that can load Plex SRT via TextTrack without burn-in. */
@@ -243,9 +333,16 @@ function canUseClientSubtitles(playbackMode, track) {
   return isClientSubtitlePlaybackMode(playbackMode);
 }
 
-function buildClientSubtitleUrl(server, session, track) {
-  var urls = buildClientSubtitleUrlCandidates(server, session, track);
+function buildClientSubtitleUrl(server, session, track, options) {
+  var urls = buildSubtitleFetchPlan(server, session, track, options);
   return urls.length ? urls[0] : null;
+}
+
+/** True when another subtitle URL candidate may succeed (e.g. stream 501 → universal). */
+function shouldRetrySubtitleFetch(err) {
+  var status = err && err.status;
+  if (!status || status === 401 || status === 403) return false;
+  return status >= 400;
 }
 
 function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
@@ -255,6 +352,7 @@ function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
   if (streamId != null) {
     p['X-Plex-Subtitle-Stream'] = String(streamId);
     p.subtitleFormat = 'srt';
+    p.subtitles = 'burn';
   }
   if (offsetMs) {
     p['X-Plex-Subtitle-Offset'] = String(offsetMs);
@@ -264,17 +362,26 @@ function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
 
 export {
   parseSubtitleStreams,
+  classifySubtitleDelivery,
+  isSidecarSubtitleTrack,
   buildSubtitleTranscodeParams,
   findSubtitleTrack,
   resolveStreamKeyPath,
+  resolveStreamKeyPathWithExt,
   resolveSessionMetadataPath,
   resolveSessionPartPath,
   subtitleDirectFlagsForMode,
+  buildSubtitleFetchPlan,
   buildClientSubtitleUrlCandidates,
   canUseClientSubtitles,
   isClientSubtitlePlaybackMode,
   shouldBurnInSubtitle,
   buildClientSubtitleUrl,
+  shouldRetrySubtitleFetch,
+  parseTranscodeSessionFromUrl,
+  getActiveTranscodeSession,
+  offsetSecondsForPlex,
+  protocolForPlaybackMode,
   subtitleDisplayTitle,
   subtitleFormatLabel,
   subtitleMenuOptionLabel,

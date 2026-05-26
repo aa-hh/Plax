@@ -32,9 +32,17 @@ Per [App Resolution spec](https://webostv.developer.lge.com/develop/specificatio
 
 | Format | Support |
 |--------|---------|
-| SRT / text (direct play) | Yes — Plex universal subtitles endpoint + HTML5 TextTrack (no video transcode) |
-| SRT (via Plex transcode) | Yes, with timing offset when direct play unavailable |
-| PGS / VOBSUB / DVD subs | Burn-in via server transcode only (no client-side image subs on webOS) |
+| SRT / text (direct play) | Yes — [universal transcode subtitles](https://plexapi.dev/api-reference/transcoder/transcode-subtitles) (`subtitles=sidecar`) + HTML5 TextTrack |
+| SRT (HLS remux / transcode) | Yes — same universal endpoint with `session` + `directPlay`/`directStream` aligned to video |
+| External / sidecar `.srt` | Yes — [GET `/library/streams/{id}.{ext}`](https://developer.plex.tv/pms/) first, then universal fallback |
+| Embedded text (MKV, etc.) | Universal subtitles only (stream GET returns 501 per PMS — not a sidecar) |
+| PGS / VOBSUB / DVD subs | Burn-in via server transcode (`subtitles=burn`) — [Plex subtitle formats](https://support.plex.tv/articles/200471133-adding-local-subtitles-to-your-media/) |
+
+**Client fetch ladder** (see `buildSubtitleFetchPlan` in `src/playback/tracks/subtitleTracks.js`):
+
+1. Sidecar track → `/library/streams/{id}.srt` → universal (`metadata` path, `subtitles=sidecar`, then `auto`) → part path last resort  
+2. Embedded track → skip stream GET → universal paths as above  
+3. Graphical track → video restart with burn-in (no client fetch)
 
 ## Audio / Video
 

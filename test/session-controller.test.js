@@ -79,13 +79,13 @@ test('buildPlaybackUrl HTTP targets universal start without m3u8', function () {
   assert.equal(httpQ['X-Plex-Client-Profile-Extra'], undefined);
 });
 
-test('buildPlaybackUrl transcode query includes offset ms and fastSeek', function () {
+test('buildPlaybackUrl transcode query includes offset seconds and fastSeek', function () {
   var session = baseSession({
     forceTranscode: true,
     offset: 125000
   });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
-  assert.equal(q.offset, '125000');
+  assert.equal(q.offset, '125');
   assert.equal(q.fastSeek, '1');
 });
 

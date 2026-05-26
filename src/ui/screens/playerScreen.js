@@ -19,7 +19,8 @@ import {
   findSubtitleTrack,
   canUseClientSubtitles,
   shouldBurnInSubtitle,
-  buildClientSubtitleUrlCandidates,
+  buildSubtitleFetchPlan,
+  parseTranscodeSessionFromUrl,
   pickDefaultSubtitleTrack,
   subtitleDisplayTitle,
   subtitleMenuOptionLabel
@@ -937,7 +938,10 @@ function playerScreen(root, params, navigate) {
     if (!session || selectedSubtitleId == null) return Promise.resolve();
     var track = selectedTextSubtitleTrack();
     if (!canUseClientSubtitles(playbackMode, track)) return Promise.resolve();
-    var urls = buildClientSubtitleUrlCandidates(server, session, track, {
+    var subtitleSession = Object.assign({}, session, {
+      playbackOffsetMs: restartOffsetMs()
+    });
+    var urls = buildSubtitleFetchPlan(server, subtitleSession, track, {
       playbackMode: playbackMode
     });
     if (!urls.length) return Promise.reject(new Error('Could not build subtitle URL'));
@@ -1479,6 +1483,11 @@ function playerScreen(root, params, navigate) {
   function playUrl(result, offset, playbackSession) {
     playbackSession = playbackSession || session;
     playbackMode = result.mode || 'unknown';
+    var transcodeSession = parseTranscodeSessionFromUrl(result.url);
+    if (transcodeSession) {
+      playbackSession.transcodeSessionId = transcodeSession;
+      if (playbackSession === session) session.transcodeSessionId = transcodeSession;
+    }
     player.setPlaybackMode(playbackMode);
     player.play(result.url, playbackSession, { offset: offset, mode: playbackMode });
     applySubtitleAppearance();

@@ -7,6 +7,7 @@ import { shouldScrobble, shouldResetScrobble } from './scrobblePolicy.js';
 import { timelineStateForPlayback } from './timelineSyncState.js';
 import { flushTimelineProgress } from './timelineFlush.js';
 import { parseSrtToCues } from './tracks/srtParser.js';
+import { shouldRetrySubtitleFetch } from './tracks/subtitleTracks.js';
 import { createRebufferWatchdog } from './rebufferWatchdog.js';
 
 var videoEl = null;
@@ -309,10 +310,6 @@ function hasClientSubtitlesLoaded() {
   return !!activeTextTrack;
 }
 
-function isSubtitleFetchFallbackStatus(err) {
-  return !!(err && (err.status === 400 || err.status === 404));
-}
-
 function loadClientSubtitleFromUrls(urls, offsetMs) {
   if (!urls || !urls.length) return Promise.reject(new Error('No subtitle URL'));
   var index = 0;
@@ -330,7 +327,7 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
         return Promise.reject(new Error('Subtitle file had no parseable cues'));
       }
     }).catch(function (err) {
-      if (index < urls.length && isSubtitleFetchFallbackStatus(err)) {
+      if (index < urls.length && shouldRetrySubtitleFetch(err)) {
         console.warn(
           '[subtitles] HTTP ' + err.status + ' on attempt ' + attempt + ', trying fallback'
         );
