@@ -77,7 +77,8 @@ function buildTranscodeParams(server, partKey, session, protocol) {
   if (offsetSec > 0) params.offset = String(offsetSec);
   applyProfileToParams(params, session.quality || prefs.quality, prefs);
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
-  var softTextSubs = directStream && session.subtitleStreamId != null &&
+  var usesTranscoder = directStream || fullTranscode;
+  var softTextSubs = usesTranscoder && session.subtitleStreamId != null &&
     session.subtitleBurnIn !== true;
   Object.assign(params, buildSubtitleTranscodeParams(
     session.subtitleStreamId,
@@ -127,6 +128,7 @@ function buildDecisionParams(server, partKey, session, protocol) {
     'mediaBufferSize',
     'session',
     'transcodeSessionId',
+    'skipSubtitles',
     'location',
     'offset',
     'maxVideoBitrate',

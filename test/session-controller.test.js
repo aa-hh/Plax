@@ -307,7 +307,7 @@ test('resolveStreamUrl primes decision with metadata path and headers', async fu
   assert.equal(decisionQuery.directStream, '1');
   assert.equal(decisionQuery.offset, '454');
   assert.equal(decisionQuery.transcodeSessionId, 'xplay-test-session');
-  assert.equal(decisionQuery.skipSubtitles, undefined);
+  assert.equal(decisionQuery.skipSubtitles, '1');
   assert.equal(decisionQuery['X-Plex-Audio-Stream'], undefined);
   assert.equal(decisionQuery['X-Plex-Auto-Audio-Stream'], undefined);
   assert.equal(decisionQuery['X-Plex-Session-Identifier'], undefined);
@@ -357,7 +357,7 @@ test('resolveStreamUrl resolves partKey from nested media when version missing',
   assert.ok(result.url.indexOf(nestedPartKey) >= 0);
 });
 
-test('buildPlaybackUrl omits burn for SRT transcode without subtitleBurnIn', function () {
+test('buildPlaybackUrl skips server subtitles for SRT transcode without subtitleBurnIn', function () {
   var session = baseSession({
     forceTranscode: true,
     playbackStrategy: 'transcode',
@@ -365,7 +365,9 @@ test('buildPlaybackUrl omits burn for SRT transcode without subtitleBurnIn', fun
     subtitleBurnIn: false
   });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.skipSubtitles, '1');
   assert.equal(q.subtitles, undefined);
+  assert.equal(q.subtitleStreamID, undefined);
   assert.equal(q['X-Plex-Subtitle-Stream'], undefined);
 });
 
