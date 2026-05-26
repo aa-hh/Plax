@@ -190,7 +190,7 @@ function subtitleDirectFlagsForMode(playbackMode) {
   if (playbackMode === 'direct-stream') {
     return { directPlay: '0', directStream: '1', directStreamAudio: '1' };
   }
-  return { directPlay: '1', directStream: '1', directStreamAudio: '1' };
+  return { directPlay: '0', directStream: '1', directStreamAudio: '1' };
 }
 
 function isDirectPlaybackMode(playbackMode) {
@@ -332,6 +332,7 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   if (playbackSessionId) {
     if (!subtitleEndpoint || decisionEndpoint) params.session = playbackSessionId;
     params.transcodeSessionId = playbackSessionId;
+    if (decisionEndpoint) params['X-Plex-Session-Identifier'] = playbackSessionId;
   }
   if (!decisionEndpoint && !subtitleEndpoint && session.subtitleOffset) {
     params['X-Plex-Subtitle-Offset'] = String(session.subtitleOffset);
@@ -578,6 +579,8 @@ function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
   if (options.burnIn === true) {
     var burned = {
       'X-Plex-Subtitle-Stream': String(streamId),
+      autoAdjustSubtitle: '1',
+      subtitleSize: '100',
       subtitleFormat: 'srt',
       subtitles: 'burn'
     };

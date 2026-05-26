@@ -263,6 +263,8 @@ test('buildSubtitleTranscodeParams only burns when burnIn is explicitly true', f
   assert.equal(Object.keys(buildSubtitleTranscodeParams(null, 100, { burnIn: true })).length, 0);
   var burned = buildSubtitleTranscodeParams(3, 100, { burnIn: true });
   assert.equal(burned['X-Plex-Subtitle-Stream'], '3');
+  assert.equal(burned.autoAdjustSubtitle, '1');
+  assert.equal(burned.subtitleSize, '100');
   assert.equal(burned.subtitleFormat, 'srt');
   assert.equal(burned.subtitles, 'burn');
   assert.equal(burned['X-Plex-Subtitle-Offset'], '100');
@@ -370,7 +372,7 @@ test('parseTranscodeSessionFromUrl reads session query param', function () {
   assert.equal(parseTranscodeSessionFromUrl('http://plex/file.mkv'), null);
 });
 
-test('subtitleDirectFlagsForMode matches transcode vs direct play', function () {
+test('subtitleDirectFlagsForMode uses extraction flags for direct playback', function () {
   assert.deepEqual(subtitleDirectFlagsForMode('transcode-hls'), {
     directPlay: '0', directStream: '0', directStreamAudio: '1'
   });
@@ -378,7 +380,7 @@ test('subtitleDirectFlagsForMode matches transcode vs direct play', function () 
     directPlay: '0', directStream: '1', directStreamAudio: '1'
   });
   assert.deepEqual(subtitleDirectFlagsForMode('direct'), {
-    directPlay: '1', directStream: '1', directStreamAudio: '1'
+    directPlay: '0', directStream: '1', directStreamAudio: '1'
   });
 });
 
@@ -431,7 +433,7 @@ test('buildSubtitleFetchPlan tries metadata API first for embedded text subs', f
   assert.ok(first.indexOf('directStreamAudio=1') >= 0);
   assert.ok(first.indexOf('session=xplay-test-session') < 0);
   assert.ok(first.indexOf('transcodeSessionId=xplay-test-session') >= 0);
-  assert.ok(first.indexOf('directPlay=1') >= 0);
+  assert.ok(first.indexOf('directPlay=0') >= 0);
   assert.ok(first.indexOf('fastSeek=') < 0);
   new URL(first).searchParams.forEach(function (value, key) {
     assert.ok([
@@ -567,7 +569,7 @@ test('prepareClientSubtitlePlayback primes direct subtitles with metadata path a
     assert.equal(q.get('autoAdjustQuality'), '0');
     assert.equal(q.get('X-Plex-Token'), null);
     assert.equal(q.get('X-Plex-Client-Identifier'), null);
-    assert.equal(q.get('X-Plex-Session-Identifier'), null);
+    assert.equal(q.get('X-Plex-Session-Identifier'), 'plex-resource-session');
     assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
     assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'plex-resource-session');
     assert.equal(decision.init.headers.Accept, 'application/xml');
@@ -617,13 +619,15 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     assert.ok(decision);
     var q = new URL(decision.url).searchParams;
     assert.equal(q.get('path'), '/library/metadata/33622');
+    assert.equal(q.get('directPlay'), '0');
+    assert.equal(q.get('directStream'), '1');
     assert.equal(q.get('subtitles'), null);
     assert.equal(q.get('copyts'), null);
     assert.equal(q.get('audioBoost'), null);
     assert.equal(q.get('X-Plex-Audio-Stream'), null);
     assert.equal(q.get('X-Plex-Client-Identifier'), null);
     assert.equal(q.get('X-Plex-Token'), null);
-    assert.equal(q.get('X-Plex-Session-Identifier'), null);
+    assert.equal(q.get('X-Plex-Session-Identifier'), 'xplay-1779812905191');
     assert.equal(decision.init.headers.Accept, 'application/xml');
     assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
     assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'xplay-1779812905191');

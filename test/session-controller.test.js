@@ -310,7 +310,7 @@ test('resolveStreamUrl primes decision with metadata path and headers', async fu
   assert.equal(decisionQuery.skipSubtitles, '1');
   assert.equal(decisionQuery['X-Plex-Audio-Stream'], undefined);
   assert.equal(decisionQuery['X-Plex-Auto-Audio-Stream'], undefined);
-  assert.equal(decisionQuery['X-Plex-Session-Identifier'], undefined);
+  assert.equal(decisionQuery['X-Plex-Session-Identifier'], 'xplay-test-session');
   assert.equal(decisionQuery['X-Plex-Token'], undefined);
   assert.equal(decisionQuery['X-Plex-Client-Identifier'], undefined);
   assert.equal(decision.init.headers['X-Plex-Token'], 'server-token-xyz');
@@ -381,6 +381,38 @@ test('buildPlaybackUrl burns only when subtitleBurnIn is true', function () {
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
   assert.equal(q.subtitles, 'burn');
   assert.equal(q['X-Plex-Subtitle-Stream'], '1894297');
+  assert.equal(q.autoAdjustSubtitle, '1');
+  assert.equal(q.subtitleSize, '100');
+});
+
+test('resolveStreamUrl selects subtitle stream before burn-in transcode', async function () {
+  var calls = [];
+  globalThis.fetch = function (url, init) {
+    calls.push({ url: String(url), init: init || {} });
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: function () {
+        return Promise.resolve('<MediaContainer resourceSession="plex-burn-session"/>');
+      },
+      headers: { get: function () { return 'application/xml'; } }
+    });
+  };
+
+  var session = baseSession({
+    forceTranscode: true,
+    playbackStrategy: 'transcode',
+    subtitleStreamId: 1894297,
+    subtitleBurnIn: true
+  });
+  var result = await resolveStreamUrl(session);
+  var selection = calls.filter(function (call) {
+    return call.init.method === 'PUT' && call.url.indexOf('/library/parts/99') >= 0;
+  })[0];
+  assert.ok(selection);
+  assert.equal(parseQuery(selection.url).subtitleStreamID, '1894297');
+  assert.equal(parseQuery(result.url).subtitles, 'burn');
+  assert.equal(parseQuery(result.url).session, 'plex-burn-session');
 });
 
 test('resolveStreamUrl falls back to metadata path when no part key', async function () {

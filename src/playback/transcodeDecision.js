@@ -13,6 +13,7 @@ var DECISION_QUERY_KEYS = [
   'mediaBufferSize',
   'session',
   'transcodeSessionId',
+  'X-Plex-Session-Identifier',
   'skipSubtitles',
   'location',
   'offset',

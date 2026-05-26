@@ -211,9 +211,9 @@ function resolveStreamMode(strategy, protocol) {
 }
 
 function shouldSelectPartSubtitleBeforePlay(session, strategy) {
-  return session.subtitleStreamId != null && (
-    strategy === 'direct' || strategy === 'direct-stream'
-  );
+  if (session.subtitleStreamId == null) return false;
+  if (session.subtitleBurnIn === true) return true;
+  return strategy === 'direct' || strategy === 'direct-stream';
 }
 
 function resolveStreamUrl(session) {

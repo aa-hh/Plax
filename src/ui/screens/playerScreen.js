@@ -929,6 +929,7 @@ function playerScreen(root, params, navigate) {
 
   function shouldApplyClientSubtitleAfterPlay(mode) {
     if (selectedSubtitleId == null || isGraphicalSubtitleSelected()) return false;
+    if (session && session.subtitleBurnIn) return false;
     return canUseClientSubtitles(mode, selectedTextSubtitleTrack());
   }
 
@@ -985,6 +986,11 @@ function playerScreen(root, params, navigate) {
             '. Switch to Auto quality for embedded subtitles, or pick image subtitles (burn-in).'
         );
         return Promise.resolve();
+      }
+      if (playbackMode === 'direct-stream' || playbackMode === 'transcode-hls' ||
+          playbackMode === 'transcode-http') {
+        setPlayerMessage('Client subtitles unavailable' + detail + ' — burning subtitles into the stream…');
+        return restartPlaybackAt(restartOffsetMs(), null, 'subtitle-burn');
       }
       if (isDirectPlaybackMode(playbackMode)) {
         setPlayerMessage(
