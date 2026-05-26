@@ -988,8 +988,13 @@ function playerScreen(root, params, navigate) {
         );
         return Promise.resolve();
       }
-      if (playbackMode === 'direct-stream' || playbackMode === 'transcode-hls' ||
-          playbackMode === 'transcode-http') {
+      if (playbackMode === 'direct-stream') {
+        setPlayerMessage(
+          'Subtitles could not be loaded' + detail + '. Playback continues without subtitles.'
+        );
+        return Promise.resolve();
+      }
+      if (playbackMode === 'transcode-hls' || playbackMode === 'transcode-http') {
         setPlayerMessage('Client subtitles unavailable' + detail + ' — burning subtitles into the stream…');
         return restartPlaybackAt(restartOffsetMs(), null, 'subtitle-burn');
       }
@@ -1239,7 +1244,9 @@ function playerScreen(root, params, navigate) {
     var qualityKey = activeTranscodeQualityKey();
     var nextLower = qualityKey ? nextLowerTranscodeProfileKey(qualityKey) : null;
     var onHlsTranscode = session.transcodeProtocol === 'hls' &&
-      (playbackMode === 'transcode-hls' || session.playbackStrategy === 'transcode');
+      (playbackMode === 'transcode-hls' || playbackMode === 'direct-stream' ||
+        session.playbackStrategy === 'transcode' ||
+        session.playbackStrategy === 'direct-stream');
     var rebufferStep = decideRebufferFallback(fallbackState, {
       transcodeProtocol: session.transcodeProtocol,
       onHlsTranscode: onHlsTranscode,
@@ -1250,6 +1257,11 @@ function playerScreen(root, params, navigate) {
       var prof = getProfile(rebufferStep.nextQuality);
       setPlayerMessage('Slow buffering — lowering to ' + (prof && prof.label || rebufferStep.nextQuality) + '…');
       restartPlaybackAt(restartOffsetMs(params.offset), null, 'quality');
+      return;
+    }
+    if (rebufferStep.action === 'full-transcode') {
+      setPlayerMessage('Stream copy stalled — transcoding…');
+      retryTranscode('hls', restartOffsetMs(params.offset), 'full-transcode-fallback');
       return;
     }
     if (rebufferStep.action === 'http-transcode') {
@@ -1827,14 +1839,10 @@ function playerScreen(root, params, navigate) {
     updateNowPlayingTitle(item);
     updateNextUpUi();
 
-    if (isStrictDirectPlay() && currentProbe && !currentProbe.canDirectPlay) {
-      setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
-      awaitingPrepareOverlay = false;
-      hideLoadingOverlay();
-      return Promise.resolve();
-    }
-
-    setPlayerMessage('');
+    var directPlayProbeWarning = isStrictDirectPlay() && currentProbe && !currentProbe.canDirectPlay
+      ? formatDirectPlayOnlyError(currentProbe)
+      : '';
+    setPlayerMessage(directPlayProbeWarning);
     beginPrepareOverlay();
     return ensureItemProbeForPlay(
       server,

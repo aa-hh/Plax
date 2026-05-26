@@ -173,7 +173,11 @@ function attachMseHls(url) {
   destroyActiveHls();
   activeHls = new HlsPlayer({
     lowLatencyMode: false,
-    backBufferLength: 60
+    backBufferLength: 60,
+    /* Plex universal HLS lists upcoming segments before they exist (404 until ready). */
+    fragLoadingMaxRetry: 12,
+    fragLoadingRetryDelay: 1000,
+    fragLoadingMaxRetryTimeout: 64000
   });
   activeHls.on(events.MEDIA_ATTACHED, function () {
     activeHls.loadSource(url);
@@ -416,30 +420,41 @@ function normalizeSubtitleFetchAttempts(urls) {
   }).filter(function (attempt) { return !!attempt.url; });
 }
 
+var SUBTITLE_FETCH_TIMEOUT_MS = 20000;
+
 function xhrSubtitleText(url, options, originalErr) {
   if (typeof XMLHttpRequest === 'undefined') {
-    return Promise.reject(originalErr);
+    return Promise.reject(originalErr || new Error('Subtitle fetch unavailable'));
   }
   return new Promise(function (resolve, reject) {
     var xhr = new XMLHttpRequest();
-    var timeoutMs = options && options.timeout ? options.timeout : 20000;
+    var timeoutMs = options && options.timeout > 0
+      ? options.timeout
+      : SUBTITLE_FETCH_TIMEOUT_MS;
     var done = false;
-    function finishWithText() {
+    function finish(err, text) {
       if (done) return;
       done = true;
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(text);
+    }
+    function finishWithText() {
       var text = xhr.responseText || '';
-      if (text && (!xhr.status || (xhr.status >= 200 && xhr.status < 300))) {
-        resolve(text);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        finish(null, text);
         return;
       }
       if (xhr.status >= 400) {
         var statusErr = new Error('HTTP ' + xhr.status);
         statusErr.status = xhr.status;
         statusErr.body = text;
-        reject(statusErr);
+        finish(statusErr);
         return;
       }
-      reject(originalErr);
+      finish(originalErr || new Error('Subtitle fetch failed'));
     }
     xhr.open(options && options.method ? options.method : 'GET', url, true);
     xhr.timeout = timeoutMs;
@@ -450,18 +465,44 @@ function xhrSubtitleText(url, options, originalErr) {
     xhr.onload = finishWithText;
     xhr.onerror = finishWithText;
     xhr.ontimeout = function () {
-      if (done) return;
-      done = true;
-      reject(new Error('Request timeout'));
+      finish(new Error('Request timeout'));
     };
     xhr.send(options && options.body ? options.body : null);
   });
 }
 
 function fetchSubtitleText(url, options) {
-  return fetchText(url, options).catch(function (err) {
-    if (err && err.status) return Promise.reject(err);
-    return xhrSubtitleText(url, options || {}, err);
+  options = Object.assign({ timeout: SUBTITLE_FETCH_TIMEOUT_MS }, options || {});
+  if (typeof XMLHttpRequest !== 'undefined') {
+    return xhrSubtitleText(url, options, new Error('Subtitle fetch failed')).catch(function (xhrErr) {
+      if (xhrErr && (xhrErr.status || xhrErr.message === 'Request timeout')) {
+        return Promise.reject(xhrErr);
+      }
+      return fetchText(url, options);
+    });
+  }
+  return fetchText(url, options);
+}
+
+function promiseWithTimeout(promise, timeoutMs, message) {
+  return new Promise(function (resolve, reject) {
+    var settled = false;
+    var timer = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      reject(new Error(message || 'Request timeout'));
+    }, timeoutMs);
+    promise.then(function (value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    }, function (err) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 
@@ -482,8 +523,12 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       '[subtitles] fetch ' + attempt + '/' + attempts.length + ' (' + label + ')',
       redactPlexUrl(url)
     );
-    var fetchOptions = Object.assign({ timeout: 20000 }, entry.init || {});
-    return fetchSubtitleText(url, fetchOptions).then(function (text) {
+    var fetchOptions = Object.assign({ timeout: SUBTITLE_FETCH_TIMEOUT_MS }, entry.init || {});
+    return promiseWithTimeout(
+      fetchSubtitleText(url, fetchOptions),
+      fetchOptions.timeout,
+      'Request timeout'
+    ).then(function (text) {
       applySrtText(text, offsetMs);
       if (!hasClientSubtitlesLoaded()) {
         var parseErr = new Error('Subtitle file had no parseable cues');
@@ -493,9 +538,11 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
     }).catch(function (err) {
       if (index < attempts.length && (shouldRetrySubtitleFetch(err) || !err.status)) {
         var detail = err.body ? ' — ' + String(err.body).slice(0, 120) : '';
+        var failKind = err.status
+          ? 'HTTP ' + err.status
+          : (err.message === 'Request timeout' ? 'timeout' : 'parse failure');
         console.warn(
-          '[subtitles] ' + (err.status ? 'HTTP ' + err.status : 'parse failure') +
-            ' on (' + label + '), trying fallback' + detail
+          '[subtitles] ' + failKind + ' on (' + label + '), trying fallback' + detail
         );
         return tryNext(err);
       }

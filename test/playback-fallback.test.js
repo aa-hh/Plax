@@ -193,6 +193,29 @@ test('decideRebufferFallback: no op when already on HTTP', function () {
   );
 });
 
+test('decideRebufferFallback: HLS remux stalls escalate to full transcode before HTTP', function () {
+  var state = createPlaybackFallbackState();
+  assert.deepEqual(
+    decideRebufferFallback(state, {
+      playbackMode: 'direct-stream',
+      transcodeProtocol: 'hls',
+      onHlsTranscode: true,
+      nextLowerQuality: null
+    }),
+    { action: 'full-transcode' }
+  );
+  assert.equal(state.fullTranscodeFallbackTried, true);
+  assert.deepEqual(
+    decideRebufferFallback(state, {
+      playbackMode: 'direct-stream',
+      transcodeProtocol: 'hls',
+      onHlsTranscode: true,
+      nextLowerQuality: null
+    }),
+    { action: 'http-transcode' }
+  );
+});
+
 test('clearHlsFallbackAfterHlsTranscodeStart resets hls flag for HLS URL', function () {
   var state = createPlaybackFallbackState();
   state.hlsFallbackTried = true;

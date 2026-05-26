@@ -15,7 +15,7 @@ Reference for how XPlay talks to PMS for text subtitles vs official Plex client 
 
 ## XPlay flow
 
-1. **Remux (direct-stream) + text subs:** `PUT` part selection → `start.m3u8` with `skipSubtitles=1` → client loads via `/subtitles` or `/library/streams/{id}.srt`.
+1. **Remux (direct-stream) + text subs:** `PUT` part selection → `start.m3u8` with `skipSubtitles=1` → client loads via `/library/streams/{id}.srt` then `/subtitles` with `protocol=hls` and the active `transcodeSessionId`. Do **not** call `/decision` again during remux (stalls the next HLS segment). Failed soft subs do not restart with burn-in on remux.
 2. **Direct play + text subs:** progressive file URL → `PUT` + `decision` prime → universal subtitle fetch plan.
 3. **PGS/VOBSUB:** full transcode with `subtitles=burn`.
 

@@ -45,6 +45,32 @@ test('probePlayback: inferred DTS allows progressive direct play', function () {
   assert.equal(probe.canDirectStream, true);
 });
 
+test('probePlayback: E-AC-3 probe miss blocks direct play but allows direct stream', function () {
+  var version = {
+    videoCodec: 'h264',
+    audioCodec: 'eac3',
+    container: 'mkv',
+    bitrate: 3500
+  };
+  var probe = probePlayback({}, version, h264Ok, { uhd: false });
+  assert.equal(probe.canDirectPlay, false);
+  assert.equal(probe.canDirectStream, true);
+  assert.ok(probe.warnings.some(function (w) { return w.indexOf('E-AC-3') >= 0; }));
+});
+
+test('probePlayback: inferred E-AC-3 allows progressive direct play on TV', function () {
+  var version = {
+    videoCodec: 'h264',
+    audioCodec: 'eac3',
+    container: 'mkv',
+    bitrate: 3500
+  };
+  var caps = Object.assign({}, h264Ok, { eac3: 'probably', eac3Inferred: true });
+  var probe = probePlayback({}, version, caps, { uhd: false, versionMajor: 4 });
+  assert.equal(probe.canDirectPlay, true);
+  assert.equal(probe.canDirectStream, true);
+});
+
 test('probePlayback: HEVC miss blocks both direct play and direct stream', function () {
   var version = {
     videoCodec: 'hevc',

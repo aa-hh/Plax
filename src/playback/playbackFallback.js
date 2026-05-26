@@ -123,6 +123,16 @@ function decideRebufferFallback(state, context) {
     state.rebufferDownshiftTried = true;
     return { action: 'quality-downshift', nextQuality: context.nextLowerQuality };
   }
+  /* HLS remux with soft subs: try full HLS transcode before HTTP progressive
+   * (HTTP fails on desktop MSE and does not fix a stalled remux session). */
+  if (
+    context.playbackMode === 'direct-stream' &&
+    context.transcodeProtocol === 'hls' &&
+    !state.fullTranscodeFallbackTried
+  ) {
+    state.fullTranscodeFallbackTried = true;
+    return { action: 'full-transcode' };
+  }
   if (context.transcodeProtocol !== 'http' && !state.httpFallbackTried) {
     state.httpFallbackTried = true;
     return { action: 'http-transcode' };

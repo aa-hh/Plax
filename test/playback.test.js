@@ -388,7 +388,7 @@ test('subtitleDirectFlagsForMode uses extraction flags for direct playback', fun
   });
 });
 
-test('buildSubtitleFetchPlan tries metadata API first for embedded text subs', function () {
+test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs', function () {
   var server = {
     connectionUri: 'http://plex.local:32400',
     accessToken: 'tok',
@@ -411,16 +411,19 @@ test('buildSubtitleFetchPlan tries metadata API first for embedded text subs', f
     delivery: 'embedded'
   };
   var attempts = buildSubtitleFetchPlan(server, session, track);
-  assert.ok(attempts.length >= 5);
-  assert.equal(attempts[0].label, 'universal-metadata-auto');
-  assert.ok(attempts[0].url.indexOf('subtitles=auto') >= 0);
-  assert.ok(attempts[0].url.indexOf('path=' + encodeURIComponent('/library/metadata/999')) >= 0);
-  assert.ok(attempts[0].url.indexOf('session=xplay-test-session') < 0);
-  assert.ok(attempts[0].url.indexOf('transcodeSessionId=xplay-test-session') >= 0);
-  assert.equal(attempts[0].init.headers['X-Plex-Token'], 'tok');
-  assert.equal(attempts[0].init.headers['X-Plex-Session-Identifier'], 'xplay-test-session');
-  assert.ok(attempts[0].url.indexOf('X-Plex-Audio-Stream=') < 0);
-  var first = attempts[0].url;
+  assert.ok(attempts.length >= 6);
+  assert.equal(attempts[0].label, 'stream-embedded');
+  assert.ok(attempts[0].url.indexOf('/library/streams/1893985.srt') >= 0);
+  var metaAuto = attempts.filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
+  assert.ok(metaAuto);
+  assert.ok(metaAuto.url.indexOf('subtitles=auto') >= 0);
+  assert.ok(metaAuto.url.indexOf('path=' + encodeURIComponent('/library/metadata/999')) >= 0);
+  assert.ok(metaAuto.url.indexOf('session=xplay-test-session') < 0);
+  assert.ok(metaAuto.url.indexOf('transcodeSessionId=xplay-test-session') >= 0);
+  assert.equal(metaAuto.init.headers['X-Plex-Token'], 'tok');
+  assert.equal(metaAuto.init.headers['X-Plex-Session-Identifier'], 'xplay-test-session');
+  assert.ok(metaAuto.url.indexOf('X-Plex-Audio-Stream=') < 0);
+  var first = metaAuto.url;
   assert.ok(first.indexOf('/video/:/transcode/universal/subtitles') >= 0);
   assert.ok(first.indexOf('subtitles=auto') >= 0);
   assert.ok(first.indexOf('hasMDE=1') >= 0);
@@ -456,7 +459,30 @@ test('buildSubtitleFetchPlan tries metadata API first for embedded text subs', f
       'advancedSubtitles'
     ].indexOf(key) >= 0, 'unexpected subtitle query param: ' + key);
   });
-  assert.ok(attempts.filter(function (a) { return a.label === 'stream-embedded'; }).length === 0);
+  assert.equal(attempts.filter(function (a) { return a.label === 'stream-embedded'; }).length, 1);
+});
+
+test('buildSubtitleFetchPlan uses protocol=hls for direct-stream remux', function () {
+  var server = {
+    connectionUri: 'http://plex.local:32400',
+    accessToken: 'tok',
+    activeConnection: { local: true, uri: 'http://plex.local:32400' }
+  };
+  var session = {
+    item: { key: '/library/metadata/999', ratingKey: '999' },
+    transcodeSessionId: 'plex-hls-session',
+    subtitleStreamId: 1893985,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var track = { id: 1893985, codec: 'srt', delivery: 'embedded' };
+  var metaAuto = buildSubtitleFetchPlan(server, session, track, {
+    playbackMode: 'direct-stream'
+  }).filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
+  assert.ok(metaAuto);
+  assert.ok(metaAuto.url.indexOf('protocol=hls') >= 0);
+  assert.ok(metaAuto.url.indexOf('protocol=http') < 0);
+  assert.ok(metaAuto.url.indexOf('transcodeSessionId=plex-hls-session') >= 0);
 });
 
 test('buildSubtitleFetchPlan uses location=wan for remote PMS connection', function () {
@@ -472,7 +498,8 @@ test('buildSubtitleFetchPlan uses location=wan for remote PMS connection', funct
     partIndex: 0
   };
   var track = { id: 1894107, codec: 'srt', delivery: 'embedded' };
-  var url = buildSubtitleFetchPlan(server, session, track, { playbackMode: 'direct' })[0].url;
+  var url = buildSubtitleFetchPlan(server, session, track, { playbackMode: 'direct' })
+    .filter(function (a) { return a.label === 'universal-metadata-auto'; })[0].url;
   assert.ok(url.indexOf('location=wan') >= 0);
   assert.ok(url.indexOf('location=lan') < 0);
 });
@@ -512,7 +539,7 @@ test('buildSubtitleFetchPlan uses transcode session and flags when transcoding',
   var attempts = buildSubtitleFetchPlan(server, session, track, {
     playbackMode: 'transcode-hls'
   });
-  var first = attempts[0].url;
+  var first = attempts.filter(function (a) { return a.label === 'universal-metadata-auto'; })[0].url;
   assert.ok(first.indexOf('directPlay=0') >= 0);
   assert.ok(first.indexOf('session=plex-server-session') < 0);
   assert.ok(first.indexOf('transcodeSessionId=plex-server-session') >= 0);
@@ -529,11 +556,11 @@ test('resolveSubtitleSessionId prefers server transcode session', function () {
   assert.equal(resolveSubtitleSessionId({ sessionId: 'xplay-1' }), 'xplay-1');
 });
 
-test('prepareClientSubtitlePlayback primes direct subtitles with metadata path and headers', async function () {
+test('prepareClientSubtitlePlayback on HLS remux selects part only (no decision prime)', async function () {
   var savedFetch = globalThis.fetch;
   var calls = [];
   globalThis.fetch = function (url, init) {
-    calls.push({ url: String(url), init: init || {} });
+    calls.push({ url: String(url), init: init || {}, method: (init && init.method) || 'GET' });
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -557,26 +584,14 @@ test('prepareClientSubtitlePlayback primes direct subtitles with metadata path a
       { id: 5, codec: 'srt', delivery: 'embedded' },
       'direct-stream'
     );
-    var decision = calls.filter(function (call) {
+    assert.equal(calls.filter(function (call) {
       return call.url.indexOf('/video/:/transcode/universal/decision') >= 0;
+    }).length, 0);
+    var partPut = calls.filter(function (call) {
+      return call.method === 'PUT' && call.url.indexOf('/library/parts/42') >= 0;
     })[0];
-    assert.ok(decision);
-    var q = new URL(decision.url).searchParams;
-    assert.equal(q.get('path'), '/library/metadata/999');
-    assert.equal(q.get('transcodeSessionId'), 'plex-resource-session');
-    assert.equal(q.get('subtitles'), null);
-    assert.equal(q.get('copyts'), null);
-    assert.equal(q.get('audioBoost'), null);
-    assert.equal(q.get('X-Plex-Audio-Stream'), null);
-    assert.equal(q.get('X-Plex-Auto-Audio-Stream'), null);
-    assert.equal(q.get('mediaBufferSize'), '102400');
-    assert.equal(q.get('autoAdjustQuality'), '0');
-    assert.equal(q.get('X-Plex-Token'), null);
-    assert.equal(q.get('X-Plex-Client-Identifier'), null);
-    assert.equal(q.get('X-Plex-Session-Identifier'), 'plex-resource-session');
-    assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
-    assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'plex-resource-session');
-    assert.equal(decision.init.headers.Accept, 'application/xml');
+    assert.ok(partPut);
+    assert.ok(partPut.url.indexOf('subtitleStreamID=5') >= 0);
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;
@@ -651,7 +666,7 @@ test('buildSubtitleFetchPlan includes part path as last resort', function () {
     partIndex: 0
   };
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
-  assert.equal(attempts[0].label, 'universal-metadata-auto');
+  assert.equal(attempts[0].label, 'stream-embedded');
   var partAttempt = attempts.filter(function (a) { return a.label === 'universal-part-sidecar'; })[0];
   assert.ok(partAttempt);
   assert.ok(partAttempt.url.indexOf('path=' + encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
@@ -675,14 +690,16 @@ test('buildSubtitleFetchPlan uses server-relative path even on remote direct-pla
     playbackMode: 'direct'
   });
   attempts.forEach(function (attempt) {
+    if (attempt.label.indexOf('stream-') === 0) return;
     assert.ok(
       attempt.url.indexOf(encodeURIComponent('http://185.203.56.20:17054/library')) < 0,
       'path must not include the public server URL (PMS rejects with HTTP 400): ' + attempt.url
     );
     assert.ok(attempt.url.indexOf('location=wan') >= 0);
   });
-  assert.equal(attempts[0].label, 'universal-metadata-auto');
-  assert.ok(attempts[0].url.indexOf(
+  var metaAuto = attempts.filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
+  assert.ok(metaAuto);
+  assert.ok(metaAuto.url.indexOf(
     'path=' + encodeURIComponent('/library/metadata/33612')
   ) >= 0);
   var partAttempt = attempts.filter(function (a) { return a.label === 'universal-part-embedded'; })[0];

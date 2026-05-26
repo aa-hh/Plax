@@ -120,6 +120,14 @@ function getCodecCapabilities(deviceInfo) {
     caps.dts = 'probably';
     caps.dtsInferred = true;
   }
+  if ((!caps.eac3 || caps.eac3 === '') && tvLikelySupportsDts(deviceInfo)) {
+    caps.eac3 = 'probably';
+    caps.eac3Inferred = true;
+  }
+  if ((!caps.ac3 || caps.ac3 === '') && tvLikelySupportsDts(deviceInfo)) {
+    caps.ac3 = 'probably';
+    caps.ac3Inferred = true;
+  }
   return caps;
 }
 

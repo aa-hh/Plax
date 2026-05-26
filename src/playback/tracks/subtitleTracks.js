@@ -197,6 +197,11 @@ function isDirectPlaybackMode(playbackMode) {
   return playbackMode === 'direct' || playbackMode === 'direct-stream';
 }
 
+/** Progressive file playback only (not HLS remux). */
+function isProgressiveDirectPlay(playbackMode) {
+  return playbackMode === 'direct';
+}
+
 /** Plex `location` query param — must match how the client reaches PMS. */
 function plexLocationForServer(server) {
   if (server && server.activeConnection && server.activeConnection.local) return 'lan';
@@ -235,11 +240,15 @@ function selectPartSubtitleStream(server, session) {
     subtitleStreamID: String(session.subtitleStreamId),
     allParts: '1'
   }, server);
-  return fetch(url, { method: 'PUT', headers: plexHeaders() }).then(function (res) {
-    if (!res.ok) {
-      console.warn('[subtitles] PUT /library/parts/' + partId + ' HTTP ' + res.status);
-    }
+  return fetchText(url, {
+    method: 'PUT',
+    headers: plexHeaders(),
+    timeout: 15000
   }).catch(function (err) {
+    if (err && err.status) {
+      console.warn('[subtitles] PUT /library/parts/' + partId + ' HTTP ' + err.status);
+      return;
+    }
     console.warn('[subtitles] stream selection failed:', err.message);
   });
 }
@@ -289,7 +298,7 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   options = options || {};
   if (!server || !session || session.subtitleStreamId == null || !mediaPath) return null;
   var directFlags = subtitleDirectFlagsForMode(playbackMode);
-  var directPlayback = isDirectPlaybackMode(playbackMode);
+  var progressiveDirect = isProgressiveDirectPlay(playbackMode);
   var subtitleEndpoint = options.subtitleEndpoint === true;
   var decisionEndpoint = options.decisionEndpoint === true;
   var offsetSec = offsetSecondsForPlex(session);
@@ -300,7 +309,7 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
     partIndex: session.partIndex != null ? session.partIndex : 0,
     hasMDE: '1',
     location: plexLocationForServer(server),
-    protocol: directPlayback ? 'http' : protocolForPlaybackMode(playbackMode)
+    protocol: progressiveDirect ? 'http' : protocolForPlaybackMode(playbackMode)
   }, directFlags);
   if (decisionEndpoint) {
     params.fastSeek = '1';
@@ -313,12 +322,12 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   if (!decisionEndpoint && options.omitSubtitleStreamId !== true) {
     params.subtitleStreamID = String(session.subtitleStreamId);
   }
-  if (!directPlayback && !subtitleEndpoint && !decisionEndpoint) {
+  if (!progressiveDirect && !subtitleEndpoint && !decisionEndpoint) {
     params.encoding = 'utf-8';
     params.directStreamAudio = directFlags.directStreamAudio;
     params['X-Plex-Subtitle-Stream'] = String(session.subtitleStreamId);
   }
-  if (directPlayback && !subtitleEndpoint && !decisionEndpoint) {
+  if (progressiveDirect && !subtitleEndpoint && !decisionEndpoint) {
     params.copyts = '1';
     params.subtitleSize = '100';
     params.audioBoost = '100';
@@ -401,9 +410,14 @@ function buildUniversalDecisionRequest(server, session, mediaPath, track, playba
   };
 }
 
-/** Register the playback session with PMS before subtitle extract (matches Plex Media Player). */
+/**
+ * Register progressive direct play with PMS before subtitle extract (PMP parity).
+ * Do not call during HLS remux (`direct-stream`): an extra `/decision` while
+ * `start.m3u8` is running can stall segment generation (persistent 404 on
+ * the next `.ts`, infinite buffering).
+ */
 function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
-  if (!isDirectPlaybackMode(playbackMode) || !resolveSubtitleSessionId(session)) {
+  if (playbackMode !== 'direct' || !resolveSubtitleSessionId(session)) {
     return Promise.resolve();
   }
   var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
@@ -459,11 +473,19 @@ function buildSubtitleFetchPlan(server, session, track, options) {
     );
   }
 
+  var embedded = resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack);
+  if (embedded && !isAdvancedSubtitleCodec(resolvedTrack)) {
+    pushSubtitleAttempt(
+      attempts,
+      'stream-embedded',
+      buildStreamKeySubtitleUrl(server, resolvedTrack)
+    );
+  }
+
   var metadataPath = resolveSessionMetadataPath(session);
   var partPath = resolveSessionPartPath(session);
   var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'text' : null;
   var universalOpts = { advancedSubtitles: advanced, omitSubtitleStreamId: true };
-  var embedded = resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack);
 
   pushSubtitleAttempt(attempts, 'universal-metadata-auto', buildUniversalSubtitleRequest(
     server, session, metadataPath, resolvedTrack, playbackMode,
@@ -627,6 +649,7 @@ export {
   resolveSessionPartPath,
   subtitleDirectFlagsForMode,
   isDirectPlaybackMode,
+  isProgressiveDirectPlay,
   plexLocationForServer,
   resolveTranscodeMediaPath,
   buildSubtitleFetchPlan,

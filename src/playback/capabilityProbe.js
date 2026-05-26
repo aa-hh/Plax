@@ -58,9 +58,20 @@ function probePlayback(item, version, capabilities, deviceInfo) {
       warnings.push('DTS: TV hardware profile (browser probe inconclusive)');
     }
   }
-  if (audioCodec.indexOf('ac3') >= 0 || audioCodec.indexOf('eac3') >= 0) {
-    var ac = audioCodec.indexOf('eac3') >= 0 ? capabilities.eac3 : capabilities.ac3;
-    if (!ac) warnings.push('Dolby audio support varies by model');
+  if (audioCodec.indexOf('eac3') >= 0) {
+    if (!codecReported(capabilities.eac3)) {
+      audioDirectOk = false;
+      warnings.push('E-AC-3 (DD+) audio may require remux or transcode on this device');
+    } else if (capabilities.eac3Inferred) {
+      warnings.push('E-AC-3: TV hardware profile (browser probe inconclusive)');
+    }
+  } else if (audioCodec.indexOf('ac3') >= 0) {
+    if (!codecReported(capabilities.ac3)) {
+      audioDirectOk = false;
+      warnings.push('AC-3 (Dolby Digital) audio may require remux or transcode on this device');
+    } else if (capabilities.ac3Inferred) {
+      warnings.push('AC-3: TV hardware profile (browser probe inconclusive)');
+    }
   }
 
   checkHdrSupport(version, deviceInfo, warnings);
@@ -83,7 +94,7 @@ function probePlayback(item, version, capabilities, deviceInfo) {
     warnings.push('MKV may direct play on this TV; Auto will try remux if playback fails');
   }
   if (!audioDirectOk && canDirectStream && !bitrateBlocks) {
-    warnings.push('Auto can use HLS remux or transcode when DTS is not direct-playable');
+    warnings.push('Auto can use HLS remux or transcode when audio is not direct-playable');
   }
 
   return {

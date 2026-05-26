@@ -506,6 +506,92 @@ test('loadClientSubtitleFromUrls renders WebVTT cues from fetch text', async fun
   }
 });
 
+test('loadClientSubtitleFromUrls advances after timed-out first attempt', async function () {
+  var savedXhr = globalThis.XMLHttpRequest;
+  var call = 0;
+  globalThis.VTTCue = globalThis.VTTCue || function VTTCue(startTime, endTime, text) {
+    this.startTime = startTime;
+    this.endTime = endTime;
+    this.text = text;
+  };
+  globalThis.XMLHttpRequest = function XMLHttpRequest() {
+    var self = this;
+    this.status = 0;
+    this.responseText = '';
+    this.open = function () {};
+    this.setRequestHeader = function () {};
+    this.send = function () {
+      call += 1;
+      if (call === 1) {
+        setTimeout(function () {
+          if (self.ontimeout) self.ontimeout();
+        }, 0);
+        return;
+      }
+      self.status = 200;
+      self.responseText = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello';
+      setTimeout(function () {
+        if (self.onload) self.onload();
+      }, 0);
+    };
+  };
+  try {
+    await playerModule.loadClientSubtitleFromUrls([
+      { label: 'first-hang', url: 'http://plex.local/subtitles-hang' },
+      { label: 'second-ok', url: 'http://plex.local/subtitles-ok' }
+    ], 0);
+    assert.equal(call, 2);
+    assert.equal(playerModule.hasClientSubtitlesLoaded(), true);
+  } finally {
+    if (savedXhr === undefined) delete globalThis.XMLHttpRequest;
+    else globalThis.XMLHttpRequest = savedXhr;
+  }
+});
+
+test('loadClientSubtitleFromUrls advances after HTTP 404 on first attempt', async function () {
+  var savedXhr = globalThis.XMLHttpRequest;
+  var call = 0;
+  globalThis.VTTCue = globalThis.VTTCue || function VTTCue(startTime, endTime, text) {
+    this.startTime = startTime;
+    this.endTime = endTime;
+    this.text = text;
+  };
+  globalThis.XMLHttpRequest = function XMLHttpRequest() {
+    var self = this;
+    this.status = 0;
+    this.responseText = '';
+    this.open = function () {};
+    this.setRequestHeader = function () {};
+    this.send = function () {
+      call += 1;
+      if (call === 1) {
+        self.status = 404;
+        self.responseText = 'Not found';
+        setTimeout(function () {
+          if (self.onload) self.onload();
+        }, 0);
+        return;
+      }
+      self.status = 200;
+      self.responseText = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello';
+      setTimeout(function () {
+        if (self.onload) self.onload();
+      }, 0);
+    };
+  };
+  try {
+    await playerModule.loadClientSubtitleFromUrls([
+      { label: 'first-404', url: 'http://plex.local/subtitles-miss' },
+      { label: 'second-ok', url: 'http://plex.local/subtitles-ok' }
+    ], 0);
+    assert.equal(call, 2);
+    assert.equal(playerModule.hasClientSubtitlesLoaded(), true);
+  } finally {
+    if (savedXhr === undefined) delete globalThis.XMLHttpRequest;
+    else globalThis.XMLHttpRequest = savedXhr;
+  }
+});
+
 test('loadClientSubtitleFromUrls salvages chunked WebVTT responseText after fetch failure', async function () {
   var savedFetch = globalThis.fetch;
   var savedXhr = globalThis.XMLHttpRequest;
