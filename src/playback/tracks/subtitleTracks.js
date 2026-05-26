@@ -1,6 +1,6 @@
 import { isGraphicalSubtitle } from '../capabilityProbe.js';
-import { serverUrl, plexHeaders } from '../../plex/client.js';
-import { fetchText } from '../../utils/fetch.js';
+import { serverUrl, plexHeaders, getServerToken } from '../../plex/client.js';
+import { fetchText, buildQuery } from '../../utils/fetch.js';
 import { buildAudioTranscodeParam } from './audioTracks.js';
 import { collectStreamsFromMedia } from './streamUtils.js';
 import { normalizePlexPath } from '../plexPaths.js';
@@ -286,6 +286,7 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   if (!server || !session || session.subtitleStreamId == null || !mediaPath) return null;
   var directFlags = subtitleDirectFlagsForMode(playbackMode);
   var directPlayback = isDirectPlaybackMode(playbackMode);
+  var subtitleEndpoint = options.subtitleEndpoint === true;
   var offsetSec = offsetSecondsForPlex(session);
   var pathParam = resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath;
   var params = Object.assign({
@@ -301,12 +302,12 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   if (options.omitSubtitleStreamId !== true) {
     params.subtitleStreamID = String(session.subtitleStreamId);
   }
-  if (!directPlayback) {
+  if (!directPlayback && !subtitleEndpoint) {
     params.encoding = 'utf-8';
     params.directStreamAudio = directFlags.directStreamAudio;
     params['X-Plex-Subtitle-Stream'] = String(session.subtitleStreamId);
   }
-  if (directPlayback) {
+  if (directPlayback && !subtitleEndpoint) {
     params.copyts = '1';
     params.subtitleSize = '100';
     params.audioBoost = '100';
@@ -319,6 +320,7 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   var playbackSessionId = resolveSubtitleSessionId(session);
   if (playbackSessionId) {
     params.session = playbackSessionId;
+    params.transcodeSessionId = playbackSessionId;
   }
   if (session.subtitleOffset) {
     params['X-Plex-Subtitle-Offset'] = String(session.subtitleOffset);
@@ -348,6 +350,30 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
   );
 }
 
+function subtitleFetchHeaders(server, session) {
+  var headers = plexHeaders({ Accept: 'text/srt, text/vtt, text/plain;q=0.9, */*;q=0.1' });
+  var token = getServerToken(server);
+  var playbackSessionId = resolveSubtitleSessionId(session);
+  if (token) headers['X-Plex-Token'] = token;
+  if (playbackSessionId) headers['X-Plex-Session-Identifier'] = playbackSessionId;
+  return headers;
+}
+
+function buildUniversalSubtitleRequest(server, session, mediaPath, track, playbackMode, options) {
+  var params = buildUniversalTranscodeQuery(
+    server, session, mediaPath, track, playbackMode,
+    Object.assign({}, options || {}, { subtitleEndpoint: true })
+  );
+  if (!params) return null;
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/video/:/transcode/universal/subtitles' +
+      (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session) }
+  };
+}
+
 /** Register the playback session with PMS before subtitle extract (matches Plex Media Player). */
 function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
   if (!isDirectPlaybackMode(playbackMode) || !resolveSubtitleSessionId(session)) {
@@ -370,16 +396,20 @@ function prepareClientSubtitlePlayback(server, session, track, playbackMode) {
   });
 }
 
-function pushSubtitleAttempt(list, label, url) {
+function pushSubtitleAttempt(list, label, request) {
+  if (!request) return;
+  var url = typeof request === 'string' ? request : request.url;
   if (!url) return;
   var i;
   for (i = 0; i < list.length; i++) {
     if (list[i].url === url) return;
   }
-  list.push({ label: label, url: url });
+  var attempt = { label: label, url: url };
+  if (typeof request !== 'string' && request.init) attempt.init = request.init;
+  list.push(attempt);
 }
 
-/** @typedef {{ label: string, url: string }} SubtitleFetchAttempt */
+/** @typedef {{ label: string, url: string, init?: { headers?: Object } }} SubtitleFetchAttempt */
 
 /** Mode-aware ordered subtitle fetch attempts (embedded → universal; sidecar → stream then universal). */
 function buildSubtitleFetchPlan(server, session, track, options) {
@@ -391,7 +421,7 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   var resolvedTrack = track || null;
   var playbackMode = options.playbackMode || 'direct';
 
-  if (isSidecarSubtitleTrack(resolvedTrack)) {
+  if (isSidecarSubtitleTrack(resolvedTrack) && !isAdvancedSubtitleCodec(resolvedTrack)) {
     pushSubtitleAttempt(
       attempts,
       'stream-sidecar',
@@ -401,40 +431,48 @@ function buildSubtitleFetchPlan(server, session, track, options) {
 
   var metadataPath = resolveSessionMetadataPath(session);
   var partPath = resolveSessionPartPath(session);
-  var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'convert' : null;
-  var universalOpts = { advancedSubtitles: advanced };
+  var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'text' : null;
+  var universalOpts = { advancedSubtitles: advanced, omitSubtitleStreamId: true };
   var embedded = resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack);
 
-  if (embedded && partPath) {
-    pushSubtitleAttempt(attempts, 'universal-part-embedded', buildUniversalSubtitleUrl(
-      server, session, partPath, resolvedTrack, playbackMode,
-      Object.assign({}, universalOpts, { subtitles: 'embedded' })
-    ));
-    pushSubtitleAttempt(attempts, 'universal-part-embedded-session', buildUniversalSubtitleUrl(
-      server, session, partPath, resolvedTrack, playbackMode,
-      Object.assign({}, universalOpts, { subtitles: 'embedded', omitSubtitleStreamId: true })
-    ));
-  }
-
-  pushSubtitleAttempt(attempts, 'universal-metadata-auto', buildUniversalSubtitleUrl(
+  pushSubtitleAttempt(attempts, 'universal-metadata-auto', buildUniversalSubtitleRequest(
     server, session, metadataPath, resolvedTrack, playbackMode,
     Object.assign({}, universalOpts, { subtitles: 'auto' })
   ));
 
   if (embedded) {
-    pushSubtitleAttempt(attempts, 'universal-metadata-embedded', buildUniversalSubtitleUrl(
+    pushSubtitleAttempt(attempts, 'universal-metadata-embedded', buildUniversalSubtitleRequest(
       server, session, metadataPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'embedded' })
     ));
   }
 
-  pushSubtitleAttempt(attempts, 'universal-metadata-sidecar', buildUniversalSubtitleUrl(
+  pushSubtitleAttempt(attempts, 'universal-metadata-sidecar', buildUniversalSubtitleRequest(
     server, session, metadataPath, resolvedTrack, playbackMode,
     Object.assign({}, universalOpts, { subtitles: 'sidecar' })
   ));
 
+  if (isSidecarSubtitleTrack(resolvedTrack) && isAdvancedSubtitleCodec(resolvedTrack)) {
+    pushSubtitleAttempt(
+      attempts,
+      'stream-sidecar',
+      buildStreamKeySubtitleUrl(server, resolvedTrack)
+    );
+  }
+
+  if (embedded && partPath) {
+    pushSubtitleAttempt(attempts, 'universal-part-embedded', buildUniversalSubtitleRequest(
+      server, session, partPath, resolvedTrack, playbackMode,
+      Object.assign({}, universalOpts, { subtitles: 'embedded' })
+    ));
+    pushSubtitleAttempt(attempts, 'universal-part-embedded-stream', buildUniversalSubtitleRequest(
+      server, session, partPath, resolvedTrack, playbackMode,
+      Object.assign({}, universalOpts, { subtitles: 'embedded', omitSubtitleStreamId: false })
+    ));
+  }
+
   if (partPath && partPath !== metadataPath) {
-    pushSubtitleAttempt(attempts, 'universal-part-sidecar', buildUniversalSubtitleUrl(
+    pushSubtitleAttempt(attempts, 'universal-part-sidecar', buildUniversalSubtitleRequest(
       server, session, partPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'sidecar' })
     ));

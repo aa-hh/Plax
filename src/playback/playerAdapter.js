@@ -8,7 +8,7 @@ import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
 import { shouldScrobble, shouldResetScrobble } from './scrobblePolicy.js';
 import { timelineStateForPlayback } from './timelineSyncState.js';
 import { flushTimelineProgress } from './timelineFlush.js';
-import { parseSrtToCues } from './tracks/srtParser.js';
+import { parseSubtitleTextToCues } from './tracks/srtParser.js';
 import { shouldRetrySubtitleFetch } from './tracks/subtitleTracks.js';
 import { createRebufferWatchdog } from './rebufferWatchdog.js';
 import { summarizeTranscodeUrl } from './plexPaths.js';
@@ -332,7 +332,7 @@ function clearSubtitles() {
 function applySrtText(srtText, offsetMs) {
   clearSubtitles();
   if (!videoEl || !srtText) return;
-  var cues = parseSrtToCues(srtText, offsetMs || 0);
+  var cues = parseSubtitleTextToCues(srtText, offsetMs || 0);
   if (!cues.length) return;
   var track = videoEl.addTextTrack('subtitles', 'Subtitles', 'en');
   cues.forEach(function (cue) {
@@ -350,7 +350,7 @@ function normalizeSubtitleFetchAttempts(urls) {
   if (!urls || !urls.length) return [];
   return urls.map(function (entry) {
     if (typeof entry === 'string') return { label: 'subtitle', url: entry };
-    return { label: entry.label || 'subtitle', url: entry.url };
+    return { label: entry.label || 'subtitle', url: entry.url, init: entry.init || null };
   }).filter(function (attempt) { return !!attempt.url; });
 }
 
@@ -371,16 +371,20 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       '[subtitles] fetch ' + attempt + '/' + attempts.length + ' (' + label + ')',
       redactPlexUrl(url)
     );
-    return fetchText(url, { timeout: 20000 }).then(function (text) {
+    var fetchOptions = Object.assign({ timeout: 20000 }, entry.init || {});
+    return fetchText(url, fetchOptions).then(function (text) {
       applySrtText(text, offsetMs);
       if (!hasClientSubtitlesLoaded()) {
-        return Promise.reject(new Error('Subtitle file had no parseable cues'));
+        var parseErr = new Error('Subtitle file had no parseable cues');
+        parseErr.body = text;
+        return Promise.reject(parseErr);
       }
     }).catch(function (err) {
-      if (index < attempts.length && shouldRetrySubtitleFetch(err)) {
+      if (index < attempts.length && (shouldRetrySubtitleFetch(err) || !err.status)) {
         var detail = err.body ? ' — ' + String(err.body).slice(0, 120) : '';
         console.warn(
-          '[subtitles] HTTP ' + err.status + ' on (' + label + '), trying fallback' + detail
+          '[subtitles] ' + (err.status ? 'HTTP ' + err.status : 'parse failure') +
+            ' on (' + label + '), trying fallback' + detail
         );
         return tryNext(err);
       }
