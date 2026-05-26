@@ -88,7 +88,10 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     session.subtitleOffset,
     {
       burnIn: session.subtitleBurnIn === true,
-      clientSubtitles: softTextSubs
+      clientSubtitles: softTextSubs,
+      advancedSubtitles: session.subtitleBurnIn === true && session.subtitleAdvancedBurn
+        ? 'burn'
+        : undefined
     }
   ));
 
@@ -196,6 +199,7 @@ function createSession(item, version, options) {
     subtitleStreamId: options.subtitleStreamId,
     subtitleOffset: options.subtitleOffset || 0,
     subtitleBurnIn: options.subtitleBurnIn === true,
+    subtitleAdvancedBurn: options.subtitleAdvancedBurn === true,
     quality: options.quality,
     forceTranscode: options.forceTranscode,
     playbackStrategy: options.playbackStrategy,

@@ -577,13 +577,18 @@ function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
   options = options || {};
   if (streamId == null) return {};
   if (options.burnIn === true) {
+    /* Match Plex clients: stream id + burn; do not force subtitleFormat=srt
+     * (breaks PGS/VOBSUB burn). ASS/SSA need advancedSubtitles=burn. */
     var burned = {
+      subtitleStreamID: String(streamId),
       'X-Plex-Subtitle-Stream': String(streamId),
       autoAdjustSubtitle: '1',
       subtitleSize: '100',
-      subtitleFormat: 'srt',
       subtitles: 'burn'
     };
+    if (options.advancedSubtitles) {
+      burned.advancedSubtitles = options.advancedSubtitles;
+    }
     if (offsetMs) {
       burned['X-Plex-Subtitle-Offset'] = String(offsetMs);
     }
@@ -633,6 +638,7 @@ export {
   canUseClientSubtitles,
   isClientSubtitlePlaybackMode,
   shouldBurnInSubtitle,
+  isAdvancedSubtitleCodec,
   buildClientSubtitleUrl,
   shouldRetrySubtitleFetch,
   parseTranscodeSessionFromUrl,

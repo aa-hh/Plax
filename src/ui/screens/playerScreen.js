@@ -20,6 +20,7 @@ import {
   canUseClientSubtitles,
   isDirectPlaybackMode,
   shouldBurnInSubtitle,
+  isAdvancedSubtitleCodec,
   buildSubtitleFetchPlan,
   prepareClientSubtitlePlayback,
   parseTranscodeSessionFromUrl,
@@ -1581,13 +1582,28 @@ function playerScreen(root, params, navigate) {
     });
   }
 
+  function subtitleBurnSessionFlags() {
+    var burnIn = sessionSubtitleBurnIn();
+    if (!burnIn && !(session && session.subtitleBurnIn)) return { burnIn: false, advancedBurn: false };
+    var track = findSubtitleTrack(
+      subtitleTracks.concat(graphicalSubtitleTracks),
+      selectedSubtitleId
+    );
+    return {
+      burnIn: true,
+      advancedBurn: !!(track && isAdvancedSubtitleCodec(track))
+    };
+  }
+
   function buildSessionOptions(offset, protocol, streamChange) {
+    var burnFlags = subtitleBurnSessionFlags();
     var opts = {
       offset: offset,
       audioStreamId: selectedAudioId,
       subtitleStreamId: selectedSubtitleId,
       subtitleOffset: subtitleOffset,
-      subtitleBurnIn: sessionSubtitleBurnIn(),
+      subtitleBurnIn: burnFlags.burnIn,
+      subtitleAdvancedBurn: burnFlags.advancedBurn,
       quality: sessionQualityForPlay(),
       forceTranscode: params.forceTranscode || (session && session.forceTranscode),
       transcodeProtocol: protocol || (session && session.transcodeProtocol) || 'hls'
@@ -1623,6 +1639,7 @@ function playerScreen(root, params, navigate) {
       opts.forceTranscode = true;
       opts.playbackStrategy = 'transcode';
       opts.subtitleBurnIn = true;
+      opts.subtitleAdvancedBurn = burnFlags.advancedBurn;
     }
     if (streamChange === 'subtitle-fallback' || streamChange === 'subtitle') {
       opts.forceTranscode = true;
@@ -1658,6 +1675,14 @@ function playerScreen(root, params, navigate) {
       opts.forceTranscode = true;
       opts.playbackStrategy = 'transcode';
       opts.subtitleBurnIn = true;
+      opts.subtitleAdvancedBurn = false;
+    }
+    if (session && session.subtitleBurnIn &&
+        (streamChange === 'quality' || streamChange === 'audio')) {
+      opts.subtitleBurnIn = true;
+      opts.subtitleAdvancedBurn = session.subtitleAdvancedBurn === true;
+      opts.forceTranscode = true;
+      opts.playbackStrategy = 'transcode';
     }
     var prof = getProfile(selectedQuality);
     if ((streamChange === 'quality' || streamChange === 'audio') && prof && prof.forceDirect) {

@@ -265,8 +265,12 @@ test('buildSubtitleTranscodeParams only burns when burnIn is explicitly true', f
   assert.equal(burned['X-Plex-Subtitle-Stream'], '3');
   assert.equal(burned.autoAdjustSubtitle, '1');
   assert.equal(burned.subtitleSize, '100');
-  assert.equal(burned.subtitleFormat, 'srt');
+  assert.equal(burned.subtitleStreamID, '3');
+  assert.equal(burned.subtitleFormat, undefined);
   assert.equal(burned.subtitles, 'burn');
+  assert.equal(burned.advancedSubtitles, undefined);
+  var assBurn = buildSubtitleTranscodeParams(3, 100, { burnIn: true, advancedSubtitles: 'burn' });
+  assert.equal(assBurn.advancedSubtitles, 'burn');
   assert.equal(burned['X-Plex-Subtitle-Offset'], '100');
 });
 
