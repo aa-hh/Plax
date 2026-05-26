@@ -97,7 +97,8 @@ function setupVideo(overrides) {
 }
 
 function createFakeHls() {
-  function FakeHls() {
+  function FakeHls(config) {
+    this.config = config || {};
     this.handlers = {};
     this.destroyed = false;
     FakeHls.instances.push(this);
@@ -244,6 +245,33 @@ test('play uses hls.js for browser HLS compatibility', function () {
   assert.equal(FakeHls.instances[0].media, video);
   assert.equal(FakeHls.instances[0].source, 'http://127.0.0.1/video.m3u8?X-Plex-Token=abc123');
   assert.equal(video.src, '');
+});
+
+test('play sets Plex auth headers on hls.js requests', function () {
+  var FakeHls = createFakeHls();
+  playerModule.setHlsPlayerForTest(FakeHls);
+  var plexSession = {
+    server: {
+      connectionUri: 'http://127.0.0.1:32400',
+      accessToken: 'server-token'
+    },
+    item: { ratingKey: '99', duration: 120000 }
+  };
+  playerModule.play(
+    'http://127.0.0.1/video.m3u8?X-Plex-Token=query-token&session=xplay-session',
+    plexSession,
+    { mode: 'transcode-hls' }
+  );
+  var inst = FakeHls.instances[0];
+  assert.ok(inst);
+  assert.equal(typeof inst.config.xhrSetup, 'function');
+  var reqHeaders = {};
+  var xhr = {
+    setRequestHeader: function (k, v) { reqHeaders[k] = v; }
+  };
+  inst.config.xhrSetup(xhr);
+  assert.equal(reqHeaders['X-Plex-Token'], 'query-token');
+  assert.equal(reqHeaders['X-Plex-Session-Identifier'], 'xplay-session');
 });
 
 test('play keeps real webOS TV HLS on native video', function () {
@@ -435,6 +463,18 @@ test('seekMs maps absolute media position to relative element time for transcode
   playerModule.play(url, session, { offset: 60000, mode: 'transcode-hls' });
   playerModule.seekMs(90000);
   assert.equal(Math.floor(video.currentTime), 30);
+});
+
+test('getCurrentTimeMs avoids double offset when hls.js timeline already absolute', function () {
+  var FakeHls = createFakeHls();
+  playerModule.setHlsPlayerForTest(FakeHls);
+  playerModule.play('http://127.0.0.1/video.m3u8?offset=2061000', session, {
+    offset: 2061000,
+    mode: 'transcode-hls'
+  });
+  var video = playerModule.getVideoElement();
+  video.currentTime = 2062;
+  assert.equal(playerModule.getCurrentTimeMs(), 2062000);
 });
 
 test('scrobble resets after seek back below threshold', async function () {
@@ -634,6 +674,92 @@ test('loadClientSubtitleFromUrls salvages chunked WebVTT responseText after fetc
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;
+    if (savedXhr === undefined) delete globalThis.XMLHttpRequest;
+    else globalThis.XMLHttpRequest = savedXhr;
+  }
+});
+
+test('loadClientSubtitleFromUrls follows manifest hop to subtitle text', async function () {
+  var savedXhr = globalThis.XMLHttpRequest;
+  var requests = [];
+  globalThis.VTTCue = globalThis.VTTCue || function VTTCue(startTime, endTime, text) {
+    this.startTime = startTime;
+    this.endTime = endTime;
+    this.text = text;
+  };
+  globalThis.XMLHttpRequest = function XMLHttpRequest() {
+    var self = this;
+    this.status = 0;
+    this.responseText = '';
+    this.open = function (_method, url) {
+      self.url = url;
+      requests.push(url);
+    };
+    this.setRequestHeader = function () {};
+    this.send = function () {
+      if (String(self.url).indexOf('/video/:/transcode/universal/subtitles') >= 0) {
+        self.status = 200;
+        self.responseText =
+          '#EXTM3U\n' +
+          '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",DEFAULT=YES,AUTOSELECT=YES,URI="session/subs-1.vtt"\n' +
+          '#EXT-X-STREAM-INF:BANDWIDTH=1,SUBTITLES="subs"\n' +
+          'session/video-1.m3u8';
+      } else {
+        self.status = 200;
+        self.responseText = 'WEBVTT\n\n00:00:02.000 --> 00:00:03.000\nManifest subtitle';
+      }
+      setTimeout(function () {
+        if (self.onload) self.onload();
+      }, 0);
+    };
+  };
+  try {
+    await playerModule.loadClientSubtitleFromUrls([{
+      label: 'universal-metadata-auto',
+      url: 'http://plex.local/video/:/transcode/universal/subtitles'
+    }], 0);
+    var track = playerModule.getVideoElement().textTracks[0];
+    assert.equal(track.mode, 'showing');
+    assert.equal(track.cues.length, 1);
+    assert.equal(track.cues[0].startTime, 2);
+    assert.equal(track.cues[0].text, 'Manifest subtitle');
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1], 'http://plex.local/video/:/transcode/universal/session/subs-1.vtt');
+  } finally {
+    if (savedXhr === undefined) delete globalThis.XMLHttpRequest;
+    else globalThis.XMLHttpRequest = savedXhr;
+  }
+});
+
+test('loadClientSubtitleFromUrls does not follow video variant manifest entries', async function () {
+  var savedXhr = globalThis.XMLHttpRequest;
+  var requests = [];
+  globalThis.XMLHttpRequest = function XMLHttpRequest() {
+    var self = this;
+    this.status = 0;
+    this.responseText = '';
+    this.open = function (_method, url) {
+      self.url = url;
+      requests.push(url);
+    };
+    this.setRequestHeader = function () {};
+    this.send = function () {
+      self.status = 200;
+      self.responseText = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsession/video-1.m3u8';
+      setTimeout(function () {
+        if (self.onload) self.onload();
+      }, 0);
+    };
+  };
+  try {
+    await assert.rejects(function () {
+      return playerModule.loadClientSubtitleFromUrls([{
+        label: 'universal-metadata-auto',
+        url: 'http://plex.local/video/:/transcode/universal/subtitles'
+      }], 0);
+    }, /Subtitle file had no parseable cues/);
+    assert.equal(requests.length, 1);
+  } finally {
     if (savedXhr === undefined) delete globalThis.XMLHttpRequest;
     else globalThis.XMLHttpRequest = savedXhr;
   }

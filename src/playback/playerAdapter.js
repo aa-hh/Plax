@@ -167,7 +167,28 @@ function destroyActiveHls() {
   activeHls = null;
 }
 
-function attachMseHls(url) {
+function hlsAuthHeaders(url, session) {
+  var headers = {};
+  var token = null;
+  var sessionId = null;
+  try {
+    var parsed = new URL(url);
+    token = parsed.searchParams.get('X-Plex-Token') || null;
+    sessionId = parsed.searchParams.get('X-Plex-Session-Identifier') ||
+      parsed.searchParams.get('session') || null;
+  } catch (e) {
+    token = null;
+    sessionId = null;
+  }
+  if (!token && session && session.server && session.server.accessToken) {
+    token = session.server.accessToken;
+  }
+  if (token) headers['X-Plex-Token'] = token;
+  if (sessionId) headers['X-Plex-Session-Identifier'] = sessionId;
+  return headers;
+}
+
+function attachMseHls(url, requestHeaders) {
   var events = HlsPlayer.Events || {};
   var errorTypes = HlsPlayer.ErrorTypes || {};
   destroyActiveHls();
@@ -177,7 +198,13 @@ function attachMseHls(url) {
     /* Plex universal HLS lists upcoming segments before they exist (404 until ready). */
     fragLoadingMaxRetry: 12,
     fragLoadingRetryDelay: 1000,
-    fragLoadingMaxRetryTimeout: 64000
+    fragLoadingMaxRetryTimeout: 64000,
+    xhrSetup: function (xhr) {
+      var headers = requestHeaders || {};
+      Object.keys(headers).forEach(function (key) {
+        try { xhr.setRequestHeader(key, headers[key]); } catch (e) { /* ignore forbidden headers */ }
+      });
+    }
   });
   activeHls.on(events.MEDIA_ATTACHED, function () {
     activeHls.loadSource(url);
@@ -484,6 +511,77 @@ function fetchSubtitleText(url, options) {
   return fetchText(url, options);
 }
 
+function resolveSubtitleManifestTarget(baseUrl, body) {
+  if (!body || String(body).indexOf('#EXTM3U') < 0) return null;
+  var lines = String(body).split(/\r?\n/);
+  var hasVariantStreams = false;
+  var hasMediaSegments = false;
+  var firstDataLine = null;
+  var subtitleUri = null;
+  for (var i = 0; i < lines.length; i++) {
+    var line = (lines[i] || '').trim();
+    if (!line) continue;
+    if (line.indexOf('#EXT-X-STREAM-INF') === 0) hasVariantStreams = true;
+    if (line.indexOf('#EXTINF:') === 0 || line.indexOf('#EXT-X-TARGETDURATION:') === 0) {
+      hasMediaSegments = true;
+    }
+    if (!firstDataLine && line.charAt(0) !== '#') firstDataLine = line;
+    if (
+      line.indexOf('#EXT-X-MEDIA:') === 0 &&
+      /TYPE=SUBTITLES/i.test(line) &&
+      /URI="/i.test(line)
+    ) {
+      var uriMatch = line.match(/URI="([^"]+)"/i);
+      if (uriMatch && uriMatch[1]) {
+        subtitleUri = uriMatch[1];
+        break;
+      }
+    }
+  }
+  if (subtitleUri) {
+    try {
+      return new URL(subtitleUri, baseUrl).toString();
+    } catch (e) {
+      if (subtitleUri.indexOf('http://') === 0 || subtitleUri.indexOf('https://') === 0) {
+        return subtitleUri;
+      }
+      if (subtitleUri.charAt(0) === '/') {
+        var origin = '';
+        try { origin = new URL(baseUrl).origin; } catch (err) { origin = ''; }
+        return origin ? (origin + subtitleUri) : subtitleUri;
+      }
+      return subtitleUri;
+    }
+  }
+  /* Do not follow generic variant playlists; those are usually video ladders. */
+  if (hasVariantStreams && !hasMediaSegments) return null;
+  if (!firstDataLine) return null;
+  if (/\.ts(\?|$)/i.test(firstDataLine) || /\.m4s(\?|$)/i.test(firstDataLine)) return null;
+  try {
+    return new URL(firstDataLine, baseUrl).toString();
+  } catch (e) {
+    if (firstDataLine.indexOf('http://') === 0 || firstDataLine.indexOf('https://') === 0) {
+      return firstDataLine;
+    }
+    if (firstDataLine.charAt(0) === '/') {
+      var originBase = '';
+      try { originBase = new URL(baseUrl).origin; } catch (err) { originBase = ''; }
+      return originBase ? (originBase + firstDataLine) : firstDataLine;
+    }
+    return firstDataLine;
+  }
+}
+
+function fetchSubtitleTextWithManifestFollow(url, options, depth) {
+  depth = depth || 0;
+  return fetchSubtitleText(url, options).then(function (text) {
+    if (depth >= 4) return text;
+    var nextUrl = resolveSubtitleManifestTarget(url, text);
+    if (!nextUrl || nextUrl === url) return text;
+    return fetchSubtitleTextWithManifestFollow(nextUrl, options, depth + 1);
+  });
+}
+
 function promiseWithTimeout(promise, timeoutMs, message) {
   return new Promise(function (resolve, reject) {
     var settled = false;
@@ -525,7 +623,7 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
     );
     var fetchOptions = Object.assign({ timeout: SUBTITLE_FETCH_TIMEOUT_MS }, entry.init || {});
     return promiseWithTimeout(
-      fetchSubtitleText(url, fetchOptions),
+      fetchSubtitleTextWithManifestFollow(url, fetchOptions),
       fetchOptions.timeout,
       'Request timeout'
     ).then(function (text) {
@@ -617,7 +715,7 @@ function play(url, session, options) {
   notifyBuffering(true);
   videoEl.classList.remove('hidden');
   if (shouldUseMseHls(url)) {
-    attachMseHls(url);
+    attachMseHls(url, hlsAuthHeaders(url, session));
   } else {
     destroyActiveHls();
     videoEl.src = url;
@@ -793,7 +891,15 @@ function togglePlayPause() {
 
 function mediaPositionMsFromVideo() {
   if (!videoEl) return 0;
-  return Math.floor(videoEl.currentTime * 1000) + (streamBaseOffsetMs || 0);
+  var currentMs = Math.floor(videoEl.currentTime * 1000);
+  if (!streamBaseOffsetMs) return currentMs;
+  /* hls.js/MSE can expose absolute media timeline currentTime when Plex
+   * transcode URL already includes offset. In that case adding streamBaseOffset
+   * double-counts resume position (e.g. 2061s -> 4122s), which breaks
+   * timeline/subtitle API calls and fallback restarts.
+   */
+  if (activeHls && currentMs >= (streamBaseOffsetMs - 2000)) return currentMs;
+  return currentMs + streamBaseOffsetMs;
 }
 
 function getCurrentTimeMs() {

@@ -1248,6 +1248,7 @@ function playerScreen(root, params, navigate) {
         session.playbackStrategy === 'transcode' ||
         session.playbackStrategy === 'direct-stream');
     var rebufferStep = decideRebufferFallback(fallbackState, {
+      playbackMode: playbackMode,
       transcodeProtocol: session.transcodeProtocol,
       onHlsTranscode: onHlsTranscode,
       nextLowerQuality: nextLower

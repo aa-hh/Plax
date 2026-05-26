@@ -311,6 +311,14 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
     location: plexLocationForServer(server),
     protocol: progressiveDirect ? 'http' : protocolForPlaybackMode(playbackMode)
   }, directFlags);
+  if (subtitleEndpoint && playbackMode === 'direct-stream') {
+    /* Keep subtitle extraction off the live HLS remux session. On some hosted
+     * PMS/proxy setups, hitting universal/subtitles in HLS mode can stall
+     * segment generation (repeating .ts 404). */
+    params.protocol = 'http';
+    params.directStream = '0';
+    params.directStreamAudio = '1';
+  }
   if (decisionEndpoint) {
     params.fastSeek = '1';
     params.autoAdjustQuality = '0';
@@ -319,7 +327,7 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
     params.subtitles = options.subtitles || 'sidecar';
     if (!subtitleEndpoint) params.fastSeek = '1';
   }
-  if (!decisionEndpoint && options.omitSubtitleStreamId !== true) {
+  if (options.omitSubtitleStreamId !== true) {
     params.subtitleStreamID = String(session.subtitleStreamId);
   }
   if (!progressiveDirect && !subtitleEndpoint && !decisionEndpoint) {
@@ -338,8 +346,13 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   }
   if (offsetSec > 0) params.offset = String(offsetSec);
   var playbackSessionId = resolveSubtitleSessionId(session);
-  if (playbackSessionId) {
-    if (!subtitleEndpoint || decisionEndpoint) params.session = playbackSessionId;
+  var isolateFromPlaybackSession = !!(
+    subtitleEndpoint &&
+    playbackMode === 'direct-stream' &&
+    options.isolatePlaybackSession === true
+  );
+  if (playbackSessionId && !isolateFromPlaybackSession) {
+    params.session = playbackSessionId;
     params.transcodeSessionId = playbackSessionId;
     if (decisionEndpoint) params['X-Plex-Session-Identifier'] = playbackSessionId;
   }
@@ -494,7 +507,18 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   var metadataPath = resolveSessionMetadataPath(session);
   var partPath = resolveSessionPartPath(session);
   var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'text' : null;
-  var universalOpts = { advancedSubtitles: advanced, omitSubtitleStreamId: true };
+  /* Plex Web primary subtitle call uses `subtitles=auto` without explicit
+   * subtitleStreamID, relying on prior part selection + session context.
+   * Keep stream-id variants as fallbacks when auto/sidecar attempts fail.
+   * For HLS remux playback, isolate universal subtitle requests from the live
+   * stream session so subtitle probes cannot stall segment generation.
+   */
+  var universalOpts = {
+    advancedSubtitles: advanced,
+    omitSubtitleStreamId: true,
+    isolatePlaybackSession: playbackMode === 'direct-stream'
+  };
+  var allowPartFallbacks = !metadataPath || options.includePartFallbacks === true;
 
   pushSubtitleAttempt(attempts, 'universal-metadata-auto', buildUniversalSubtitleRequest(
     server, session, metadataPath, resolvedTrack, playbackMode,
@@ -506,11 +530,19 @@ function buildSubtitleFetchPlan(server, session, track, options) {
       server, session, metadataPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'embedded' })
     ));
+    pushSubtitleAttempt(attempts, 'universal-metadata-embedded-stream', buildUniversalSubtitleRequest(
+      server, session, metadataPath, resolvedTrack, playbackMode,
+      Object.assign({}, universalOpts, { subtitles: 'embedded', omitSubtitleStreamId: false })
+    ));
   }
 
   pushSubtitleAttempt(attempts, 'universal-metadata-sidecar', buildUniversalSubtitleRequest(
     server, session, metadataPath, resolvedTrack, playbackMode,
     Object.assign({}, universalOpts, { subtitles: 'sidecar' })
+  ));
+  pushSubtitleAttempt(attempts, 'universal-metadata-sidecar-stream', buildUniversalSubtitleRequest(
+    server, session, metadataPath, resolvedTrack, playbackMode,
+    Object.assign({}, universalOpts, { subtitles: 'sidecar', omitSubtitleStreamId: false })
   ));
 
   if (isSidecarSubtitleTrack(resolvedTrack) && isAdvancedSubtitleCodec(resolvedTrack)) {
@@ -521,7 +553,7 @@ function buildSubtitleFetchPlan(server, session, track, options) {
     );
   }
 
-  if (embedded && partPath) {
+  if (allowPartFallbacks && embedded && partPath) {
     pushSubtitleAttempt(attempts, 'universal-part-embedded', buildUniversalSubtitleRequest(
       server, session, partPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'embedded' })
@@ -532,7 +564,7 @@ function buildSubtitleFetchPlan(server, session, track, options) {
     ));
   }
 
-  if (partPath && partPath !== metadataPath) {
+  if (allowPartFallbacks && partPath && partPath !== metadataPath) {
     pushSubtitleAttempt(attempts, 'universal-part-sidecar', buildUniversalSubtitleRequest(
       server, session, partPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'sidecar' })

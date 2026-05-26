@@ -51,9 +51,13 @@ function parseResources(data) {
 
 function fetchResources(tokenOverride) {
   var headers = tokenOverride
-    ? plexHeaders({ 'includeHttps': '1', 'includeRelay': '1', 'X-Plex-Token': tokenOverride })
-    : plexHeaders({ 'includeHttps': '1', 'includeRelay': '1' });
-  return fetchJson(plexTvUrl('/api/v2/resources'), {
+    ? plexHeaders({ 'X-Plex-Token': tokenOverride })
+    : plexHeaders();
+  var url = plexTvUrl('/api/v2/resources', {
+    includeHttps: '1',
+    includeRelay: '1'
+  });
+  return fetchJson(url, {
     headers: headers,
     timeout: 15000
   }).then(function (data) {
@@ -64,7 +68,7 @@ function fetchResources(tokenOverride) {
     return new Promise(function (resolve) {
       setTimeout(resolve, 400 + Math.floor(Math.random() * 200));
     }).then(function () {
-      return fetchJson(plexTvUrl('/api/v2/resources?includeHttps=1&includeRelay=1'), {
+      return fetchJson(url, {
         headers: headers,
         timeout: 15000
       });
@@ -148,7 +152,10 @@ function probeServerWithToken(server, ranked, token) {
     }
     var conn = ranked[idx++];
     var base = conn.uri.replace(/\/$/, '');
-    var url = serverUrl(base, '/', {}, { accessToken: token });
+    /* Probe a Plex API endpoint rather than `/` so reverse proxies that serve
+     * HTML at root don't incorrectly fail HTTPS plex.direct candidates.
+     */
+    var url = serverUrl(base, '/identity', {}, { accessToken: token });
     var connIsHttps = isHttpsUri(conn.uri);
     return fetchPlexXml(url, { timeout: probeTimeoutMs(conn) }).then(function () {
       logUsingConnection(base);
