@@ -1,5 +1,5 @@
 import { getState } from '../core/store.js';
-import { serverUrl } from '../plex/client.js';
+import { serverUrl, fetchText } from '../plex/client.js';
 import { applyPlexClientFields } from '../plex/clientIdentity.js';
 import {
   applyProfileToParams,
@@ -98,6 +98,34 @@ function buildPlaybackUrl(server, partKey, session, protocol) {
   return serverUrl(server.connectionUri, '/video/:/transcode/universal/start.m3u8', params, server);
 }
 
+/**
+ * Prime the playback session with PMS by calling `/decision` before requesting
+ * the actual stream. Plex Web and PMP do this on every play and the transcoder
+ * relies on the session being registered first; skipping it can cause PMS to
+ * fail when it tries to materialise the session during the start request
+ * (the proxy then surfaces this as an HTTP 400 on `start.m3u8`).
+ */
+function buildDecisionUrl(server, partKey, session, protocol) {
+  protocol = protocol || (session && session.transcodeProtocol) || 'hls';
+  var params = buildTranscodeParams(server, partKey, session, protocol);
+  return serverUrl(server.connectionUri, '/video/:/transcode/universal/decision', params, server);
+}
+
+function primePlaybackSession(server, partKey, session, protocol) {
+  var url = buildDecisionUrl(server, partKey, session, protocol);
+  if (!url) return Promise.resolve();
+  return fetchText(url, { timeout: 15000 }).then(function () {
+    /* PMS uses 200 OK with a MediaContainer describing the chosen
+     * delivery; we don't need the body, only the side effect of
+     * registering the session. */
+  }).catch(function (err) {
+    console.warn(
+      '[playback] decision prime failed: ' +
+        (err && err.message ? err.message : String(err))
+    );
+  });
+}
+
 function buildDirectPlayUrl(server, partKey) {
   var path = normalizePlexPath(partKey);
   return serverUrl(server.connectionUri, path, {}, server);
@@ -145,6 +173,10 @@ function resolveStreamUrl(session) {
   var partKey = resolveSessionPartPath(session);
 
   var strategy = resolvePlaybackStrategy(session);
+  var transcodeProtocol = strategy === 'http-transcode'
+    ? 'http'
+    : (session.transcodeProtocol || 'hls');
+
   function buildResult() {
     if (strategy === 'direct') {
       return {
@@ -152,18 +184,22 @@ function resolveStreamUrl(session) {
         mode: 'direct'
       };
     }
-    var protocol = strategy === 'http-transcode' ? 'http' : (session.transcodeProtocol || 'hls');
     return {
-      url: buildPlaybackUrl(server, partKey, session, protocol),
-      mode: resolveStreamMode(strategy, protocol)
+      url: buildPlaybackUrl(server, partKey, session, transcodeProtocol),
+      mode: resolveStreamMode(strategy, transcodeProtocol)
     };
   }
-  if (!shouldSelectPartSubtitleBeforePlay(session, strategy)) {
-    return Promise.resolve(buildResult());
+  function primeIfTranscode() {
+    /* Direct play hits the raw part URL — PMS doesn't need a session
+     * registered. Direct-stream and transcode go through the universal
+     * transcoder and must be primed via `/decision` first. */
+    if (strategy === 'direct') return Promise.resolve();
+    return primePlaybackSession(server, partKey, session, transcodeProtocol);
   }
-  return selectPartSubtitleStream(server, session).then(function () {
-    return buildResult();
-  });
+  var pre = shouldSelectPartSubtitleBeforePlay(session, strategy)
+    ? selectPartSubtitleStream(server, session)
+    : Promise.resolve();
+  return pre.then(primeIfTranscode).then(buildResult);
 }
 
 export {

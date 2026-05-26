@@ -168,6 +168,7 @@ export {
   serverUrl,
   fetchPlexXml,
   fetchPlexJson,
+  fetchText,
   getThumbUrl,
   getArtUrl,
   getImageUrl,
