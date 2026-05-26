@@ -110,6 +110,26 @@ test('buildPlaybackUrl direct-stream strategy remux flags', function () {
   assert.equal(q.directStream, '1');
 });
 
+test('buildPlaybackUrl includes location=wan for remote PMS', function () {
+  var remote = {
+    connectionUri: 'http://185.203.56.20:17054',
+    accessToken: 'tok',
+    activeConnection: { uri: 'http://185.203.56.20:17054', local: false }
+  };
+  var q = parseQuery(buildPlaybackUrl(remote, partKey, baseSession({ server: remote }), 'hls'));
+  assert.equal(q.location, 'wan');
+});
+
+test('buildPlaybackUrl includes location=lan for local PMS', function () {
+  var local = {
+    connectionUri: 'http://192.168.1.10:32400',
+    accessToken: 'tok',
+    activeConnection: { uri: 'http://192.168.1.10:32400', local: true }
+  };
+  var q = parseQuery(buildPlaybackUrl(local, partKey, baseSession({ server: local }), 'hls'));
+  assert.equal(q.location, 'lan');
+});
+
 test('buildPlaybackUrl direct-stream with text subs includes soft subtitle params', function () {
   var session = baseSession({
     playbackStrategy: 'direct-stream',

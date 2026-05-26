@@ -126,6 +126,8 @@ Tips:
 - If you still see the old **Who's watching?** screen, remove the XPlay icon from the simulator home screen (right-click → Remove), then **Action → Database Reset**, and run `npm run sim` again. Do not launch from an old home-screen icon after renaming the project folder.
 - `npm run sim:launch` skips the rebuild step — run `npm run build` first so `dist/` is current.
 
+**HLS / remux in the simulator:** XPlay uses the same native `<video>` + Plex `start.m3u8` path as on a TV (no hls.js). If playback fails, open devtools **Network** and check the `start.m3u8` request first — **HTTP 400/502 from Plex is a server/URL issue**, not “simulator lacks HLS.” A `MediaError` “Stream not supported (check HLS playlist CODECS)” often appears when the manifest never loaded. After a successful manifest, the simulator’s Chromium stack can still differ from a real LG TV’s native HLS decoder — confirm remux/HLS on hardware when in doubt.
+
 ## Install on TV
 
 ```bash

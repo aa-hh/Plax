@@ -10,7 +10,8 @@ import {
   resolveSessionPartPath,
   offsetSecondsForPlex,
   getActiveTranscodeSession,
-  upgradeStrategyForTextSubtitles
+  upgradeStrategyForTextSubtitles,
+  plexLocationForServer
 } from './tracks/subtitleTracks.js';
 import {
   applyWebOsHlsTranscodeParams,
@@ -48,7 +49,8 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     'X-Plex-Product': PRODUCT,
     'X-Plex-Version': VERSION,
     'X-Plex-Platform': 'LG webOS',
-    'X-Plex-Device': 'TV'
+    'X-Plex-Device': 'TV',
+    location: plexLocationForServer(server)
   };
   var offsetSec = offsetSecondsForPlex(session);
   if (offsetSec > 0) params.offset = String(offsetSec);
