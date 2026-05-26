@@ -1,6 +1,11 @@
 import { fetchJson } from '../../utils/fetch.js';
-import { plexTvUrl, plexHeaders, fetchPlexXml, serverUrl } from '../client.js';
-import { rankConnections } from './connectionPolicy.js';
+import { plexTvUrl, plexHeaders, fetchPlexXml, serverUrl, redactPlexUrl } from '../client.js';
+import {
+  rankConnections,
+  httpsRankingRejections,
+  isHttpsUri,
+  isHttpUri
+} from './connectionPolicy.js';
 import { normalizeSectionType } from '../../security/libraryAccess.js';
 import { getState } from '../../core/store.js';
 import * as cache from '../../core/cache.js';
@@ -81,8 +86,20 @@ function buildProbeTokens(server) {
   return tokens;
 }
 
+function logHttpsRejected(reason, uri) {
+  console.info('[plex] HTTPS connection rejected: ' + reason + ' (' + redactPlexUrl(uri) + ')');
+}
+
+function logHttpFallbackAfterHttps(httpUri) {
+  console.info(
+    '[plex] falling back to HTTP after HTTPS probe failed (' + redactPlexUrl(httpUri) + ')'
+  );
+}
+
 function probeServerWithToken(server, ranked, token) {
   var idx = 0;
+  var loggedHttpFallback = false;
+
   function tryNext() {
     if (idx >= ranked.length) {
       return Promise.reject(new Error('No reachable connection for ' + server.name));
@@ -90,6 +107,7 @@ function probeServerWithToken(server, ranked, token) {
     var conn = ranked[idx++];
     var base = conn.uri.replace(/\/$/, '');
     var url = serverUrl(base, '/', {}, { accessToken: token });
+    var connIsHttps = isHttpsUri(conn.uri);
     return fetchPlexXml(url, { timeout: 8000 }).then(function () {
       return Object.assign({}, server, {
         connectionUri: base,
@@ -97,10 +115,23 @@ function probeServerWithToken(server, ranked, token) {
         accessToken: token
       });
     }).catch(function () {
+      if (connIsHttps) {
+        logHttpsRejected('probe failed', base);
+        if (!loggedHttpFallback && idx < ranked.length && isHttpUri(ranked[idx].uri)) {
+          loggedHttpFallback = true;
+          logHttpFallbackAfterHttps(ranked[idx].uri);
+        }
+      }
       return tryNext();
     });
   }
   return tryNext();
+}
+
+function logHttpsRankingSkips(server, connections, prefs) {
+  httpsRankingRejections(connections, prefs).forEach(function (entry) {
+    logHttpsRejected(entry.reason, entry.conn.uri);
+  });
 }
 
 function findOwnerServer(profileServer, ownerServers) {
@@ -114,6 +145,7 @@ function findOwnerServer(profileServer, ownerServers) {
 }
 
 function testServerConnection(server, prefs, ownerServers) {
+  logHttpsRankingSkips(server, server.connections, prefs);
   var ranked = rankConnections(server.connections, prefs);
   var state = getState();
   var profileApiToken = server.accessToken || state.authToken;
@@ -376,6 +408,8 @@ export {
   librarySectionsCacheKey,
   resolveServersForDiscovery,
   testServerConnection,
+  logHttpsRejected,
+  logHttpFallbackAfterHttps,
   isFolderBackedLibrarySection,
   librarySectionIdFromItem,
   sectionFolderPaths,

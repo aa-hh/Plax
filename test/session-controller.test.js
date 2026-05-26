@@ -178,6 +178,30 @@ test('resolveStreamUrl resolves partKey from nested media when version missing',
   assert.ok(result.url.indexOf(nestedPartKey) >= 0);
 });
 
+test('buildPlaybackUrl omits burn for SRT transcode without subtitleBurnIn', function () {
+  var session = baseSession({
+    forceTranscode: true,
+    playbackStrategy: 'transcode',
+    subtitleStreamId: 1894297,
+    subtitleBurnIn: false
+  });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.subtitles, undefined);
+  assert.equal(q['X-Plex-Subtitle-Stream'], undefined);
+});
+
+test('buildPlaybackUrl burns only when subtitleBurnIn is true', function () {
+  var session = baseSession({
+    forceTranscode: true,
+    playbackStrategy: 'transcode',
+    subtitleStreamId: 1894297,
+    subtitleBurnIn: true
+  });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.subtitles, 'burn');
+  assert.equal(q['X-Plex-Subtitle-Stream'], '1894297');
+});
+
 test('resolveStreamUrl falls back to metadata path when no part key', async function () {
   var session = {
     server: mockServer,

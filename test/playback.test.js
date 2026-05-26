@@ -247,12 +247,15 @@ test('shouldBurnInSubtitle only for image-based codecs', function () {
   assert.equal(shouldBurnInSubtitle({ graphical: false, codec: 'srt' }), false);
 });
 
-test('buildSubtitleTranscodeParams omits burn-in when burnIn is false', function () {
-  var empty = buildSubtitleTranscodeParams(3, 100, { burnIn: false });
-  assert.equal(Object.keys(empty).length, 0);
+test('buildSubtitleTranscodeParams only burns when burnIn is explicitly true', function () {
+  assert.equal(Object.keys(buildSubtitleTranscodeParams(3, 100)).length, 0);
+  assert.equal(Object.keys(buildSubtitleTranscodeParams(3, 100, { burnIn: false })).length, 0);
+  assert.equal(Object.keys(buildSubtitleTranscodeParams(null, 100, { burnIn: true })).length, 0);
   var burned = buildSubtitleTranscodeParams(3, 100, { burnIn: true });
   assert.equal(burned['X-Plex-Subtitle-Stream'], '3');
   assert.equal(burned.subtitleFormat, 'srt');
+  assert.equal(burned.subtitles, 'burn');
+  assert.equal(burned['X-Plex-Subtitle-Offset'], '100');
 });
 
 test('resolveSessionPartPath prefers version partKey over metadata key', function () {
@@ -321,8 +324,12 @@ test('subtitleDirectFlagsForMode matches transcode vs direct play', function () 
   });
 });
 
-test('buildSubtitleFetchPlan skips stream GET for embedded text subs', function () {
-  var server = { connectionUri: 'http://plex.local:32400', accessToken: 'tok' };
+test('buildSubtitleFetchPlan tries universal then stream GET for embedded text subs', function () {
+  var server = {
+    connectionUri: 'http://plex.local:32400',
+    accessToken: 'tok',
+    activeConnection: { local: true, uri: 'http://plex.local:32400' }
+  };
   var session = {
     item: { key: '/library/metadata/999', ratingKey: '999' },
     version: { partKey: '/library/parts/abc/video.mkv' },
@@ -338,11 +345,10 @@ test('buildSubtitleFetchPlan skips stream GET for embedded text subs', function 
     delivery: 'embedded'
   };
   var attempts = buildSubtitleFetchPlan(server, session, track);
-  assert.ok(attempts.length >= 3);
+  assert.ok(attempts.length >= 4);
   assert.equal(attempts[0].label, 'universal-metadata-auto');
   var first = attempts[0].url;
   assert.ok(first.indexOf('/video/:/transcode/universal/subtitles') >= 0);
-  assert.ok(attempts.every(function (a) { return a.url.indexOf('/library/streams/') < 0; }));
   assert.ok(first.indexOf('subtitles=auto') >= 0);
   assert.ok(first.indexOf('hasMDE=1') >= 0);
   assert.ok(first.indexOf('location=lan') >= 0);
@@ -360,6 +366,27 @@ test('buildSubtitleFetchPlan skips stream GET for embedded text subs', function 
   assert.ok(first.indexOf('directPlay=1') >= 0);
   assert.equal(attempts[1].label, 'universal-metadata-embedded');
   assert.ok(attempts[1].url.indexOf('subtitles=embedded') >= 0);
+  var streamAttempt = attempts[attempts.length - 1];
+  assert.equal(streamAttempt.label, 'stream-embedded');
+  assert.ok(streamAttempt.url.indexOf('/library/streams/1893985.srt') >= 0);
+});
+
+test('buildSubtitleFetchPlan uses location=wan for remote PMS connection', function () {
+  var server = {
+    connectionUri: 'http://185.203.56.20:17054',
+    accessToken: 'tok',
+    activeConnection: { local: false, uri: 'http://185.203.56.20:17054' }
+  };
+  var session = {
+    item: { key: '/library/metadata/33612' },
+    subtitleStreamId: 1894107,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var track = { id: 1894107, codec: 'srt', delivery: 'embedded' };
+  var url = buildSubtitleFetchPlan(server, session, track, { playbackMode: 'direct' })[0].url;
+  assert.ok(url.indexOf('location=wan') >= 0);
+  assert.ok(url.indexOf('location=lan') < 0);
 });
 
 test('buildSubtitleFetchPlan tries stream path first for sidecar subs', function () {
@@ -413,10 +440,11 @@ test('buildSubtitleFetchPlan includes part path as last resort', function () {
     partIndex: 0
   };
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
-  var last = attempts[attempts.length - 1];
-  assert.equal(last.label, 'universal-part-sidecar');
-  assert.ok(last.url.indexOf('path=' + encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
-  assert.ok(last.url.indexOf(encodeURIComponent('http://plex.local:32400/library/parts/abc/video.mkv')) < 0);
+  var partAttempt = attempts.filter(function (a) { return a.label === 'universal-part-sidecar'; })[0];
+  assert.ok(partAttempt);
+  assert.ok(partAttempt.url.indexOf('path=' + encodeURIComponent('/library/parts/abc/video.mkv')) >= 0);
+  assert.equal(attempts[attempts.length - 1].label, 'stream-embedded');
+  assert.ok(partAttempt.url.indexOf(encodeURIComponent('http://plex.local:32400/library/parts/abc/video.mkv')) < 0);
 });
 
 test('buildSubtitleFetchPlan uses server-relative path even on remote direct-play', function () {

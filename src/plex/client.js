@@ -156,6 +156,20 @@ function getArtUrl(server, path, width) {
   return getImageUrl(server, path, { width: width || 1920, height: 1080 });
 }
 
+/** Strip X-Plex-Token from URLs before logging (connection probes, playback, errors). */
+function redactPlexUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  try {
+    var parsed = new URL(url, window.location.href);
+    if (parsed.searchParams.has('X-Plex-Token')) {
+      parsed.searchParams.set('X-Plex-Token', '[redacted]');
+    }
+    return parsed.toString();
+  } catch (e) {
+    return url.replace(/([?&]X-Plex-Token=)[^&]*/gi, '$1[redacted]');
+  }
+}
+
 export {
   PLEX_TV,
   PRODUCT,
@@ -173,5 +187,6 @@ export {
   getArtUrl,
   getImageUrl,
   mapPlexHttpError,
-  getServerToken
+  getServerToken,
+  redactPlexUrl
 };

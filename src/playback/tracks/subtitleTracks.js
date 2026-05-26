@@ -195,6 +195,12 @@ function isDirectPlaybackMode(playbackMode) {
   return playbackMode === 'direct' || playbackMode === 'direct-stream';
 }
 
+/** Plex `location` query param — must match how the client reaches PMS. */
+function plexLocationForServer(server) {
+  if (server && server.activeConnection && server.activeConnection.local) return 'lan';
+  return 'wan';
+}
+
 /**
  * PMS only accepts a `path=` whose host it recognises as itself. PMP runs on the
  * same machine as the server, so it can send `http://127.0.0.1:32400/...`; a
@@ -259,7 +265,7 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
     partIndex: session.partIndex != null ? session.partIndex : 0,
     subtitles: options.subtitles || 'sidecar',
     hasMDE: '1',
-    location: 'lan',
+    location: plexLocationForServer(server),
     protocol: directPlayback ? 'http' : protocolForPlaybackMode(playbackMode),
     fastSeek: '1',
     subtitleStreamID: String(session.subtitleStreamId)
@@ -357,6 +363,14 @@ function buildSubtitleFetchPlan(server, session, track, options) {
     ));
   }
 
+  if (resolvedTrack && !resolvedTrack.graphical && !isSidecarSubtitleTrack(resolvedTrack)) {
+    pushSubtitleAttempt(
+      attempts,
+      'stream-embedded',
+      buildStreamKeySubtitleUrl(server, resolvedTrack)
+    );
+  }
+
   return attempts;
 }
 
@@ -407,13 +421,12 @@ function shouldRetrySubtitleFetch(err) {
 
 function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
   options = options || {};
-  if (options.burnIn === false) return {};
-  var p = {};
-  if (streamId != null) {
-    p['X-Plex-Subtitle-Stream'] = String(streamId);
-    p.subtitleFormat = 'srt';
-    p.subtitles = 'burn';
-  }
+  if (options.burnIn !== true || streamId == null) return {};
+  var p = {
+    'X-Plex-Subtitle-Stream': String(streamId),
+    subtitleFormat: 'srt',
+    subtitles: 'burn'
+  };
   if (offsetMs) {
     p['X-Plex-Subtitle-Offset'] = String(offsetMs);
   }
@@ -432,6 +445,7 @@ export {
   resolveSessionPartPath,
   subtitleDirectFlagsForMode,
   isDirectPlaybackMode,
+  plexLocationForServer,
   resolveTranscodeMediaPath,
   buildSubtitleFetchPlan,
   subtitleFetchUrls,

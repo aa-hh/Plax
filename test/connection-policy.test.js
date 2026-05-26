@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 
 import {
   rankConnections,
-  pickBestConnection
+  pickBestConnection,
+  httpsRankingRejections,
+  scoreConnection
 } from '../src/plex/servers/connectionPolicy.js';
+import { redactPlexUrl } from '../src/plex/client.js';
 
 var REMOTE_HTTP = {
   uri: 'http://185.203.56.20:17054',
@@ -76,4 +79,32 @@ test('rankConnections deprioritizes relay below direct remote', function () {
   var ranked = rankConnections([RELAY_HTTPS, REMOTE_HTTPS]);
   assert.equal(ranked[0].uri, REMOTE_HTTPS.uri);
   assert.equal(ranked[1].uri, RELAY_HTTPS.uri);
+});
+
+test('httpsRankingRejections empty when HTTPS is ranked first', function () {
+  var rejections = httpsRankingRejections([REMOTE_HTTP, REMOTE_HTTPS]);
+  assert.equal(rejections.length, 0);
+});
+
+test('httpsRankingRejections reports HTTPS when LAN HTTP outranks remote HTTPS', function () {
+  var rejections = httpsRankingRejections(
+    [LAN_HTTP, REMOTE_HTTPS],
+    { preferSecure: false, allowInsecure: true }
+  );
+  assert.equal(rejections.length, 1);
+  assert.equal(rejections[0].conn.uri, REMOTE_HTTPS.uri);
+  assert.equal(rejections[0].reason, 'preferSecure disabled');
+});
+
+test('scoreConnection penalizes HTTP when allowInsecure is off', function () {
+  var httpScore = scoreConnection(REMOTE_HTTP, { allowInsecure: false });
+  var httpsScore = scoreConnection(REMOTE_HTTPS, { allowInsecure: false });
+  assert.ok(httpsScore > httpScore);
+});
+
+test('redactPlexUrl strips token from probe URLs', function () {
+  var raw = 'https://plex.example/?X-Plex-Token=secret&foo=1';
+  var redacted = redactPlexUrl(raw);
+  assert.ok(redacted.indexOf('secret') < 0);
+  assert.ok(redacted.indexOf('[redacted]') >= 0);
 });

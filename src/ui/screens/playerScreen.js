@@ -18,6 +18,7 @@ import {
   parseSubtitleStreams,
   findSubtitleTrack,
   canUseClientSubtitles,
+  isDirectPlaybackMode,
   shouldBurnInSubtitle,
   buildSubtitleFetchPlan,
   parseTranscodeSessionFromUrl,
@@ -952,17 +953,22 @@ function playerScreen(root, params, navigate) {
       if (destroyed) return Promise.reject(err);
       syncSubtitleDelayControls();
       console.warn('Client subtitles failed:', err.message);
+      var detail = err && err.message ? ' (' + err.message + ')' : '';
       if (isStrictDirectPlay()) {
-        var detail = err && err.message ? ' (' + err.message + ')' : '';
         setPlayerMessage(
           'Subtitles unavailable in Original quality' + detail +
             '. Switch to Auto quality for embedded subtitles, or pick image subtitles (burn-in).'
         );
-        return Promise.reject(err);
+        return Promise.resolve();
       }
-      setPlayerMessage('Subtitles need transcode — retrying…');
-      session.forceTranscode = true;
-      return restartPlaybackAt(restartOffsetMs(), null, 'subtitle-fallback');
+      if (isDirectPlaybackMode(playbackMode)) {
+        setPlayerMessage(
+          'Subtitles unavailable' + detail + '. Playback continues without subtitles.'
+        );
+        return Promise.resolve();
+      }
+      setPlayerMessage('Subtitles unavailable' + detail + '.');
+      return Promise.resolve();
     });
   }
 
@@ -1565,11 +1571,15 @@ function playerScreen(root, params, navigate) {
       opts.transcodeProtocol = 'http';
       return opts;
     }
-    if (streamChange === 'subtitle' || streamChange === 'subtitle-burn' ||
-        streamChange === 'subtitle-fallback') {
+    if (streamChange === 'subtitle-burn') {
       opts.forceTranscode = true;
       opts.playbackStrategy = 'transcode';
       opts.subtitleBurnIn = true;
+    }
+    if (streamChange === 'subtitle-fallback' || streamChange === 'subtitle') {
+      opts.forceTranscode = true;
+      opts.playbackStrategy = 'transcode';
+      opts.subtitleBurnIn = false;
     }
     if (streamChange === 'subtitle-soft') {
       opts.subtitleBurnIn = false;

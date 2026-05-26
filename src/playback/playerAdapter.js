@@ -1,5 +1,6 @@
 import { keepScreenOn } from '../platform/webos.js';
 import { updateProgress as libraryUpdateProgress, markWatched as libraryMarkWatched } from '../plex/library.js';
+import { redactPlexUrl } from '../plex/client.js';
 import { fetchText } from '../utils/fetch.js';
 import { describeHlsError, isHlsUrl } from './hlsPolicy.js';
 import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
@@ -90,19 +91,6 @@ function setProgressApiForTest(overrides) {
  *     REBUFFER_TIMEOUT_MS without progressing, fire onRebufferTimeout so the
  *     screen can downshift quality / fall back to HTTP transcode.
  */
-
-function redactPlexUrl(url) {
-  if (!url || typeof url !== 'string') return url;
-  try {
-    var parsed = new URL(url, window.location.href);
-    if (parsed.searchParams.has('X-Plex-Token')) {
-      parsed.searchParams.set('X-Plex-Token', '[redacted]');
-    }
-    return parsed.toString();
-  } catch (e) {
-    return url.replace(/([?&]X-Plex-Token=)[^&]*/gi, '$1[redacted]');
-  }
-}
 
 function streamTypeLabel(mode) {
   if (mode === 'direct') return 'direct-play';
