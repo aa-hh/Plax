@@ -1592,6 +1592,15 @@ function playerScreen(root, params, navigate) {
       opts.transcodeProtocol = 'hls';
       return opts;
     }
+    if (streamChange === 'direct-no-subs-fallback') {
+      opts.subtitleStreamId = null;
+      opts.subtitleOffset = 0;
+      opts.subtitleBurnIn = false;
+      opts.playbackStrategy = 'direct';
+      opts.forceTranscode = false;
+      opts.transcodeProtocol = 'hls';
+      return opts;
+    }
     if (streamChange === 'full-transcode-fallback') {
       opts.playbackStrategy = 'transcode';
       opts.forceTranscode = true;
@@ -1718,6 +1727,18 @@ function playerScreen(root, params, navigate) {
     if (errorStep.action === 'direct-stream') {
       setPlayerMessage('Direct play unavailable — trying stream copy…');
       restartPlaybackAt(offset, 'hls', 'direct-stream-fallback');
+      return;
+    }
+    if (errorStep.action === 'direct-no-subs') {
+      /* Server rejected the remux we started just to deliver subtitles
+       * (common on Whatbox-style proxies). Direct play works — revert and
+       * tell the user subs are unavailable so playback keeps going. */
+      selectedSubtitleId = null;
+      subtitleOffset = 0;
+      setPlayerMessage(
+        'Subtitles unavailable on this server — playing without subtitles.'
+      );
+      restartPlaybackAt(offset, null, 'direct-no-subs-fallback');
       return;
     }
     if (errorStep.action === 'full-transcode') {

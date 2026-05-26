@@ -93,6 +93,49 @@ test('decideErrorFallback ladder: direct → direct-stream → full-transcode �
   assert.equal(state.httpFallbackTried, true);
 });
 
+test('subtitle-remux marks state and triggers direct-no-subs on remux failure', function () {
+  var state = createPlaybackFallbackState();
+
+  applyRestartPlaybackFallbackFlags(state, 'subtitle-remux');
+  assert.equal(state.enteredRemuxForSubtitlesOnly, true);
+
+  /* Remux failed: prefer reverting to direct play with subtitles cleared
+   * rather than escalating to full transcode against the same broken
+   * universal endpoint. */
+  assert.deepEqual(
+    decideErrorFallback(state, {
+      playbackMode: 'direct-stream',
+      codecUnsupported: false,
+      isHls: true
+    }),
+    { action: 'direct-no-subs' }
+  );
+  assert.equal(state.directNoSubsFallbackTried, true);
+  assert.equal(state.enteredRemuxForSubtitlesOnly, false);
+  assert.equal(state.fullTranscodeFallbackTried, false);
+});
+
+test('direct-no-subs-fallback restart records the step', function () {
+  var state = createPlaybackFallbackState();
+  applyRestartPlaybackFallbackFlags(state, 'subtitle-remux');
+  applyRestartPlaybackFallbackFlags(state, 'direct-no-subs-fallback');
+  assert.equal(state.directNoSubsFallbackTried, true);
+  assert.equal(state.enteredRemuxForSubtitlesOnly, false);
+});
+
+test('direct-no-subs is not offered when remux was a regular fallback', function () {
+  var state = createPlaybackFallbackState();
+  state.directStreamFallbackTried = true; /* came from direct-play error */
+  assert.deepEqual(
+    decideErrorFallback(state, {
+      playbackMode: 'direct-stream',
+      codecUnsupported: false,
+      isHls: true
+    }),
+    { action: 'full-transcode', codecUnsupported: false }
+  );
+});
+
 test('decideErrorFallback: skips HLS→HTTP when already on transcode-http', function () {
   var state = createPlaybackFallbackState();
   state.directStreamFallbackTried = true;

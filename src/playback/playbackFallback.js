@@ -9,7 +9,16 @@ function createPlaybackFallbackState() {
     fullTranscodeFallbackTried: false,
     hlsFallbackTried: false,
     httpFallbackTried: false,
-    rebufferDownshiftTried: false
+    rebufferDownshiftTried: false,
+    /* Remux was started only to deliver subtitles (e.g. embedded SRT on a
+     * server whose direct play works but universal transcode does not, like
+     * some Whatbox/seedbox setups). On failure we revert to direct play
+     * without subtitles instead of cascading through more transcode attempts
+     * that hit the same broken endpoint. */
+    enteredRemuxForSubtitlesOnly: false,
+    /* Set once we've reverted to direct-no-subs for this episode so we don't
+     * silently flip subtitles back on after another fallback. */
+    directNoSubsFallbackTried: false
   };
 }
 
@@ -19,6 +28,8 @@ function resetPlaybackFallbackFlags(state) {
   state.hlsFallbackTried = false;
   state.httpFallbackTried = false;
   state.rebufferDownshiftTried = false;
+  state.enteredRemuxForSubtitlesOnly = false;
+  state.directNoSubsFallbackTried = false;
 }
 
 /** Allow another quality downshift on the next rebuffer episode. */
@@ -29,7 +40,8 @@ function resetRebufferDownshiftForEpisode(state) {
 function isLadderFallbackStreamChange(streamChange) {
   return !!streamChange && (
     streamChange.indexOf('-fallback') >= 0 ||
-    streamChange === 'subtitle-fallback'
+    streamChange === 'subtitle-fallback' ||
+    streamChange === 'subtitle-remux'
   );
 }
 
@@ -46,11 +58,20 @@ function applyRestartPlaybackFallbackFlags(state, streamChange) {
     state.hlsFallbackTried = true;
     state.httpFallbackTried = true;
   }
+  /* Remux strictly for subtitles — when the server cannot transcode, prefer
+   * reverting to direct play over cascading transcode attempts. */
+  if (streamChange === 'subtitle-remux') {
+    state.enteredRemuxForSubtitlesOnly = true;
+  }
+  if (streamChange === 'direct-no-subs-fallback') {
+    state.directNoSubsFallbackTried = true;
+    state.enteredRemuxForSubtitlesOnly = false;
+  }
 }
 
 /**
  * Next step after a playback error when auto-fallback is allowed.
- * @returns {{ action: 'direct-stream'|'full-transcode'|'http-transcode'|'terminal' }}
+ * @returns {{ action: 'direct-stream'|'direct-no-subs'|'full-transcode'|'http-transcode'|'terminal' }}
  */
 function decideErrorFallback(state, context) {
   var playbackMode = context.playbackMode;
@@ -60,6 +81,19 @@ function decideErrorFallback(state, context) {
   if (playbackMode === 'direct' && !state.directStreamFallbackTried) {
     state.directStreamFallbackTried = true;
     return { action: 'direct-stream' };
+  }
+  /* Remux was started only for subtitles and the server rejected it
+   * (e.g. Whatbox universal transcode broken). Direct play already works;
+   * revert and stop chasing more transcode attempts that hit the same
+   * endpoint. The screen layer disables subtitles for the session. */
+  if (
+    playbackMode === 'direct-stream' &&
+    state.enteredRemuxForSubtitlesOnly &&
+    !state.directNoSubsFallbackTried
+  ) {
+    state.directNoSubsFallbackTried = true;
+    state.enteredRemuxForSubtitlesOnly = false;
+    return { action: 'direct-no-subs' };
   }
   if (playbackMode === 'direct-stream' && !state.fullTranscodeFallbackTried) {
     state.fullTranscodeFallbackTried = true;
