@@ -2,6 +2,7 @@ import '../styles/app.css';
 import { init as initRouter, register, navigate, getRoute } from './router.js';
 import { getState, setState } from './store.js';
 import { loadPersistedAuth, persistAuth, getOwnerAuthToken } from './storage.js';
+import { isRestrictedProfile } from '../security/libraryAccess.js';
 import { initPlatform } from '../platform/webos.js';
 import { runVersionGate } from '../platform/versionGate.js';
 import { initSplash, setSplashStatus, hideSplash } from '../ui/splash.js';
@@ -56,17 +57,25 @@ function startApp() {
 
   var persisted = loadPersistedAuth();
   var clientId = persisted.clientId || generateClientId();
+  var ownerToken = getOwnerAuthToken();
+  var restrictedChildSession = persisted.activeHomeUser &&
+    isRestrictedProfile(persisted.activeHomeUser) &&
+    persisted.authToken;
+  var incompleteRestrictedSession = !!(restrictedChildSession && !ownerToken);
+  if (!ownerToken && !restrictedChildSession && persisted.authToken) {
+    ownerToken = persisted.authToken;
+  }
   setState({
     clientId: clientId,
     authToken: persisted.authToken,
-    ownerAuthToken: getOwnerAuthToken() || persisted.ownerAuthToken || persisted.authToken,
+    ownerAuthToken: ownerToken,
     user: persisted.user,
     activeHomeUser: persisted.activeHomeUser,
     networkPrefs: persisted.networkPrefs || getState().networkPrefs,
     playbackPrefs: persisted.playbackPrefs || getState().playbackPrefs
   });
   persistAuth({ clientId: clientId });
-  if (persisted.authToken && !persisted.ownerAuthToken) {
+  if (persisted.authToken && !getOwnerAuthToken() && !restrictedChildSession) {
     persistAuth({ ownerAuthToken: persisted.authToken });
   }
 
@@ -74,7 +83,10 @@ function startApp() {
     setSplashStatus('Restoring session…');
     // Plex.tv link is once per device (owner). Home profiles reuse that link via
     // a server-side switch — no second pairing for kids/guests.
-    if (persisted.activeHomeUser) {
+    if (incompleteRestrictedSession) {
+      navigate('profile-picker', { _retry: true, _from: 'restore' });
+      if (isPerfEnabled()) mark('boot:navigate-profile-picker-recovery');
+    } else if (persisted.activeHomeUser) {
       navigate('bootstrap', {});
       if (isPerfEnabled()) mark('boot:navigate-bootstrap-restore');
     } else {

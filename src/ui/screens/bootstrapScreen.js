@@ -1,7 +1,13 @@
 import { getState, setState } from '../../core/store.js';
 import { persistAuth } from '../../core/storage.js';
 import { fetchUser } from '../../plex/auth/pinAuth.js';
-import { discoverServers, getLibraries, mapLibrarySections } from '../../plex/servers/discovery.js';
+import {
+  discoverServers,
+  getLibraries,
+  mapLibrarySections,
+  pickActiveServer,
+  pickDefaultLibrary
+} from '../../plex/servers/discovery.js';
 import { prefetchHomeHubs } from '../../plex/library.js';
 import { startBootNetworkProbe } from '../../playback/networkProbe.js';
 import {
@@ -9,6 +15,16 @@ import {
   isRestrictedProfile
 } from '../../security/libraryAccess.js';
 import { createLoadingIndicator } from '../components/loadingIndicator.js';
+
+function shouldBlockIncompleteRestrictedSession(state) {
+  return !!(
+    state &&
+    state.activeHomeUser &&
+    isRestrictedProfile(state.activeHomeUser) &&
+    state.authToken &&
+    !state.ownerAuthToken
+  );
+}
 
 function bootstrapScreen(root, params, navigate) {
   var screen = document.createElement('div');
@@ -29,6 +45,14 @@ function bootstrapScreen(root, params, navigate) {
   var clientId = state.clientId;
   var token = state.authToken;
 
+  if (shouldBlockIncompleteRestrictedSession(state)) {
+    fail('Profile session incomplete. Choose your profile again.');
+    setTimeout(function () {
+      navigate('profile-picker', { _retry: true, _from: 'bootstrap' });
+    }, 1500);
+    return { destroy: function () {} };
+  }
+
   function fail(msg) {
     document.getElementById('boot-status').textContent = msg;
   }
@@ -38,12 +62,20 @@ function bootstrapScreen(root, params, navigate) {
     setState({ user: user });
     persistAuth({ user: user });
     return discoverServers(state.networkPrefs);
-  }).then(function (servers) {
+  }).then(function (discovery) {
+    var servers = discovery.resolved || [];
     if (!servers.length) throw new Error('No reachable Plex servers');
-    var activeServer = servers[0];
+    var activeServer = pickActiveServer(servers, discovery.profileResources);
+    if (!activeServer) throw new Error('No reachable Plex servers');
     setState({ servers: servers, activeServer: activeServer, networkProbe: null });
+    console.info('[bootstrap] server selected', {
+      name: activeServer.name,
+      connectionUri: activeServer.connectionUri,
+      clientIdentifier: activeServer.clientIdentifier,
+      owned: activeServer.owned,
+      resolvedCount: servers.length
+    });
     document.getElementById('boot-status').textContent = 'Loading libraries…';
-    var homeUser = getState().activeHomeUser;
     return Promise.all([
       getLibraries(activeServer, { fresh: true }),
       prefetchHomeHubs(activeServer, { initialRows: 2, hubListSize: 16, rowSize: 20 })
@@ -54,13 +86,16 @@ function bootstrapScreen(root, params, navigate) {
     var rawSections = mapLibrarySections(results[0]);
     var homeUser = getState().activeHomeUser;
     var libs = filterLibrariesForUser(rawSections, homeUser);
+    var activeServer = getState().activeServer;
     console.info('[bootstrap] library sections', {
       apiItems: apiItems,
       folderBacked: rawSections.length,
       afterProfileFilter: libs.length,
       restricted: isRestrictedProfile(homeUser),
       profile: homeUser && (homeUser.title || homeUser.username),
-      serverToken: !!(getState().activeServer && getState().activeServer.accessToken)
+      server: activeServer && activeServer.name,
+      connectionUri: activeServer && activeServer.connectionUri,
+      titles: libs.map(function (lib) { return lib.title; })
     });
     if (!libs.length) {
       var apiCount = rawSections.length;
@@ -80,7 +115,11 @@ function bootstrapScreen(root, params, navigate) {
           : 'No libraries found on this Plex server.' + detail
       );
     }
-    setState({ libraries: libs, activeLibrary: libs[0] });
+    var activeLibrary = pickDefaultLibrary(libs);
+    if (!activeLibrary) {
+      throw new Error('No libraries found on this Plex server.');
+    }
+    setState({ libraries: libs, activeLibrary: activeLibrary });
     document.getElementById('boot-status').textContent = 'Opening Home…';
     navigate('home', {});
   }).catch(function (err) {
@@ -95,11 +134,11 @@ function bootstrapScreen(root, params, navigate) {
       /no reachable plex servers/i.test(msg);
     setTimeout(function () {
       navigate(goProfilePicker ? 'profile-picker' : 'pairing',
-        goProfilePicker ? { _retry: true } : {});
+        goProfilePicker ? { _retry: true, _from: 'bootstrap' } : {});
     }, 2500);
   });
 
   return { destroy: function () {} };
 }
 
-export { bootstrapScreen };
+export { bootstrapScreen, shouldBlockIncompleteRestrictedSession };

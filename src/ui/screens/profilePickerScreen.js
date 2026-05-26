@@ -35,6 +35,11 @@ function appendProfileAvatar(parent, user) {
   parent.appendChild(avatar);
 }
 
+function shouldRejectManagedSwitchToken(user, switchedToken, ownerToken) {
+  var isManagedUser = !(user && user.admin);
+  return isManagedUser && (!switchedToken || switchedToken === ownerToken);
+}
+
 function profilePickerScreen(root, params, navigate) {
   var screen = document.createElement('div');
   screen.className = 'screen profile-picker-screen';
@@ -193,18 +198,24 @@ function profilePickerScreen(root, params, navigate) {
 
     switchToHomeUser(user, pin, ownerToken).then(function (result) {
       clearTimeout(switchTimeout);
-      var token = result.authToken || ownerToken;
+      var nextUser = result.user || user;
+      var switchedToken = result.authToken || '';
+      if (shouldRejectManagedSwitchToken(nextUser, switchedToken, ownerToken)) {
+        throw new Error('Profile session incomplete. Choose your profile again.');
+      }
+      var token = switchedToken || ownerToken;
       cache.invalidateAll();
       setState({
-        activeHomeUser: result.user,
+        activeHomeUser: nextUser,
         authToken: token,
+        ownerAuthToken: ownerToken,
         libraries: [],
         activeLibrary: null,
         servers: [],
         activeServer: null
       });
       persistAuth({
-        activeHomeUser: result.user,
+        activeHomeUser: nextUser,
         authToken: token,
         ownerAuthToken: ownerToken
       });
@@ -344,4 +355,4 @@ function profilePickerScreen(root, params, navigate) {
   };
 }
 
-export { profilePickerScreen };
+export { profilePickerScreen, shouldRejectManagedSwitchToken };

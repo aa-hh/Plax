@@ -7,7 +7,9 @@ import {
   mapLibrarySections,
   resolveServersForDiscovery,
   isFolderBackedLibrarySection,
-  isMovieOrShowSection
+  isMovieOrShowSection,
+  pickActiveServer,
+  pickDefaultLibrary
 } from '../src/plex/servers/discovery.js';
 import {
   filterLibrariesForUser,
@@ -95,13 +97,35 @@ assert(mapLibrarySection({
   title: 'Virtual'
 }) === null, 'rejects composite agent');
 
-assert(mapLibrarySection({
+var emptyLocationPaths = mapLibrarySection({
   key: '/library/sections/11',
+  type: 'show',
+  title: 'TV',
+  agent: 'com.plexapp.agents.thetvdb',
+  scanner: 'Plex TV Series',
+  _children: [{ _tag: 'Location', path: '' }, { _tag: 'Location', path: '  ' }]
+});
+assert(emptyLocationPaths && emptyLocationPaths.id === '11',
+  'keeps sections when Plex returns Location nodes without paths (remote/redacted)');
+
+var fullUrlKey = mapLibrarySection({
+  key: 'http://185.203.56.20:17054/library/sections/2',
   type: 'movie',
-  title: 'Empty paths',
+  title: 'Films',
   agent: 'com.plexapp.agents.imdb',
-  _children: [{ _tag: 'Location', path: '  ' }]
-}) === null, 'rejects Location children with no path');
+  scanner: 'Plex Movie Scanner',
+  _children: [{ _tag: 'Location', path: '' }]
+});
+assert(fullUrlKey && fullUrlKey.id === '2', 'accepts absolute key URLs from direct server access');
+
+var idFromAttrOnly = mapLibrarySection({
+  librarySectionID: '8',
+  type: 'movie',
+  title: 'Home stuff',
+  agent: 'com.plexapp.agents.imdb',
+  scanner: 'Plex Movie Scanner'
+});
+assert(idFromAttrOnly && idFromAttrOnly.id === '8', 'derives id from librarySectionID when key missing');
 
 var restricted = { restricted: true };
 
@@ -160,5 +184,18 @@ var adopted = resolveServersForDiscovery([], [
   { name: 'NAS', clientIdentifier: 'abc', accessToken: 'owner', connections: [{ uri: 'http://x' }] }
 ], 'child');
 assert(adopted.length === 1 && adopted[0].accessToken === 'child', 'borrow owner servers for managed profile');
+
+var resolved = [
+  { name: 'Remote', clientIdentifier: 'b', owned: false, connectionUri: 'http://b' },
+  { name: 'SHENZHOU', clientIdentifier: 'a', owned: true, connectionUri: 'http://a:17054' }
+];
+var picked = pickActiveServer(resolved, [{ clientIdentifier: 'a' }]);
+assert(picked.name === 'SHENZHOU', 'pickActiveServer prefers profile-linked owned server');
+
+var defaultLib = pickDefaultLibrary([
+  { id: '2', title: 'Music', type: 'artist' },
+  { id: '1', title: 'Films', type: 'movie' }
+]);
+assert(defaultLib.title === 'Films', 'pickDefaultLibrary prefers movie/show');
 
 console.log('validate-library-access: OK');

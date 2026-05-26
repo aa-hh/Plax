@@ -197,35 +197,78 @@ function needsOwnerDiscoveryAssist(state) {
     state.ownerAuthToken && state.ownerAuthToken !== state.authToken);
 }
 
+/** Prefer profile-linked or owned servers when multiple resolve. */
+function pickActiveServer(resolvedServers, profileResources) {
+  if (!resolvedServers || !resolvedServers.length) return null;
+  if (resolvedServers.length === 1) return resolvedServers[0];
+
+  var profileIds = {};
+  (profileResources || []).forEach(function (s) {
+    if (s && s.clientIdentifier) profileIds[s.clientIdentifier] = true;
+  });
+
+  function score(server) {
+    var pts = 0;
+    if (server.owned) pts += 100;
+    if (profileIds[server.clientIdentifier]) pts += 50;
+    if (server.connectionUri) pts += 10;
+    return pts;
+  }
+
+  var best = resolvedServers[0];
+  var bestScore = score(best);
+  for (var i = 1; i < resolvedServers.length; i++) {
+    var candidate = resolvedServers[i];
+    var candidateScore = score(candidate);
+    if (candidateScore > bestScore) {
+      best = candidate;
+      bestScore = candidateScore;
+    }
+  }
+  return best;
+}
+
+function pickDefaultLibrary(libraries) {
+  if (!libraries || !libraries.length) return null;
+  for (var i = 0; i < libraries.length; i++) {
+    var t = normalizeSectionType(libraries[i].type);
+    if (t === 'movie' || t === 'show') return libraries[i];
+  }
+  return libraries[0];
+}
+
 function discoverServers(prefs) {
   var state = getState();
-  return fetchResources().then(function (servers) {
+  return fetchResources().then(function (profileResources) {
     if (!needsOwnerDiscoveryAssist(state)) {
-      return probeServers(servers, prefs, null).then(function (resolved) {
-        return { servers: servers, resolved: resolved };
+      return probeServers(profileResources, prefs, null).then(function (resolved) {
+        return { profileResources: profileResources, resolved: resolved };
       });
     }
     return fetchResources(state.ownerAuthToken).then(function (ownerServers) {
-      var merged = resolveServersForDiscovery(servers, ownerServers, state.authToken);
+      var merged = resolveServersForDiscovery(profileResources, ownerServers, state.authToken);
       return probeServers(merged, prefs, ownerServers).then(function (resolved) {
-        return { servers: merged, resolved: resolved };
+        return { profileResources: profileResources, resolved: resolved };
       });
     }).catch(function () {
-      return probeServers(servers, prefs, null).then(function (resolved) {
-        return { servers: servers, resolved: resolved };
+      return probeServers(profileResources, prefs, null).then(function (resolved) {
+        return { profileResources: profileResources, resolved: resolved };
       });
     });
   }).then(function (result) {
-    return result.resolved;
+    return {
+      resolved: result.resolved,
+      profileResources: result.profileResources || []
+    };
   });
 }
 
 /**
- * Real libraries from GET /library/sections are Directory rows with
- * key=/library/sections/{id}, a media type (movie/show/artist/photo), and
- * usually agent+scanner. Skip nested/secondary dirs, composite agents, and
- * rows whose Location children are present but empty (virtual shelves).
- * Promoted hubs live under /hubs/* — not this endpoint.
+ * Real libraries from GET /library/sections are Directory rows tied to a
+ * section id (key, librarySectionID, or id), with a media type. Skip hubs,
+ * nested/secondary dirs, and composite agents. Location paths are optional —
+ * Plex often omits or redacts path on remote connections while still returning
+ * Location nodes.
  */
 function sectionFolderPaths(item) {
   var paths = [];
@@ -238,10 +281,27 @@ function sectionFolderPaths(item) {
   return paths;
 }
 
+function librarySectionIdFromItem(item) {
+  if (!item) return '';
+  var key = String(item.key || '').trim();
+  var keyMatch = key.match(/\/library\/sections\/(\d+)/i);
+  if (keyMatch) return keyMatch[1];
+  if (item.librarySectionID != null && item.librarySectionID !== '') {
+    return String(item.librarySectionID);
+  }
+  if (item.id != null && item.id !== '' && String(item.id) !== 'sections') {
+    return String(item.id);
+  }
+  if (/^\d+$/.test(key)) return key;
+  return '';
+}
+
 function isFolderBackedLibrarySection(item) {
   if (!item) return false;
   var key = String(item.key || '');
-  if (!/\/library\/sections\/\d+\/?$/.test(key)) return false;
+  if (/\/hubs\//i.test(key) && !/\/library\/sections\/\d+/i.test(key)) return false;
+  var sectionId = librarySectionIdFromItem(item);
+  if (!sectionId || sectionId === 'sections') return false;
   if (item.secondary === '1' || item.secondary === true || item.secondary === 'true') {
     return false;
   }
@@ -249,23 +309,13 @@ function isFolderBackedLibrarySection(item) {
   if (agent && /composite/i.test(agent)) return false;
   var type = normalizeSectionType(item.type);
   if (!type || type === 'hub' || type === 'mixed') return false;
-  var locNodes = (item._children || []).filter(function (c) {
-    return c._tag === 'Location';
-  });
-  if (locNodes.length && !sectionFolderPaths(item).length) return false;
   return true;
 }
 
 function mapLibrarySection(item) {
   if (!item || !isFolderBackedLibrarySection(item)) return null;
   var key = item.key || '';
-  var keyMatch = key.match(/\/library\/sections\/(\d+)/);
-  var id = String(
-    item.librarySectionID ||
-    item.id ||
-    (keyMatch && keyMatch[1]) ||
-    ''
-  );
+  var id = librarySectionIdFromItem(item);
   if (!id || id === 'sections') return null;
   var shared = item.shared;
   var hidden = item.hidden === '1' || item.hidden === true || item.hidden === 'true';
@@ -327,7 +377,11 @@ export {
   resolveServersForDiscovery,
   testServerConnection,
   isFolderBackedLibrarySection,
-  sectionFolderPaths
+  librarySectionIdFromItem,
+  sectionFolderPaths,
+  pickActiveServer,
+  pickDefaultLibrary,
+  needsOwnerDiscoveryAssist
 };
 
 export { normalizeSectionType, isMovieOrTvSection as isMovieOrShowSection } from '../../security/libraryAccess.js';

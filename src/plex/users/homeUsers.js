@@ -30,6 +30,19 @@ function mapHomeUser(u) {
   };
 }
 
+function mapFallbackOwnerToHomeUser(user) {
+  return mapHomeUser({
+    id: user.id,
+    uuid: user.uuid,
+    title: user.title || user.username || user.friendlyName,
+    username: user.username,
+    restricted: user.restricted,
+    admin: user.admin,
+    protected: user.protected,
+    hasPassword: user.hasPassword
+  });
+}
+
 /** Plex returns a home object with nested users, not a bare array. */
 function normalizeHomeUsersPayload(data) {
   if (!data) return [];
@@ -81,16 +94,7 @@ function fetchHomeUsersXml(ownerAuthToken) {
 function fallbackOwnerProfile(ownerAuthToken, clientId) {
   return fetchUser(ownerAuthToken, clientId).then(function (user) {
     if (!user || user.id == null) return [];
-    return [mapHomeUser({
-      id: user.id,
-      uuid: user.uuid,
-      title: user.title || user.username || user.friendlyName,
-      username: user.username,
-      restricted: user.restricted,
-      admin: true,
-      protected: user.protected,
-      hasPassword: user.hasPassword
-    })];
+    return [mapFallbackOwnerToHomeUser(user)];
   }).catch(function () {
     return [];
   });
@@ -224,6 +228,7 @@ export {
   fetchHomeUsers,
   switchToHomeUser,
   mapHomeUser,
+  mapFallbackOwnerToHomeUser,
   canSkipHomeSwitch,
   homeUserSwitchId
 };

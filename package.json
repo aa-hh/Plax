@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test",
     "build": "rollup -c build/rollup.config.js",
     "watch": "rollup -c build/rollup.config.js -w",
     "package": "npm run build && node scripts/package-ipk.cjs",

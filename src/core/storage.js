@@ -43,25 +43,18 @@ function clearSessionOwnerToken() {
   writeSessionOwnerToken(null);
 }
 
-/** Owner token for Plex Home admin APIs (not persisted for restricted child sessions). */
+/** Owner token for Plex Home admin APIs and restricted-profile server discovery. */
 function getOwnerAuthToken() {
   return readSessionOwnerToken() || get('ownerAuthToken');
 }
 
 /**
- * When a restricted profile is active, keep the owner token in sessionStorage only
- * so a child session cannot read it from localStorage after app restart.
+ * Persist owner token for Plex Home admin APIs and server discovery assist.
+ * Survives cold restart so restricted managed profiles can merge owner connections.
  */
 function persistOwnerTokenForProfile(ownerToken, activeHomeUser, activeAuthToken) {
   if (!ownerToken) return;
-  var restrictedChild = activeHomeUser && activeHomeUser.restricted &&
-    activeAuthToken && activeAuthToken !== ownerToken;
-  if (restrictedChild) {
-    writeSessionOwnerToken(ownerToken);
-    remove('ownerAuthToken');
-    return;
-  }
-  clearSessionOwnerToken();
+  writeSessionOwnerToken(ownerToken);
   set('ownerAuthToken', ownerToken);
 }
 

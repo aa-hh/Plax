@@ -53,14 +53,16 @@ Each package = **one agent session**. Run `npm run build && npm run validate` be
 
 ### B1 — Episode detail TV UX
 
-| Field | Value |
-|--------|--------|
-| **Package ID** | B1 |
-| **Title** | Episode detail webOS redesign |
-| **Goal** | Dedicated **episode** detail layout (Plex WebUI information, TV interaction patterns), without regressing movie/show/season flows. |
-| **Size** | **L** |
-| **Dependencies** | None (metadata fields largely exist in `mapLibraryItem`) |
-| **Key files** | `src/ui/screens/detailScreen.js`, `src/styles/app.css`, `src/ui/components/mediaCard.js`, `src/ui/focus.js`, `src/core/router.js`, `src/plex/library.js` |
+
+| Field            | Value                                                                                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Package ID**   | B1                                                                                                                                                       |
+| **Title**        | Episode detail webOS redesign                                                                                                                            |
+| **Goal**         | Dedicated **episode** detail layout (Plex WebUI information, TV interaction patterns), without regressing movie/show/season flows.                       |
+| **Size**         | **L**                                                                                                                                                    |
+| **Dependencies** | None (metadata fields largely exist in `mapLibraryItem`)                                                                                                 |
+| **Key files**    | `src/ui/screens/detailScreen.js`, `src/styles/app.css`, `src/ui/components/mediaCard.js`, `src/ui/focus.js`, `src/core/router.js`, `src/plex/library.js` |
+
 
 **Acceptance criteria**
 
@@ -76,38 +78,42 @@ Each package = **one agent session**. Run `npm run build && npm run validate` be
 
 **Exact gaps for B1**
 
-| Requirement | Current state |
-|-------------|----------------|
-| Episode-only layout branch | Missing — single template for all types |
-| Breadcrumb / back affordance | Missing |
-| Landscape episode art + in-progress bar on detail | Cards have progress; detail poster is portrait thumb |
-| Series title link → show | `grandparentTitle` / `grandparentRatingKey` mapped, not shown as link |
-| Episode vs series title hierarchy | Single `<h1>` with episode title only |
-| Season · Ep · time remaining | Not on detail; only on cards |
-| Clickable season | Missing |
-| `audienceRating` / IMDb | Mapped in `library.js`, not rendered on detail |
-| File details as `Label → value` rows | Uses horizontal **chips** (`detail-setting-chip`) |
-| Audio/subtitle **modals** on detail | Chips only, no modal |
-| Episode picker (modal / strip) | Season page uses horizontal `mediaCard` row only; no in-episode picker on episode detail |
-| Focus order spec | Generic `focusFirst(screen)` |
-| `parentDetail` / breadcrumb back | `buildActiveDetailRoute` sets `parentDetail` on child nav; no breadcrumb UI |
+
+| Requirement                                       | Current state                                                                            |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Episode-only layout branch                        | Missing — single template for all types                                                  |
+| Breadcrumb / back affordance                      | Missing                                                                                  |
+| Landscape episode art + in-progress bar on detail | Cards have progress; detail poster is portrait thumb                                     |
+| Series title link → show                          | `grandparentTitle` / `grandparentRatingKey` mapped, not shown as link                    |
+| Episode vs series title hierarchy                 | Single `<h1>` with episode title only                                                    |
+| Season · Ep · time remaining                      | Not on detail; only on cards                                                             |
+| Clickable season                                  | Missing                                                                                  |
+| `audienceRating` / IMDb                           | Mapped in `library.js`, not rendered on detail                                           |
+| File details as `Label → value` rows              | Uses horizontal **chips** (`detail-setting-chip`)                                        |
+| Audio/subtitle **modals** on detail               | Chips only, no modal                                                                     |
+| Episode picker (modal / strip)                    | Season page uses horizontal `mediaCard` row only; no in-episode picker on episode detail |
+| Focus order spec                                  | Generic `focusFirst(screen)`                                                             |
+| `parentDetail` / breadcrumb back                  | `buildActiveDetailRoute` sets `parentDetail` on child nav; no breadcrumb UI              |
+
 
 ---
 
 ### B2 — Browse Phase 2 (cache, tiered hubs, bootstrap overlap)
 
-| Field | Value |
-|--------|--------|
-| **Package ID** | B2 |
-| **Title** | Browse loading Phase 2 |
-| **Goal** | Cheaper revisits and cold start; implement **medium** items from loading audit `579dd837`. |
-| **Size** | **M** |
-| **Dependencies** | Phase 1 hub pool + no poster gate (done) |
-| **Key files** | `src/core/cache.js`, `src/plex/library.js`, `src/plex/recommendations/homeFeed.js`, `src/ui/screens/bootstrapScreen.js`, `src/ui/screens/searchScreen.js`, `src/plex/search.js`, `docs/caching-and-buffering.md` |
+
+| Field            | Value                                                                                                                                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Package ID**   | B2                                                                                                                                                                                                               |
+| **Title**        | Browse loading Phase 2                                                                                                                                                                                           |
+| **Goal**         | Cheaper revisits and cold start; implement **medium** items from loading audit `579dd837`.                                                                                                                       |
+| **Size**         | **M**                                                                                                                                                                                                            |
+| **Dependencies** | Phase 1 hub pool + no poster gate (done)                                                                                                                                                                         |
+| **Key files**    | `src/core/cache.js`, `src/plex/library.js`, `src/plex/recommendations/homeFeed.js`, `src/ui/screens/bootstrapScreen.js`, `src/ui/screens/searchScreen.js`, `src/plex/search.js`, `docs/caching-and-buffering.md` |
+
 
 **Acceptance criteria**
 
-- Add **`browse` namespace** (or equivalent) for section listings; library grid revisit avoids full re-fetch when TTL valid.
+- Add `**browse` namespace** (or equivalent) for section listings; library grid revisit avoids full re-fetch when TTL valid.
 - Optional **parallel library page fetch** after first paint (respect PMS; cap concurrency).
 - **Tiered / stale-while-revalidate** for `hubs` (e.g. show cached rows immediately, refresh in background).
 - **Bootstrap overlap:** start promoted hub list (or first hub row) while libraries still resolving, where safe.
@@ -121,14 +127,16 @@ Each package = **one agent session**. Run `npm run build && npm run validate` be
 
 ### B3 — Browse Phase 3 (library virtualization)
 
-| Field | Value |
-|--------|--------|
-| **Package ID** | B3 |
-| **Title** | Library grid virtualization |
-| **Goal** | Large libraries stay within DOM/network budget on webOS. |
-| **Size** | **L** |
-| **Dependencies** | B2 browse cache recommended first |
-| **Key files** | `src/ui/screens/libraryScreen.js`, `src/ui/components/mediaCard.js`, `src/ui/posterImages.js`, `src/ui/components/virtualRow.js` (or new virtual grid), `src/plex/library.js`, `docs/perf-budgets.md` |
+
+| Field            | Value                                                                                                                                                                                                 |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Package ID**   | B3                                                                                                                                                                                                    |
+| **Title**        | Library grid virtualization                                                                                                                                                                           |
+| **Goal**         | Large libraries stay within DOM/network budget on webOS.                                                                                                                                              |
+| **Size**         | **L**                                                                                                                                                                                                 |
+| **Dependencies** | B2 browse cache recommended first                                                                                                                                                                     |
+| **Key files**    | `src/ui/screens/libraryScreen.js`, `src/ui/components/mediaCard.js`, `src/ui/posterImages.js`, `src/ui/components/virtualRow.js` (or new virtual grid), `src/plex/library.js`, `docs/perf-budgets.md` |
+
 
 **Acceptance criteria**
 
@@ -143,14 +151,16 @@ Each package = **one agent session**. Run `npm run build && npm run validate` be
 
 ### B4 — Direct play clarity
 
-| Field | Value |
-|--------|--------|
-| **Package ID** | B4 |
-| **Title** | Direct play UX + probe accuracy |
-| **Goal** | Settings and player copy match behavior; reduce “Direct Play fails 90%” confusion. |
-| **Size** | **M** |
-| **Dependencies** | None |
-| **Key files** | `src/playback/qualityProfiles.js`, `src/settings/playbackSettings.js`, `src/playback/capabilityProbe.js`, `src/ui/screens/detailScreen.js`, `src/ui/screens/playerScreen.js`, `src/playback/sessionController.js`, `src/platform/deviceDisplay.js`, `docs/design-system.md` |
+
+| Field            | Value                                                                                                                                                                                                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Package ID**   | B4                                                                                                                                                                                                                                                                          |
+| **Title**        | Direct play UX + probe accuracy                                                                                                                                                                                                                                             |
+| **Goal**         | Settings and player copy match behavior; reduce “Direct Play fails 90%” confusion.                                                                                                                                                                                          |
+| **Size**         | **M**                                                                                                                                                                                                                                                                       |
+| **Dependencies** | None                                                                                                                                                                                                                                                                        |
+| **Key files**    | `src/playback/qualityProfiles.js`, `src/settings/playbackSettings.js`, `src/playback/capabilityProbe.js`, `src/ui/screens/detailScreen.js`, `src/ui/screens/playerScreen.js`, `src/playback/sessionController.js`, `src/platform/deviceDisplay.js`, `docs/design-system.md` |
+
 
 **Acceptance criteria**
 
@@ -168,14 +178,16 @@ Each package = **one agent session**. Run `npm run build && npm run validate` be
 
 ### B5 — Skip credits markers
 
-| Field | Value |
-|--------|--------|
-| **Package ID** | B5 |
-| **Title** | Skip credits (end markers) |
-| **Goal** | Mirror intro skip for Plex `Marker` `type=credit`. |
-| **Size** | **M** |
-| **Dependencies** | Intro marker pipeline (done) |
-| **Key files** | `src/playback/introMarkers.js` (or `creditMarkers.js`), `src/ui/screens/playerScreen.js`, `src/plex/library.js`, `src/styles/app.css`, `scripts/validate-intro-markers.mjs` |
+
+| Field            | Value                                                                                                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Package ID**   | B5                                                                                                                                                                          |
+| **Title**        | Skip credits (end markers)                                                                                                                                                  |
+| **Goal**         | Mirror intro skip for Plex `Marker` `type=credit`.                                                                                                                          |
+| **Size**         | **M**                                                                                                                                                                       |
+| **Dependencies** | Intro marker pipeline (done)                                                                                                                                                |
+| **Key files**    | `src/playback/introMarkers.js` (or `creditMarkers.js`), `src/ui/screens/playerScreen.js`, `src/plex/library.js`, `src/styles/app.css`, `scripts/validate-intro-markers.mjs` |
+
 
 **Acceptance criteria**
 
@@ -190,14 +202,16 @@ Each package = **one agent session**. Run `npm run build && npm run validate` be
 
 ### B6 — Search loading parity with home
 
-| Field | Value |
-|--------|--------|
-| **Package ID** | B6 |
-| **Title** | Search browse UX parity |
-| **Goal** | Search feels like Home: fast feedback, hub-row pattern, no unnecessary blocking. |
-| **Size** | **S** |
-| **Dependencies** | B2 optional (hub cache helps repeat queries) |
-| **Key files** | `src/ui/screens/searchScreen.js`, `src/plex/search.js`, `src/ui/components/hubRow.js`, `src/ui/posterImages.js` |
+
+| Field            | Value                                                                                                           |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Package ID**   | B6                                                                                                              |
+| **Title**        | Search browse UX parity                                                                                         |
+| **Goal**         | Search feels like Home: fast feedback, hub-row pattern, no unnecessary blocking.                                |
+| **Size**         | **S**                                                                                                           |
+| **Dependencies** | B2 optional (hub cache helps repeat queries)                                                                    |
+| **Key files**    | `src/ui/screens/searchScreen.js`, `src/plex/search.js`, `src/ui/components/hubRow.js`, `src/ui/posterImages.js` |
+
 
 **Acceptance criteria**
 
@@ -257,14 +271,16 @@ Bring searchScreen loading UX in line with homeScreen: skeleton hub rows while s
 
 ## Section D — Recommended order
 
-| Order | Package | Rationale |
-|-------|---------|-----------|
-| 1 | **B1** | User-facing episode detail; agent `144538d4` stalled — highest product gap |
-| 2 | **B4** | Reduces playback confusion; small surface, high support value |
-| 3 | **B6** | Quick win; same patterns as shipped home Phase 1 |
-| 4 | **B2** | Platform perf for daily Home/Library/Search use |
-| 5 | **B5** | Natural follow-up to shipped intro work |
-| 6 | **B3** | Largest refactor; best after browse cache + profiling on real TV |
+
+| Order | Package | Rationale                                                                  |
+| ----- | ------- | -------------------------------------------------------------------------- |
+| 1     | **B1**  | User-facing episode detail; agent `144538d4` stalled — highest product gap |
+| 2     | **B4**  | Reduces playback confusion; small surface, high support value              |
+| 3     | **B6**  | Quick win; same patterns as shipped home Phase 1                           |
+| 4     | **B2**  | Platform perf for daily Home/Library/Search use                            |
+| 5     | **B5**  | Natural follow-up to shipped intro work                                    |
+| 6     | **B3**  | Largest refactor; best after browse cache + profiling on real TV           |
+
 
 **Parallelism:** B4 and B6 can run in parallel with B1 if different agents. B3 should not start until B2 is stable or explicitly scoped without browse cache.
 
@@ -282,9 +298,12 @@ node scripts/validate-intro-markers.mjs
 
 ## Reference transcripts (optional)
 
-| Topic | Agent / transcript |
-|--------|-------------------|
+
+| Topic                             | Agent / transcript                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
 | Browse loading audit (Phases 1–3) | `579dd837` in [f8742b35-f83f-4ac2-a2cf-a71b7c1485c3](f8742b35-f83f-4ac2-a2cf-a71b7c1485c3) |
-| Phase 1 implementation | `6013e22d` |
-| Direct play audit | `dcdf28a0` |
-| Episode detail (not finished) | `144538d4` |
+| Phase 1 implementation            | `6013e22d`                                                                                 |
+| Direct play audit                 | `dcdf28a0`                                                                                 |
+| Episode detail (not finished)     | `144538d4`                                                                                 |
+
+
