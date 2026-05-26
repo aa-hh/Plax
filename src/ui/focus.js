@@ -4,7 +4,7 @@
  * Main: Left/Right within zones; Left at edge returns to sidebar; Up/Down between zones.
  */
 
-var focusableSelector = 'button, [tabindex], .btn, .card, .nav-item, .library-item, .browsing-hub-item, .row-item, .season-chip, .episode-chip, .detail-setting-chip, .detail-breadcrumb, .detail-episode-picker, .detail-link, .detail-file-row, .detail-modal-option, .detail-modal-cancel, .detail-watchlist-btn, .watchlist-row-link, .user-chip, .profile-card, .pin-pad-btn, select, .player-seek-bar, .player-menu-option';
+var focusableSelector = 'button, [tabindex], .btn, .card, .nav-item, .library-item, .browsing-hub-item, .row-item, .season-chip, .episode-chip, .detail-setting-chip, .detail-breadcrumb, .detail-breadcrumb-trail__btn, .detail-episode-picker, .detail-link, .detail-file-row, .detail-modal-option, .detail-modal-cancel, .detail-watchlist-btn, .watchlist-row-link, .user-chip, .profile-card, .pin-pad-btn, select, .player-seek-bar, .player-menu-option';
 
 var ARROW_LEFT = 37;
 var ARROW_UP = 38;
@@ -23,7 +23,8 @@ function focusFirst(container) {
 
 function getFocusZone(el) {
   if (!el) return null;
-  return el.closest('.row-scroll') ||
+  return el.closest('[data-focus-zone]') ||
+    el.closest('.row-scroll') ||
     el.closest('.browsing-hub-nav-host') ||
     el.closest('.settings-main') ||
     el.closest('.search-input-row') ||
@@ -33,24 +34,42 @@ function getFocusZone(el) {
     el.closest('.screen');
 }
 
+function pushZone(zones, el) {
+  if (el && zones.indexOf(el) < 0) zones.push(el);
+}
+
 function getZones(container) {
   var zones = [];
   var hubHost = container.querySelector('.browsing-hub-nav-host');
   if (hubHost) zones.push(hubHost);
+
+  var focusZones = container.querySelectorAll('[data-focus-zone]');
+  for (var i = 0; i < focusZones.length; i++) {
+    pushZone(zones, focusZones[i]);
+  }
+
   var searchInput = container.querySelector('.search-input-row');
-  if (searchInput) zones.push(searchInput);
+  if (searchInput) pushZone(zones, searchInput);
+
   var rows = container.querySelectorAll('.row-scroll');
-  for (var i = 0; i < rows.length; i++) zones.push(rows[i]);
+  for (var i = 0; i < rows.length; i++) {
+    pushZone(zones, rows[i]);
+  }
+
   var searchResults = container.querySelector('.search-results');
-  if (searchResults && zones.indexOf(searchResults) < 0) zones.push(searchResults);
+  if (searchResults) pushZone(zones, searchResults);
+
   var grid = container.querySelector('.media-grid');
-  if (grid && zones.indexOf(grid) < 0) zones.push(grid);
+  if (grid) pushZone(zones, grid);
+
   var settingsMain = container.querySelector('.settings-main');
-  if (settingsMain && zones.indexOf(settingsMain) < 0) zones.push(settingsMain);
+  if (settingsMain) pushZone(zones, settingsMain);
+
   var colGroups = container.querySelectorAll('[data-cols]');
   for (var j = 0; j < colGroups.length; j++) {
-    if (zones.indexOf(colGroups[j]) < 0) zones.push(colGroups[j]);
+    pushZone(zones, colGroups[j]);
   }
+
   if (!zones.length) zones.push(container);
   return zones;
 }
@@ -62,8 +81,26 @@ function zoneIndex(zones, zone) {
   return -1;
 }
 
+function resolveZoneIndex(zones, zone, active) {
+  var zIdx = zoneIndex(zones, zone);
+  if (zIdx >= 0) return zIdx;
+  if (active) {
+    for (var i = 0; i < zones.length; i++) {
+      if (zones[i].contains && zones[i].contains(active)) return i;
+    }
+  }
+  return 0;
+}
+
 function isSidebarZone(zone) {
-  return !!(zone && zone.classList && zone.classList.contains('browsing-hub-nav-host'));
+  if (!zone) return false;
+  if (zone.classList && zone.classList.contains('browsing-hub-nav-host')) return true;
+  if (zone.className && String(zone.className).indexOf('browsing-hub-nav-host') >= 0) return true;
+  return false;
+}
+
+function isPlaybackColumnsZone(zone) {
+  return !!(zone && zone.classList && zone.classList.contains('detail-playback-columns'));
 }
 
 function isAtLeftEdge(active, zone, idx) {
@@ -114,6 +151,44 @@ function scrollFocusedIntoView(el) {
   el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
+function getPlaybackColumn(active) {
+  if (!active) return null;
+  if (active.closest('.detail-file-section')) return 'file';
+  if (active.closest('.detail-network-section')) return 'network';
+  return null;
+}
+
+function handlePlaybackColumnsNav(container, zone, active, key) {
+  var fileSection = zone.querySelector('.detail-file-section');
+  var networkSection = zone.querySelector('.detail-network-section');
+  if (!fileSection || !networkSection) return false;
+
+  var fileList = getFocusables(fileSection);
+  var netList = getFocusables(networkSection);
+  if (!fileList.length || !netList.length) return false;
+
+  var column = getPlaybackColumn(active);
+  if (!column) return false;
+
+  if (key === ARROW_RIGHT && column === 'file') {
+    var fileIdx = fileList.indexOf(active);
+    if (fileIdx === fileList.length - 1) {
+      netList[0].focus();
+      scrollFocusedIntoView(netList[0]);
+      return true;
+    }
+  }
+  if (key === ARROW_LEFT && column === 'network') {
+    var netIdx = netList.indexOf(active);
+    if (netIdx === 0) {
+      fileList[fileList.length - 1].focus();
+      scrollFocusedIntoView(fileList[fileList.length - 1]);
+      return true;
+    }
+  }
+  return false;
+}
+
 function handleKeyNav(container, e) {
   var key = e.keyCode;
   if ([ARROW_LEFT, ARROW_UP, ARROW_RIGHT, ARROW_DOWN].indexOf(key) < 0) return false;
@@ -123,8 +198,7 @@ function handleKeyNav(container, e) {
   if (!zone || !container.contains(zone)) zone = container;
 
   var zones = getZones(container);
-  var zIdx = zoneIndex(zones, zone);
-  if (zIdx < 0) zIdx = 0;
+  var zIdx = resolveZoneIndex(zones, zone, active);
 
   var list = getFocusables(zone);
   var idx = list.indexOf(active);
@@ -150,6 +224,13 @@ function handleKeyNav(container, e) {
     return false;
   }
 
+  if ((key === ARROW_LEFT || key === ARROW_RIGHT) && isPlaybackColumnsZone(zone)) {
+    if (handlePlaybackColumnsNav(container, zone, active, key)) {
+      e.preventDefault();
+      return true;
+    }
+  }
+
   if (key === ARROW_LEFT || key === ARROW_RIGHT) {
     if (key === ARROW_LEFT && isAtLeftEdge(active, zone, idx)) {
       if (container.querySelector('.browsing-hub-nav-host')) {
@@ -168,6 +249,14 @@ function handleKeyNav(container, e) {
     return false;
   }
 
+  if (key === ARROW_DOWN && container.querySelector('.browsing-hub-nav-host')) {
+    var firstContentZone = container.querySelector('[data-focus-zone]');
+    if (firstContentZone && zone === firstContentZone) {
+      e.preventDefault();
+      if (focusSidebar(container)) return true;
+    }
+  }
+
   var targetZone = null;
   var targetIndex = idx;
   if (key === ARROW_DOWN && zIdx < zones.length - 1) {
@@ -181,7 +270,11 @@ function handleKeyNav(container, e) {
   e.preventDefault();
   var targetList = getFocusables(targetZone);
   if (!targetList.length) return true;
-  targetIndex = Math.min(targetIndex, targetList.length - 1);
+  if (key === ARROW_DOWN) {
+    targetIndex = 0;
+  } else {
+    targetIndex = Math.min(idx, targetList.length - 1);
+  }
   targetList[targetIndex].focus();
   scrollFocusedIntoView(targetList[targetIndex]);
   return true;
@@ -215,5 +308,7 @@ export {
   isSidebarZone,
   isAtLeftEdge,
   getZones,
-  zoneIndex
+  zoneIndex,
+  resolveZoneIndex,
+  focusSidebar
 };

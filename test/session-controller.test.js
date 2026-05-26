@@ -1,0 +1,189 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { getState, setState } from '../src/core/store.js';
+import {
+  buildDirectPlayUrl,
+  buildPlaybackUrl,
+  resolvePlaybackStrategy,
+  resolveStreamUrl
+} from '../src/playback/sessionController.js';
+
+var mockServer = {
+  connectionUri: 'https://plex.example.com:32400',
+  accessToken: 'server-token-xyz'
+};
+
+var partKey = '/library/parts/99/abc.mkv';
+
+function parseQuery(url) {
+  var u = new URL(url);
+  var q = {};
+  u.searchParams.forEach(function (value, key) {
+    q[key] = value;
+  });
+  return q;
+}
+
+function baseSession(overrides) {
+  return Object.assign({
+    server: mockServer,
+    item: { ratingKey: '12345' },
+    version: { partKey: partKey },
+    sessionId: 'xplay-test-session',
+    mediaIndex: 0,
+    partIndex: 0,
+    transcodeProtocol: 'hls'
+  }, overrides || {});
+}
+
+var savedPlaybackPrefs;
+
+test.beforeEach(function () {
+  savedPlaybackPrefs = Object.assign({}, getState().playbackPrefs);
+});
+
+test.afterEach(function () {
+  setState({ playbackPrefs: savedPlaybackPrefs });
+});
+
+test('buildDirectPlayUrl uses part path and server access token', function () {
+  var url = buildDirectPlayUrl(mockServer, partKey);
+  var u = new URL(url);
+  assert.equal(u.origin + u.pathname, 'https://plex.example.com:32400' + partKey);
+  assert.equal(u.searchParams.get('X-Plex-Token'), 'server-token-xyz');
+});
+
+test('buildDirectPlayUrl prefixes relative part paths', function () {
+  var url = buildDirectPlayUrl(mockServer, 'library/parts/1/file.mkv');
+  var u = new URL(url);
+  assert.equal(u.pathname, '/library/parts/1/file.mkv');
+});
+
+test('buildPlaybackUrl HLS targets universal start.m3u8', function () {
+  var session = baseSession({ forceTranscode: true });
+  var url = buildPlaybackUrl(mockServer, partKey, session, 'hls');
+  assert.ok(/\/video\/:\/transcode\/universal\/start\.m3u8\?/.test(url));
+  assert.equal(parseQuery(url).protocol, 'hls');
+});
+
+test('buildPlaybackUrl HTTP targets universal start without m3u8', function () {
+  var session = baseSession({ forceTranscode: true });
+  var url = buildPlaybackUrl(mockServer, partKey, session, 'hls');
+  var hlsQ = parseQuery(url);
+  var httpUrl = buildPlaybackUrl(mockServer, partKey, session, 'http');
+  var httpQ = parseQuery(httpUrl);
+  assert.ok(/\/video\/:\/transcode\/universal\/start\?/.test(httpUrl));
+  assert.ok(httpUrl.indexOf('.m3u8') < 0);
+  assert.ok(hlsQ['X-Plex-Client-Profile-Extra']);
+  assert.equal(httpQ['X-Plex-Client-Profile-Extra'], undefined);
+});
+
+test('buildPlaybackUrl transcode query includes offset ms and fastSeek', function () {
+  var session = baseSession({
+    forceTranscode: true,
+    offset: 125000
+  });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.offset, '125000');
+  assert.equal(q.fastSeek, '1');
+});
+
+test('buildPlaybackUrl direct strategy sets directPlay and directStream', function () {
+  var session = baseSession({ playbackStrategy: 'direct' });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.directPlay, '1');
+  assert.equal(q.directStream, '1');
+});
+
+test('buildPlaybackUrl transcode strategy clears directPlay and directStream', function () {
+  var session = baseSession({ playbackStrategy: 'transcode' });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.directPlay, '0');
+  assert.equal(q.directStream, '0');
+});
+
+test('buildPlaybackUrl direct-stream strategy remux flags', function () {
+  var session = baseSession({ playbackStrategy: 'direct-stream' });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.directPlay, '0');
+  assert.equal(q.directStream, '1');
+});
+
+test('resolvePlaybackStrategy honors explicit session.playbackStrategy', function () {
+  assert.equal(resolvePlaybackStrategy({ playbackStrategy: 'direct-stream' }), 'direct-stream');
+  assert.equal(resolvePlaybackStrategy({ playbackStrategy: 'http-transcode' }), 'http-transcode');
+});
+
+test('resolvePlaybackStrategy original quality prefers direct', function () {
+  setState({ playbackPrefs: Object.assign({}, savedPlaybackPrefs, { quality: 'auto', directPlay: true }) });
+  assert.equal(resolvePlaybackStrategy({ quality: 'original' }), 'direct');
+});
+
+test('resolvePlaybackStrategy forceTranscode yields HLS or HTTP transcode', function () {
+  assert.equal(resolvePlaybackStrategy({ forceTranscode: true }), 'transcode');
+  assert.equal(
+    resolvePlaybackStrategy({ forceTranscode: true, transcodeProtocol: 'http' }),
+    'http-transcode'
+  );
+});
+
+test('resolvePlaybackStrategy disables direct play when prefs.directPlay is false', function () {
+  setState({ playbackPrefs: Object.assign({}, savedPlaybackPrefs, { directPlay: false }) });
+  assert.equal(resolvePlaybackStrategy({ quality: 'auto' }), 'transcode');
+});
+
+test('resolveStreamUrl direct play returns part URL and direct mode', async function () {
+  var session = baseSession({ playbackStrategy: 'direct' });
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'direct');
+  assert.ok(result.url.indexOf(partKey) >= 0);
+  assert.ok(result.url.indexOf('transcode') < 0);
+  assert.equal(parseQuery(result.url)['X-Plex-Token'], 'server-token-xyz');
+});
+
+test('resolveStreamUrl HLS transcode returns m3u8 and transcode-hls mode', async function () {
+  var session = baseSession({ forceTranscode: true, transcodeProtocol: 'hls' });
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'transcode-hls');
+  assert.ok(/start\.m3u8/.test(result.url));
+});
+
+test('resolveStreamUrl http-transcode returns start URL and transcode-http mode', async function () {
+  var session = baseSession({
+    playbackStrategy: 'http-transcode',
+    transcodeProtocol: 'hls'
+  });
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'transcode-http');
+  assert.ok(/\/transcode\/universal\/start\?/.test(result.url));
+  assert.ok(result.url.indexOf('.m3u8') < 0);
+});
+
+test('resolveStreamUrl resolves partKey from nested media when version missing', async function () {
+  var nestedPartKey = '/library/parts/nested/part.mkv';
+  var session = {
+    server: mockServer,
+    item: {
+      ratingKey: '777',
+      media: [{
+        _children: [{ key: nestedPartKey }]
+      }]
+    },
+    playbackStrategy: 'direct',
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var result = await resolveStreamUrl(session);
+  assert.ok(result.url.indexOf(nestedPartKey) >= 0);
+});
+
+test('resolveStreamUrl falls back to metadata path when no part key', async function () {
+  var session = {
+    server: mockServer,
+    item: { ratingKey: '555' },
+    playbackStrategy: 'direct'
+  };
+  var result = await resolveStreamUrl(session);
+  assert.ok(result.url.indexOf('/library/metadata/555') >= 0);
+});

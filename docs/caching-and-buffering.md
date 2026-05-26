@@ -216,8 +216,9 @@ Player-screen reaction (`src/ui/screens/playerScreen.js`):
    quality profile.
 
 The watchdog is cleared on `pause()` (intentional stop), `stop()`, and on
-buffering-end. It only fires once per playback session (`rebufferFired`
-guard) so we never thrash the decoder.
+buffering-end. `rebufferFired` resets when buffering clears so a second
+stall in the same session can trigger fallback again; each stall still
+fires at most once until playback recovers.
 
 ### 2.5 Stop & cleanup (free the decoder)
 

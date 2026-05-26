@@ -11,11 +11,16 @@ import {
   refreshItem
 } from '../../plex/library.js';
 import { renderHubRow } from '../components/hubRow.js';
+import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
 import { hydrateRowWindow } from '../posterImages.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
-import { parseSubtitleStreams } from '../../playback/tracks/subtitleTracks.js';
+import {
+  parseSubtitleStreams,
+  pickDefaultSubtitleTrack,
+  subtitleDisplayTitle
+} from '../../playback/tracks/subtitleTracks.js';
 import { probePlayback } from '../../playback/capabilityProbe.js';
 import { isDirectPlayOnlyQuality } from '../../playback/qualityProfiles.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
@@ -35,6 +40,11 @@ import {
   getCachedProbeResult,
   probeResultToStore
 } from '../../playback/networkProbe.js';
+import { buildPlayerParamsFromMetadata } from '../../playback/hubDirectPlay.js';
+import {
+  shouldOfferResumeChoice,
+  showResumeOrStartModal
+} from '../resumeChoice.js';
 
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
@@ -128,31 +138,186 @@ function detailScreen(root, params, navigate) {
     return supportsWatchlistBookmark(item) ? watchlistBookmarkButtonHtml(false) : '';
   }
 
-  function buildDetailTopBar(innerLeftHtml, item) {
-    var bookmark = watchlistBookmarkMarkup(item);
-    if (!innerLeftHtml && !bookmark) return '';
-    return '<div class="detail-top-bar detail-top-bar--with-bookmark">' +
-      (innerLeftHtml || '') +
-      bookmark +
+  function buildDetailTopBar(innerLeftHtml) {
+    if (!innerLeftHtml) return '';
+    return '<div class="detail-top-bar" data-focus-zone="detail-top-bar">' +
+      innerLeftHtml +
       '</div>';
   }
 
-  function breadcrumbLabel() {
-    if (params.parentDetail && params.parentDetail.ratingKey) {
-      if (metadata && metadata.type === 'episode' && metadata.parentTitle) {
-        return metadata.parentTitle;
-      }
-      return 'Back';
-    }
-    return 'Library';
+  function wrapDetailShell(mainHtml) {
+    return '<div class="home-layout detail-screen-layout">' +
+      '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+      '<div class="home-main detail-home-main">' + mainHtml + '</div></div>';
   }
 
-  function navigateDetailBack() {
-    if (params.parentDetail && params.parentDetail.ratingKey) {
-      navigate('detail', params.parentDetail);
+  function mountDetailHubNav() {
+    var host = screen.querySelector('#browsing-hub-nav-host');
+    if (!host) return null;
+    var state = getState();
+    var activeLibrary = null;
+    if (params.libraryId) {
+      var libs = state.libraries || [];
+      for (var i = 0; i < libs.length; i++) {
+        if (String(libs[i].id) === String(params.libraryId)) {
+          activeLibrary = libs[i];
+          break;
+        }
+      }
+    }
+    if (!activeLibrary && params.libraryType === 'movie' && state.activeLibrary &&
+        state.activeLibrary.type === 'movie') {
+      activeLibrary = state.activeLibrary;
+    }
+    return mountBrowsingHubNav(host, {
+      navigate: navigate,
+      activeRoute: 'detail',
+      fromRoute: 'detail',
+      activeLibrary: activeLibrary
+    });
+  }
+
+  function resolveMovieLibraryTitle() {
+    var state = getState();
+    if (params.libraryId) {
+      var libs = state.libraries || [];
+      for (var i = 0; i < libs.length; i++) {
+        if (String(libs[i].id) === String(params.libraryId)) return libs[i].title;
+      }
+    }
+    if (state.activeLibrary && state.activeLibrary.type === 'movie') {
+      return state.activeLibrary.title;
+    }
+    return 'Films';
+  }
+
+  function navigateToMovieLibrary() {
+    var state = getState();
+    var libraryId = params.libraryId;
+    if (!libraryId && state.activeLibrary && state.activeLibrary.type === 'movie') {
+      libraryId = state.activeLibrary.id;
+    }
+    if (libraryId) {
+      navigate('library', { libraryId: libraryId });
       return;
     }
     navigate('library', {});
+  }
+
+  function navigateToSeasonDetail(item) {
+    if (!item || !item.parentRatingKey) return;
+    var route = {
+      ratingKey: item.parentRatingKey,
+      libraryType: 'show',
+      showKey: item.grandparentRatingKey || params.showKey || ''
+    };
+    if (item.grandparentRatingKey) {
+      route.parentDetail = { ratingKey: item.grandparentRatingKey, libraryType: 'show' };
+    }
+    navigate('detail', route);
+  }
+
+  function navigateToSeriesDetail(item) {
+    var showKey = item.grandparentRatingKey || item.parentRatingKey || params.showKey || '';
+    if (!showKey) return;
+    navigate('detail', {
+      ratingKey: showKey,
+      libraryType: 'show',
+      parentDetail: params.parentDetail
+    });
+  }
+
+  function seriesBreadcrumbLabel(item) {
+    return item.grandparentTitle || item.parentTitle || 'Series';
+  }
+
+  var DETAIL_FILE_SECTION_HTML =
+    '<section class="detail-file-section detail-file-section--episode" aria-labelledby="detail-file-heading">' +
+    '<h2 class="detail-file-heading" id="detail-file-heading">File details</h2>' +
+    '<button type="button" class="detail-file-row" id="detail-file-video" tabindex="0">' +
+    '<span class="detail-file-label">Video</span>' +
+    '<span class="detail-file-value" id="detail-file-video-value"></span>' +
+    '</button>' +
+    '<button type="button" class="detail-file-row" id="detail-file-audio" tabindex="0">' +
+    '<span class="detail-file-label">Audio</span>' +
+    '<span class="detail-file-value" id="detail-file-audio-value"></span>' +
+    '</button>' +
+    '<button type="button" class="detail-file-row" id="detail-file-subtitles" tabindex="0">' +
+    '<span class="detail-file-label">Subtitles</span>' +
+    '<span class="detail-file-value" id="detail-file-subtitles-value"></span>' +
+    '</button></section>';
+
+  function buildPlaybackColumnsHtml() {
+    return '<div class="detail-playback-columns" data-focus-zone="detail-playback-columns">' +
+      DETAIL_FILE_SECTION_HTML +
+      NETWORK_QUALITY_SECTION_HTML +
+      '</div>';
+  }
+
+  function buildWatchlistActionHtml(item) {
+    return supportsWatchlistBookmark(item) ? watchlistBookmarkButtonHtml(false) : '';
+  }
+
+  function buildEpisodeBreadcrumbTrail(item) {
+    var epCode = episodeCode(item);
+    var epLabel = item.title || epCode || 'Episode';
+    if (!epCode && item.index != null && item.index !== '') {
+      epLabel = 'E' + item.index + (item.title ? ' · ' + item.title : '');
+    }
+    return '<nav class="detail-breadcrumb-trail" aria-label="Episode navigation">' +
+      '<button type="button" class="detail-breadcrumb-trail__btn btn" id="detail-season-crumb" tabindex="0">' +
+      escapeHtml(seasonLabel(item)) + '</button>' +
+      '<span class="detail-breadcrumb-trail__sep" aria-hidden="true">›</span>' +
+      '<button type="button" class="detail-breadcrumb-trail__btn detail-episode-picker btn" ' +
+      'id="btn-episode-picker" tabindex="0">' + escapeHtml(epLabel) + '</button>' +
+      '</nav>';
+  }
+
+  function buildFilmBreadcrumbTrail() {
+    return '<nav class="detail-breadcrumb-trail" aria-label="Library navigation">' +
+      '<button type="button" class="detail-breadcrumb-trail__btn btn" id="detail-library-crumb" tabindex="0">' +
+      escapeHtml(resolveMovieLibraryTitle()) + '</button></nav>';
+  }
+
+  function buildSeriesBreadcrumbTrail(item) {
+    return '<nav class="detail-breadcrumb-trail" aria-label="Series navigation">' +
+      '<button type="button" class="detail-breadcrumb-trail__btn btn" id="detail-series-crumb" tabindex="0">' +
+      escapeHtml(seriesBreadcrumbLabel(item)) + '</button></nav>';
+  }
+
+  function wirePlaybackDetailCommon(item, layoutSelector) {
+    var layout = screen.querySelector(layoutSelector);
+    applyDetailBackground(layout, server, item);
+    wireNetworkQualitySection();
+    attachNetworkQualityObserver();
+    prefetchItemNetworkProbe();
+    updateDirectPlayNotice();
+
+    var btnDirectPlayToggle = screen.querySelector('#btn-directplay-toggle');
+    if (btnDirectPlayToggle) {
+      btnDirectPlayToggle.addEventListener('click', function () {
+        var panel = screen.querySelector('#direct-play-body');
+        if (panel) panel.classList.toggle('hidden');
+      });
+    }
+    var modalCancel = screen.querySelector('#detail-modal-cancel');
+    if (modalCancel) modalCancel.addEventListener('click', closeDetailModal);
+  }
+
+  function wireEpisodePlaybackActions(item, versions) {
+    renderEpisodeFileRows(item, versions);
+
+    screen.querySelector('#btn-start').addEventListener('click', function () {
+      offerResumeChoiceOrPlay(0);
+    });
+    screen.querySelector('#btn-mark-watched').addEventListener('click', function () {
+      applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
+    });
+    screen.querySelector('#btn-mark-unwatched').addEventListener('click', function () {
+      applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
+    });
+    refreshWatchButtons(item);
+    wireWatchlistBookmark(screen, item);
   }
 
   var seasonEpisodes = null;
@@ -321,6 +486,17 @@ function detailScreen(root, params, navigate) {
     });
   }
 
+  function prefetchItemNetworkProbe() {
+    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
+    if (quality !== 'auto' || !server || !metadata || !selectedVersion) return;
+    if (getCachedProbeResult(server, metadata.ratingKey, selectedVersion.id)) return;
+    startNetworkProbeIfNeeded(server, {
+      item: metadata,
+      version: selectedVersion,
+      deviceInfo: deviceInfo
+    });
+  }
+
   function buildAutoQualityHintHtml() {
     var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
     if (quality !== 'auto') return '';
@@ -467,20 +643,34 @@ function detailScreen(root, params, navigate) {
   }
 
   function playParams(offset) {
-    var probe = runProbe();
-    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
-    var strictDirect = isDirectPlayOnlyQuality(quality);
-    return {
-      ratingKey: metadata.ratingKey,
+    runProbe();
+    return buildPlayerParamsFromMetadata(metadata, {
+      deviceInfo: deviceInfo,
+      playbackPrefs: getState().playbackPrefs,
+      offset: offset,
       version: selectedVersion,
       audioStreamId: selectedAudio,
       subtitleStreamId: selectedSubtitle,
-      offset: offset,
-      forceTranscode: !strictDirect && probe
-        ? (!probe.canDirectPlay && !probe.canDirectStream)
-        : false,
-      _detail: { ratingKey: metadata.ratingKey }
-    };
+      detailRoute: { ratingKey: metadata.ratingKey }
+    });
+  }
+
+  function navigateToPlayer(offset) {
+    navigate('player', playParams(offset));
+  }
+
+  function offerResumeChoiceOrPlay(defaultOffset) {
+    if (!metadata) return;
+    if (shouldOfferResumeChoice(metadata.viewOffset, metadata.duration)) {
+      showResumeOrStartModal({
+        viewOffset: metadata.viewOffset,
+        title: metadata.title || 'Continue watching?',
+        onResume: function () { navigateToPlayer(metadata.viewOffset); },
+        onStartFromBeginning: function () { navigateToPlayer(0); }
+      });
+      return;
+    }
+    navigateToPlayer(defaultOffset != null ? defaultOffset : 0);
   }
 
   function setDetailBackgroundImage(layout, imageUrl) {
@@ -535,6 +725,7 @@ function detailScreen(root, params, navigate) {
     }
     if (params._from) route._from = params._from;
     if (params.parentDetail) route.parentDetail = params.parentDetail;
+    if (params.libraryId) route.libraryId = params.libraryId;
     return route;
   }
 
@@ -658,8 +849,8 @@ function detailScreen(root, params, navigate) {
       selectedSubtitle = null;
     }
     if (selectedSubtitle == null && subs.length) {
-      var defaultSub = subs.filter(function (s) { return s.selected; })[0];
-      selectedSubtitle = defaultSub ? defaultSub.id : null;
+      var pickedSub = pickDefaultSubtitleTrack(subs);
+      selectedSubtitle = pickedSub ? pickedSub.id : null;
     }
 
     var videoBtn = screen.querySelector('#detail-file-video');
@@ -778,9 +969,6 @@ function detailScreen(root, params, navigate) {
     var seriesTitle = item.grandparentTitle || 'Series';
     var epCode = episodeCode(item);
     var primaryLine = '';
-    if (item.parentRatingKey) {
-      primaryLine += '<span class="detail-episode-season-text">' + escapeHtml(seasonLabel(item)) + '</span>';
-    }
     if (epCode) {
       primaryLine += '<span class="detail-episode-code">' + escapeHtml(epCode) + '</span>';
     }
@@ -794,17 +982,11 @@ function detailScreen(root, params, navigate) {
     ].filter(Boolean);
     var imdb = formatImdbRating(item);
 
-    screen.innerHTML =
+    screen.innerHTML = wrapDetailShell(
       '<div class="detail-layout detail-layout--episode">' +
       '<div class="detail-episode-panel">' +
-      buildDetailTopBar(
-        '<button type="button" class="detail-breadcrumb btn" id="detail-breadcrumb" tabindex="0">← ' +
-        escapeHtml(breadcrumbLabel()) + '</button>' +
-        '<button type="button" class="detail-episode-picker btn" id="btn-episode-picker" tabindex="0">' +
-        escapeHtml(epCode || 'Episode') + ' · All episodes</button>',
-        item
-      ) +
-      '<div class="detail-episode-main">' +
+      buildDetailTopBar(buildEpisodeBreadcrumbTrail(item)) +
+      '<div class="detail-episode-main" data-focus-zone="detail-episode-main">' +
       '<div class="detail-episode-art-wrap">' +
       '<img class="detail-episode-art" id="detail-episode-art" alt="" />' +
       progressHtml +
@@ -819,39 +1001,18 @@ function detailScreen(root, params, navigate) {
         : '') +
       (imdb ? '<p class="detail-episode-line detail-episode-rating">' + escapeHtml(imdb) + '</p>' : '') +
       '</div></div>' +
-      '<div class="detail-actions detail-episode-actions" data-cols="3">' +
-      '<button class="btn btn-primary" id="btn-start" tabindex="0">' + (item.viewOffset ? 'Resume' : 'Play') + '</button>' +
+      '<div class="detail-actions detail-episode-actions" data-focus-zone="detail-episode-actions" data-cols="4">' +
+      '<button class="btn btn-primary detail-play-btn" id="btn-start" tabindex="0">' +
+      (item.viewOffset ? 'Resume' : 'Play') + '</button>' +
       '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
       '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      buildWatchlistActionHtml(item) +
       '</div>' +
-      '<div class="detail-episode-nav" data-cols="2">' +
-      '<button type="button" class="detail-link detail-series-title" id="detail-series-link" tabindex="0">' +
-      escapeHtml(seriesTitle) + '</button>' +
-      (item.parentRatingKey
-        ? '<button type="button" class="detail-link detail-season-link" id="detail-season-link" tabindex="0">' +
-          escapeHtml(seasonLabel(item)) + '</button>'
-        : '') +
-      '</div>' +
-      '<section class="detail-file-section detail-file-section--episode" aria-labelledby="detail-file-heading">' +
-      '<h2 class="detail-file-heading" id="detail-file-heading">File details</h2>' +
-      '<button type="button" class="detail-file-row" id="detail-file-video" tabindex="0">' +
-      '<span class="detail-file-label">Video</span>' +
-      '<span class="detail-file-value" id="detail-file-video-value"></span>' +
-      '</button>' +
-      '<button type="button" class="detail-file-row" id="detail-file-audio" tabindex="0">' +
-      '<span class="detail-file-label">Audio</span>' +
-      '<span class="detail-file-value" id="detail-file-audio-value"></span>' +
-      '</button>' +
-      '<button type="button" class="detail-file-row" id="detail-file-subtitles" tabindex="0">' +
-      '<span class="detail-file-label">Subtitles</span>' +
-      '<span class="detail-file-value" id="detail-file-subtitles-value"></span>' +
-      '</button>' +
-      '</section>' +
-      NETWORK_QUALITY_SECTION_HTML +
       '<div class="detail-disclosure" id="direct-play-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
       '</div>' +
+      buildPlaybackColumnsHtml() +
       '<p class="watch-status-msg" id="watch-status-msg"></p>' +
       '</div></div>' +
       '<div class="detail-modal" id="detail-modal" hidden>' +
@@ -860,75 +1021,106 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-modal-list" id="detail-modal-list"></div>' +
       '<div class="detail-modal-footer">' +
       '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
-      '</div></div></div>';
+      '</div></div></div>'
+    );
+
+    mountDetailHubNav();
 
     var art = screen.querySelector('#detail-episode-art');
     if (art) art.src = item.thumb || item.art || item.grandparentThumbUrl || '';
-    applyDetailBackground(screen.querySelector('.detail-layout'), server, item);
+    wirePlaybackDetailCommon(item, '.detail-layout');
+    wireEpisodePlaybackActions(item, versions);
 
-    renderEpisodeFileRows(item, versions);
-    wireNetworkQualitySection();
-    attachNetworkQualityObserver();
-    updateDirectPlayNotice();
-
-    screen.querySelector('#detail-breadcrumb').addEventListener('click', navigateDetailBack);
+    var seasonCrumb = screen.querySelector('#detail-season-crumb');
+    if (seasonCrumb && item.parentRatingKey) {
+      seasonCrumb.addEventListener('click', function () { navigateToSeasonDetail(item); });
+    } else if (seasonCrumb) {
+      seasonCrumb.disabled = true;
+    }
     screen.querySelector('#btn-episode-picker').addEventListener('click', function () {
       openEpisodePickerModal(item);
     });
-    var seriesLink = screen.querySelector('#detail-series-link');
-    if (seriesLink && item.grandparentRatingKey) {
-      seriesLink.addEventListener('click', function () {
-        navigate('detail', {
-          ratingKey: item.grandparentRatingKey,
-          libraryType: 'show',
-          parentDetail: params.parentDetail && params.parentDetail.parentDetail
-            ? params.parentDetail.parentDetail
-            : undefined
-        });
-      });
-    } else if (seriesLink) {
-      seriesLink.disabled = true;
-    }
-    var seasonLink = screen.querySelector('#detail-season-link');
-    if (seasonLink && item.parentRatingKey) {
-      seasonLink.addEventListener('click', function () {
-        var route = {
-          ratingKey: item.parentRatingKey,
-          libraryType: 'show',
-          showKey: item.grandparentRatingKey || params.showKey || ''
-        };
-        if (item.grandparentRatingKey) {
-          route.parentDetail = { ratingKey: item.grandparentRatingKey, libraryType: 'show' };
-        }
-        navigate('detail', route);
-      });
-    }
 
-    screen.querySelector('#btn-start').addEventListener('click', function () {
-      navigate('player', playParams(item.viewOffset || 0));
-    });
-    var btnWatched = screen.querySelector('#btn-mark-watched');
-    var btnUnwatched = screen.querySelector('#btn-mark-unwatched');
-    btnWatched.addEventListener('click', function () {
-      applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
-    });
-    btnUnwatched.addEventListener('click', function () {
-      applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
-    });
-    refreshWatchButtons(item);
+    var playBtn = screen.querySelector('#btn-start');
+    if (playBtn) playBtn.focus();
+    else focusFirst(screen);
+  }
 
-    var btnDirectPlayToggle = screen.querySelector('#btn-directplay-toggle');
-    if (btnDirectPlayToggle) {
-      btnDirectPlayToggle.addEventListener('click', function () {
-        var panel = screen.querySelector('#direct-play-body');
-        if (panel) panel.classList.toggle('hidden');
-      });
+  function renderMovieDetail(item) {
+    metadata = item;
+    activeDetailRoute = buildActiveDetailRoute(item);
+    var versions = extractVersions(item);
+    selectedVersion = pickBestVersion(versions, getState().playbackPrefs);
+    currentProbe = probePlayback(item, selectedVersion, null, deviceInfo);
+
+    var progressPct = getWatchProgressPercent(item);
+    var progressHtml = item.viewOffset && item.duration
+      ? '<div class="detail-episode-progress" aria-hidden="true">' +
+        '<div class="detail-episode-progress-fill" style="width:' + progressPct + '%"></div></div>'
+      : '';
+    var metaParts = [item.year, formatDuration(item.duration), item.contentRating].filter(Boolean);
+    if (item.genres && item.genres.length) {
+      metaParts.push(item.genres.map(function (g) { return g.tag; }).join(', '));
     }
-    var modalCancel = screen.querySelector('#detail-modal-cancel');
-    if (modalCancel) modalCancel.addEventListener('click', closeDetailModal);
+    var imdb = formatImdbRating(item);
 
-    wireWatchlistBookmark(screen, item);
-    focusFirst(screen);
+    screen.innerHTML = wrapDetailShell(
+      '<div class="detail-layout detail-layout--episode detail-layout--movie">' +
+      '<div class="detail-episode-panel">' +
+      buildDetailTopBar(buildFilmBreadcrumbTrail()) +
+      '<div class="detail-episode-main" data-focus-zone="detail-episode-main">' +
+      '<div class="detail-episode-art-wrap">' +
+      '<img class="detail-episode-art" id="detail-episode-art" alt="" />' +
+      progressHtml +
+      '</div>' +
+      '<div class="detail-episode-copy">' +
+      '<h1 class="detail-episode-title">' + escapeHtml(item.title || '') + '</h1>' +
+      (metaParts.length
+        ? '<p class="detail-episode-line detail-episode-line--secondary">' +
+          escapeHtml(metaParts.join(' · ')) + '</p>'
+        : '') +
+      (imdb ? '<p class="detail-episode-line detail-episode-rating">' + escapeHtml(imdb) + '</p>' : '') +
+      (item.summary
+        ? '<p class="detail-episode-summary">' + escapeHtml(item.summary) + '</p>'
+        : '') +
+      '</div></div>' +
+      '<div class="detail-actions detail-episode-actions" data-focus-zone="detail-episode-actions" data-cols="4">' +
+      '<button class="btn btn-primary detail-play-btn" id="btn-start" tabindex="0">' +
+      (item.viewOffset ? 'Resume' : 'Play') + '</button>' +
+      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
+      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      buildWatchlistActionHtml(item) +
+      '</div>' +
+      '<div class="detail-disclosure" id="direct-play-disclosure" hidden>' +
+      '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
+      '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
+      '</div>' +
+      buildPlaybackColumnsHtml() +
+      '<p class="watch-status-msg" id="watch-status-msg"></p>' +
+      '</div>' +
+      '<div class="detail-rails detail-rails--movie" id="detail-rails" data-focus-zone="detail-rails"></div>' +
+      '<div class="detail-modal" id="detail-modal" hidden>' +
+      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true">' +
+      '<p class="detail-modal-title" id="detail-modal-title"></p>' +
+      '<div class="detail-modal-list" id="detail-modal-list"></div>' +
+      '<div class="detail-modal-footer">' +
+      '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
+      '</div></div></div>'
+    );
+
+    mountDetailHubNav();
+
+    var art = screen.querySelector('#detail-episode-art');
+    if (art) art.src = item.thumb || item.art || '';
+    wirePlaybackDetailCommon(item, '.detail-layout');
+    wireEpisodePlaybackActions(item, versions);
+
+    screen.querySelector('#detail-library-crumb').addEventListener('click', navigateToMovieLibrary);
+    loadRelatedHubs(item.ratingKey);
+
+    var playBtn = screen.querySelector('#btn-start');
+    if (playBtn) playBtn.focus();
+    else focusFirst(screen);
   }
 
   function renderStandardDetail(item) {
@@ -938,24 +1130,28 @@ function detailScreen(root, params, navigate) {
     selectedVersion = pickBestVersion(versions, getState().playbackPrefs);
     currentProbe = probePlayback(item, selectedVersion, null, deviceInfo);
 
-    var topBarInner = '';
-    if (params.parentDetail && params.parentDetail.ratingKey) {
-      topBarInner =
-        '<button type="button" class="detail-breadcrumb btn" id="detail-breadcrumb" tabindex="0">← ' +
-        escapeHtml(breadcrumbLabel()) + '</button>';
-    }
-    var topBar = buildDetailTopBar(topBarInner, item);
+    var layoutClass = 'detail-layout';
+    if (item.type === 'season') layoutClass += ' detail-layout--season';
+    if (item.type === 'show') layoutClass += ' detail-layout--show';
 
-    screen.innerHTML =
-      '<div class="detail-layout">' +
+    var topBar = '';
+    if (item.type === 'season') {
+      topBar = buildDetailTopBar(buildSeriesBreadcrumbTrail(item));
+    }
+
+    var watchlistInActions = item.type === 'season' ? buildWatchlistActionHtml(item) : '';
+
+    screen.innerHTML = wrapDetailShell(
+      '<div class="' + layoutClass + '">' +
       topBar +
       '<img class="detail-poster" id="detail-poster" alt="" />' +
       '<div class="detail-info">' +
       '<h1 class="screen-title">' + escapeHtml(item.title) + '</h1>' +
       '<p class="detail-meta" id="detail-meta"></p>' +
       '<p class="detail-summary">' + escapeHtml(item.summary || '') + '</p>' +
-      '<div class="detail-primary-actions">' +
+      '<div class="detail-primary-actions" data-focus-zone="detail-primary-actions" data-cols="3">' +
       '<button class="btn btn-primary" id="btn-start" tabindex="0">' + (item.viewOffset ? 'Resume' : 'Play') + '</button>' +
+      watchlistInActions +
       '<button class="btn" id="btn-more-actions" tabindex="0">More actions</button>' +
       '</div>' +
       '<div class="detail-actions detail-actions-secondary hidden" id="detail-actions-secondary">' +
@@ -976,9 +1172,20 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-setting-row hidden" id="detail-setting-audio"></div>' +
       '<div class="detail-setting-row hidden" id="detail-setting-subtitles"></div>' +
       '</div>' +
-      (item.type === 'movie' ? NETWORK_QUALITY_SECTION_HTML : '') +
-      '<div class="detail-rails" id="detail-rails"></div>' +
-      '</div></div>';
+      '<div class="detail-rails' +
+      (item.type === 'show' ? ' detail-rails--show' : '') +
+      '" id="detail-rails" data-focus-zone="detail-rails"></div>' +
+      '</div></div>' +
+      '<div class="detail-modal" id="detail-modal" hidden>' +
+      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true">' +
+      '<p class="detail-modal-title" id="detail-modal-title"></p>' +
+      '<div class="detail-modal-list" id="detail-modal-list"></div>' +
+      '<div class="detail-modal-footer">' +
+      '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
+      '</div></div></div>'
+    );
+
+    mountDetailHubNav();
 
     var poster = screen.querySelector('#detail-poster');
     if (poster) poster.src = item.thumb || item.art || '';
@@ -996,11 +1203,6 @@ function detailScreen(root, params, navigate) {
     renderPlaybackTracks(item);
     syncPlaybackBlockVisibility();
     updateDirectPlayNotice();
-    if (item.type === 'movie') {
-      wireNetworkQualitySection();
-      attachNetworkQualityObserver();
-    }
-
     if (item.type === 'show') {
       loadSeasons(item.ratingKey);
     } else if (item.type === 'season') {
@@ -1010,21 +1212,25 @@ function detailScreen(root, params, navigate) {
       loadEpisodes(params.seasonKey, params.showKey || '');
     }
 
-    if (item.type === 'movie' || item.type === 'show') {
+    if (item.type === 'show') {
       loadRelatedHubs(item.ratingKey);
     }
 
-    var breadcrumb = screen.querySelector('#detail-breadcrumb');
-    if (breadcrumb) breadcrumb.addEventListener('click', navigateDetailBack);
+    var seriesCrumb = screen.querySelector('#detail-series-crumb');
+    if (seriesCrumb) {
+      seriesCrumb.addEventListener('click', function () {
+        navigateToSeriesDetail(item);
+      });
+    }
 
     screen.querySelector('#btn-start').addEventListener('click', function () {
-      navigate('player', playParams(item.viewOffset || 0));
+      offerResumeChoiceOrPlay(0);
     });
     screen.querySelector('#btn-play').addEventListener('click', function () {
-      navigate('player', playParams(0));
+      navigateToPlayer(0);
     });
     screen.querySelector('#btn-resume').addEventListener('click', function () {
-      navigate('player', playParams(item.viewOffset));
+      navigateToPlayer(item.viewOffset);
     });
     var btnRefresh = screen.querySelector('#btn-refresh');
     if (btnRefresh) {
@@ -1072,13 +1278,22 @@ function detailScreen(root, params, navigate) {
       refreshWatchButtons(item);
     }
 
-    wireWatchlistBookmark(screen, item);
-    focusFirst(screen);
+    if (supportsWatchlistBookmark(item)) {
+      wireWatchlistBookmark(screen, item);
+    }
+
+    var playBtn = screen.querySelector('#btn-start');
+    if (playBtn) playBtn.focus();
+    else focusFirst(screen);
   }
 
   function renderDetail(item) {
     if (item.type === 'episode') {
       renderEpisodeDetail(item);
+      return;
+    }
+    if (item.type === 'movie') {
+      renderMovieDetail(item);
       return;
     }
     renderStandardDetail(item);
@@ -1149,7 +1364,8 @@ function detailScreen(root, params, navigate) {
   }
 
   function subtitleOptionLabel(track) {
-    return track.graphical ? track.title + ' (image)' : track.title;
+    var label = subtitleDisplayTitle(track);
+    return track.graphical ? label + ' (image)' : label;
   }
 
   function trackExists(tracks, id) {
@@ -1192,8 +1408,8 @@ function detailScreen(root, params, navigate) {
       selectedSubtitle = null;
     }
     if (selectedSubtitle == null && subs.length) {
-      var defaultSub = subs.filter(function (s) { return s.selected; })[0];
-      selectedSubtitle = defaultSub ? defaultSub.id : null;
+      var pickedSub = pickDefaultSubtitleTrack(subs);
+      selectedSubtitle = pickedSub ? pickedSub.id : null;
     }
 
     var subOptions = [{ id: null, label: 'Off', data: null }].concat(subs.map(function (s) {
@@ -1222,7 +1438,7 @@ function detailScreen(root, params, navigate) {
           route.libraryType = 'show';
           route.parentDetail = activeDetailRoute;
           navigate('detail', route);
-        }, { layout: 'row' }));
+        }, { layout: 'row', cardText: 'titleOnly' }));
       });
       hydrateRowWindow(row, { start: 0, count: items.length });
     });
@@ -1239,8 +1455,11 @@ function detailScreen(root, params, navigate) {
       if (!rows || !rows.length) return;
       var rails = screen.querySelector('#detail-rails');
       if (!rails) return;
+      var hubOpts = metadata && metadata.type === 'show'
+        ? { visibleCount: 12 }
+        : undefined;
       rows.forEach(function (row) {
-        renderHubRow(rails, row, navigate);
+        renderHubRow(rails, row, navigate, hubOpts);
       });
     }).catch(function () {});
   }

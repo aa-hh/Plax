@@ -49,7 +49,8 @@ function buildTranscodeParams(server, partKey, session, protocol) {
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
   Object.assign(params, buildSubtitleTranscodeParams(
     session.subtitleStreamId,
-    session.subtitleOffset
+    session.subtitleOffset,
+    { burnIn: session.subtitleBurnIn === true }
   ));
 
   if (protocol === 'http') {
@@ -91,6 +92,7 @@ function createSession(item, version, options) {
     audioStreamId: options.audioStreamId,
     subtitleStreamId: options.subtitleStreamId,
     subtitleOffset: options.subtitleOffset || 0,
+    subtitleBurnIn: options.subtitleBurnIn === true,
     quality: options.quality,
     forceTranscode: options.forceTranscode,
     playbackStrategy: options.playbackStrategy,

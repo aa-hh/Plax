@@ -67,6 +67,9 @@ function formatDirectPlayOnlyError(probe) {
   if (!probe) {
     return 'Direct play failed. Choose Auto or a transcode quality (720p, 1080p) in Settings.';
   }
+  if (probe.bitrateCheck && probe.bitrateCheck.unknown) {
+    return 'Direct play only: source bitrate unknown — use Auto or a transcode quality.';
+  }
   if (probe.bitrateCheck && probe.bitrateCheck.exceeds) {
     return 'Direct play only: bitrate exceeds this TV\'s limit (' +
       probe.bitrateCheck.actualMbps + ' Mbps > ' + probe.bitrateCheck.limitMbps + ' Mbps).';

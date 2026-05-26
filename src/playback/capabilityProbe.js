@@ -67,9 +67,14 @@ function probePlayback(item, version, capabilities, deviceInfo) {
 
   var bitrateCheck = checkBitrate(version, deviceInfo);
   var bitrateBlocks = bitrateCheck.exceeds;
+  var bitrateUnknown = !!bitrateCheck.unknown;
+
+  if (bitrateUnknown) {
+    warnings.push(bitrateCheck.message || 'Source bitrate unknown; direct play may require transcode');
+  }
 
   var progressiveOk = isNativeProgressiveContainer(container);
-  var canDirectPlay = videoOk && audioDirectOk && progressiveOk && !bitrateBlocks;
+  var canDirectPlay = videoOk && audioDirectOk && progressiveOk && !bitrateBlocks && !bitrateUnknown;
   var canDirectStream = videoOk && !bitrateBlocks;
 
   if (videoOk && !bitrateBlocks && !progressiveOk) {

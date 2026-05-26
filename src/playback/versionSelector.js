@@ -19,6 +19,7 @@ function extractVersions(metadata) {
         container: m.container,
         partKey: part && (part.key || part.id),
         partId: part && part.id,
+        partIndexes: part && part.indexes,
         title: [m.videoResolution, m.videoCodec, m.audioCodec].filter(Boolean).join(' · ') || 'Version'
       });
     }

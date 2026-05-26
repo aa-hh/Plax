@@ -112,7 +112,8 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .btn:focus, .card:not(.media-card):focus, .nav-item:focus, .library-item:focus, .row-item:not(.media-card):focus,
-.season-chip:focus, .episode-chip:focus, .detail-breadcrumb:focus, .detail-episode-picker:focus,
+.season-chip:focus, .episode-chip:focus, .detail-breadcrumb:focus,
+.detail-breadcrumb-trail__btn:focus, .detail-episode-picker:focus,
 .detail-link:focus, .detail-file-row:focus, .detail-network-retest:focus,
 .detail-network-info-btn:focus, #btn-test-connection:focus,
 .detail-modal-option:focus, .detail-modal-cancel:focus,
@@ -143,7 +144,8 @@ html { min-width: 1280px; min-height: 720px; }
 .screen > .search-results,
 .screen > .settings-content,
 .screen > .detail-layout,
-.screen > .detail-layout--episode {
+.screen > .detail-layout--episode,
+.screen > .detail-screen-layout {
   width: 100%;
   max-width: var(--content-max);
   margin-left: auto;
@@ -1072,6 +1074,36 @@ html { min-width: 1280px; min-height: 720px; }
   color: var(--text-primary);
 }
 
+/* Detail + browsing sidebar */
+.detail-screen-layout {
+  width: 100%;
+  max-width: none;
+}
+
+.detail-screen-layout .detail-home-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--detail-top-gap, var(--space-5));
+}
+
+.detail-screen-layout .detail-layout--episode {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.detail-screen-layout .detail-layout--movie .detail-rails--movie {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: var(--space-5);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-5);
+}
+
 /* Episode detail (TV) */
 .detail-layout--episode {
   flex-direction: column;
@@ -1084,6 +1116,96 @@ html { min-width: 1280px; min-height: 720px; }
   gap: var(--space-5);
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.detail-playback-columns {
+  display: flex;
+  gap: var(--space-5);
+  width: 100%;
+  margin-top: auto;
+  flex-shrink: 0;
+  align-items: flex-start;
+}
+
+.detail-playback-columns .detail-file-section,
+.detail-playback-columns .detail-network-section {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  max-width: none;
+}
+
+.detail-playback-columns .detail-file-row {
+  max-width: none;
+  padding: 10px 14px;
+  font-size: 22px;
+}
+
+.detail-playback-columns .detail-file-heading,
+.detail-playback-columns .detail-network-section .detail-file-heading {
+  font-size: 24px;
+  margin-bottom: var(--space-3);
+}
+
+.detail-playback-columns .detail-network-status {
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.detail-breadcrumb-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.detail-breadcrumb-trail__sep {
+  color: var(--text-muted);
+  font-size: var(--font-meta);
+  user-select: none;
+}
+
+.detail-breadcrumb-trail__btn {
+  min-height: 48px;
+  font-size: var(--font-meta);
+}
+
+.detail-episode-actions .detail-play-btn {
+  min-width: 148px;
+}
+
+.detail-episode-summary {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.detail-layout--season .detail-poster,
+.detail-layout--show .detail-poster {
+  width: 240px;
+  height: 360px;
+}
+
+.detail-layout--season .detail-summary {
+  max-height: 140px;
+  -webkit-line-clamp: 4;
+}
+
+.detail-rails--show {
+  --row-poster-w: 180px;
+  --row-poster-h: 270px;
+}
+
+.detail-rails--show .row-section--compact {
+  --row-poster-w: 180px;
+  --row-poster-h: 270px;
 }
 
 .detail-top-bar {
@@ -1610,6 +1732,41 @@ html { min-width: 1280px; min-height: 720px; }
   cursor: pointer;
   box-shadow: 0 0 0 3px var(--accent-soft);
   z-index: 2;
+  overflow: hidden;
+}
+
+.player-skip-intro-prompt--credits-countdown::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: player-skip-credits-fill var(--credits-fill-duration, 5s) linear forwards;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.player-skip-intro-prompt--credits-countdown > * {
+  position: relative;
+  z-index: 1;
+}
+
+.player-skip-intro-prompt--credits-countdown:focus::before {
+  opacity: 1;
+}
+
+@keyframes player-skip-credits-fill {
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .player-skip-intro-prompt:focus {
@@ -1700,6 +1857,15 @@ html { min-width: 1280px; min-height: 720px; }
   display: none !important;
 }
 
+.player-retry-btn {
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
+.player-retry-btn[hidden] {
+  display: none !important;
+}
+
 .player-next-up {
   font-size: 18px;
   color: var(--text-secondary);
@@ -1716,9 +1882,61 @@ html { min-width: 1280px; min-height: 720px; }
   width: 100%;
 }
 
-.player-seek-bar {
+.player-seek-wrap {
+  position: relative;
   flex: 1;
   min-width: 320px;
+}
+
+.player-scrub-preview {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 14px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.player-scrub-preview[hidden] {
+  display: none !important;
+}
+
+.player-scrub-preview-thumb {
+  width: 240px;
+  height: 135px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.player-scrub-preview-thumb[hidden] {
+  display: none;
+}
+
+.player-scrub-preview-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.player-scrub-preview-time {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(10, 10, 15, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.player-seek-bar {
+  width: 100%;
   height: 44px;
   padding: 0 4px;
   margin: 0;

@@ -1,5 +1,5 @@
 import { getState } from '../../core/store.js';
-import { getMetadata } from '../../plex/library.js';
+import { getMetadata, markWatched } from '../../plex/library.js';
 import { createSession, resolveStreamUrl } from '../../playback/sessionController.js';
 import * as player from '../../playback/playerAdapter.js';
 import * as queue from '../../playback/playbackQueue.js';
@@ -18,14 +18,18 @@ import {
   parseSubtitleStreams,
   findSubtitleTrack,
   canUseClientSubtitles,
-  buildClientSubtitleUrl
+  shouldBurnInSubtitle,
+  buildClientSubtitleUrl,
+  pickDefaultSubtitleTrack,
+  subtitleDisplayTitle
 } from '../../playback/tracks/subtitleTracks.js';
 import {
   listProfiles,
   getProfile,
   isDirectPlayOnlyQuality,
   allowsPlaybackFallback,
-  requiresServerTranscode
+  requiresServerTranscode,
+  nextLowerTranscodeProfileKey
 } from '../../playback/qualityProfiles.js';
 import {
   showLoadingOverlay,
@@ -40,14 +44,53 @@ import {
   formatFinalPlaybackError,
   formatDirectPlayOnlyError
 } from '../../playback/hlsPolicy.js';
+import { stopPlaybackForQueueAdvance } from '../../playback/queueAdvance.js';
+import {
+  resolveQueueAdvanceOffset,
+  resolveInitialPlaybackOffset
+} from '../../playback/queuePlaybackOffset.js';
+import {
+  shouldScheduleOverlayHideWhenShowing,
+  onPlaybackFirstFrame
+} from './playerOverlayFirstFrame.js';
+import {
+  createPlaybackFallbackState,
+  resetPlaybackFallbackFlags,
+  applyRestartPlaybackFallbackFlags,
+  decideErrorFallback,
+  decideRebufferFallback,
+  clearHlsFallbackAfterHlsTranscodeStart,
+  resetRebufferDownshiftForEpisode
+} from '../../playback/playbackFallback.js';
+import { createPlaybackRestartLock } from '../../playback/playbackRestartLock.js';
 import { probePlayback } from '../../playback/capabilityProbe.js';
+import { isStalePlaybackGeneration } from '../../playback/playbackGeneration.js';
+import {
+  cancelNetworkProbe,
+  setPlaybackActive,
+  ensureItemProbeForPlay,
+  resolveEffectivePlaybackQuality,
+  resolveInitialPlaybackStrategy
+} from '../../playback/networkProbe.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
+import { onAppBackground } from '../../platform/webos.js';
 import { getFocusables, focusFirst, attachFocusNav, scrollFocusedIntoView } from '../focus.js';
 import { getPlaybackPrefs, setPlaybackPrefs } from '../../settings/playbackSettings.js';
+import {
+  loadScrubPreviewSource,
+  resolveScrubPreview
+} from '../../playback/storyboard.js';
+import {
+  AUTOPLAY_COUNTDOWN_SEC,
+  createAutoplayCountdown,
+  shouldTriggerAutoplayOnCreditPrompt,
+  shouldTriggerAutoplayOnEnded
+} from '../../playback/autoplayCountdown.js';
 
 var OVERLAY_HIDE_MS = 3000;
+var SEEK_COMMIT_DEBOUNCE_MS = 300;
 var SCRUB_STEP_MS = 10000;
-var AUTOPLAY_COUNTDOWN_SEC = 10;
+var SCRUB_PREVIEW_APPLY_MS = 80;
 
 function formatTime(ms) {
   var s = Math.floor(ms / 1000);
@@ -149,10 +192,16 @@ function playerScreen(root, params, navigate) {
     '<div class="player-bottom">' +
     '<div class="player-seek-row" data-cols="3">' +
     '<span class="player-time player-time--elapsed" id="player-time-elapsed" aria-hidden="true">0:00</span>' +
+    '<div class="player-seek-wrap">' +
+    '<div class="player-scrub-preview" id="player-scrub-preview" hidden aria-hidden="true">' +
+    '<div class="player-scrub-preview-thumb" id="player-scrub-preview-thumb"></div>' +
+    '<span class="player-scrub-preview-time" id="player-scrub-preview-time">0:00</span>' +
+    '</div>' +
     '<button type="button" class="player-seek-bar" id="player-seek" tabindex="0" aria-label="Seek">' +
     '<span class="player-seek-track"><span class="player-seek-played" id="progress-fill"></span>' +
     '<span class="player-seek-thumb" id="seek-thumb"></span></span>' +
     '</button>' +
+    '</div>' +
     '<span class="player-time player-time--total" id="player-time-total" aria-hidden="true">0:00</span>' +
     '</div>' +
     '<div class="player-control-bar">' +
@@ -160,6 +209,7 @@ function playerScreen(root, params, navigate) {
     '<h1 class="player-now-playing-title" id="player-title-primary">Loading…</h1>' +
     '<p class="player-now-playing-subtitle" id="player-title-secondary" hidden></p>' +
     '<p class="player-status" id="player-status" hidden></p>' +
+    '<button type="button" class="btn player-retry-btn" id="btn-playback-retry" hidden tabindex="0">Retry</button>' +
     '<p class="player-next-up" id="player-next-up" hidden></p>' +
     '</div>' +
     '<div class="player-transport-col" data-cols="6">' +
@@ -170,7 +220,7 @@ function playerScreen(root, params, navigate) {
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-next" tabindex="0" aria-label="Next in queue">' + ICON_NEXT + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon player-control-pill--danger" id="btn-stop" tabindex="0" aria-label="Stop">' + ICON_STOP + '</button>' +
     '</div>' +
-    '<div class="player-settings-col" data-cols="3">' +
+    '<div class="player-settings-col" data-cols="4">' +
     '<button type="button" class="player-stream-pill" id="btn-quality" tabindex="0" aria-haspopup="dialog">' +
     '<span class="player-stream-active-mark" id="mark-quality" hidden></span>' +
     ICON_QUALITY +
@@ -185,6 +235,9 @@ function playerScreen(root, params, navigate) {
     '<span class="player-stream-active-mark" id="mark-subtitles"></span>' +
     ICON_SUBTITLE +
     '<span class="player-stream-label" id="label-subtitles">Off</span>' +
+    '</button>' +
+    '<button type="button" class="player-stream-pill" id="btn-more" tabindex="0" aria-haspopup="dialog">' +
+    '<span class="player-stream-label">More</span>' +
     '</button>' +
     '</div>' +
     '</div>' +
@@ -209,7 +262,7 @@ function playerScreen(root, params, navigate) {
     '<pre class="player-info-body" id="player-info-body"></pre>' +
     '</div>' +
     '<div class="player-autoplay-panel" id="player-autoplay-panel" hidden>' +
-    '<p class="player-autoplay-text" id="player-autoplay-text">Up next in 10s</p>' +
+    '<p class="player-autoplay-text" id="player-autoplay-text">Up next in 5s</p>' +
     '<div class="player-autoplay-actions" data-cols="2">' +
     '<button class="btn btn-primary" id="btn-autoplay-play" tabindex="0">Play now</button>' +
     '<button class="btn" id="btn-autoplay-cancel" tabindex="0">Cancel</button>' +
@@ -223,12 +276,13 @@ function playerScreen(root, params, navigate) {
   var currentVersion = null;
   var currentProbe = null;
   var progressInterval = null;
-  var directStreamFallbackTried = false;
-  var fullTranscodeFallbackTried = false;
-  var hlsFallbackTried = false;
-  var httpFallbackTried = false;
+  var fallbackState = createPlaybackFallbackState();
+  var playbackRestartLock = createPlaybackRestartLock();
   var advancing = false;
   var destroyed = false;
+  var playbackGeneration = 0;
+  var awaitingPrepareOverlay = false;
+  var playbackRetryVisible = false;
   var introMarkers = [];
   var creditMarkers = [];
   var skippedIntroMarkerKeys = {};
@@ -250,6 +304,8 @@ function playerScreen(root, params, navigate) {
   var qualityOptions = listProfiles();
   var playbackMode = 'unknown';
   var deviceInfo = { uhd: false, hdr10: false, dolbyVision: false };
+  var playNetworkProbe = null;
+  var effectivePlaybackQuality = null;
 
   loadDeviceDisplay(function (info) {
     deviceInfo = info;
@@ -267,23 +323,134 @@ function playerScreen(root, params, navigate) {
   var infoPanelVisible = false;
   var exitConfirmVisible = false;
   var scrubPreviewMs = null;
+  var scrubPreviewSource = null;
+  var scrubPreviewSourceKey = null;
+  var scrubPreviewLoadGen = 0;
+  var scrubPreviewApplyTimer = null;
+  var scrubPreviewPendingMs = null;
   var overlayHideTimer = null;
-  var autoplayTimer = null;
-  var autoplayRemaining = 0;
+  var overlayHideAfterFirstFrame = false;
+  var firstFrameWaiters = [];
+  var seekCommitTimer = null;
+  var seekCommitPendingMs = null;
+  var autoplayCountdown = createAutoplayCountdown({
+    setInterval: setInterval,
+    clearInterval: clearInterval
+  });
   var autoplayCancelled = false;
+  var creditsAutoplayTriggered = false;
+  var creditsAutoplayMarkerKey = null;
 
   var btnSkipIntroPrompt = document.getElementById('btn-skip-intro-prompt');
   var btnSkipIntroPromptText = btnSkipIntroPrompt
     ? btnSkipIntroPrompt.querySelector('.player-skip-intro-prompt-text')
     : null;
   var seekBar = document.getElementById('player-seek');
+  var scrubPreviewEl = document.getElementById('player-scrub-preview');
+  var scrubPreviewThumbEl = document.getElementById('player-scrub-preview-thumb');
+  var scrubPreviewTimeEl = document.getElementById('player-scrub-preview-time');
   var trackModal = document.getElementById('player-track-modal');
   var menuReturnFocus = null;
   var infoPanel = document.getElementById('player-info-panel');
   var autoplayPanel = document.getElementById('player-autoplay-panel');
   var exitConfirm = document.getElementById('player-exit-confirm');
 
-  showLoadingOverlay('Preparing playback…', 'loading');
+  cancelNetworkProbe();
+
+  function beginPrepareOverlay() {
+    awaitingPrepareOverlay = true;
+    showLoadingOverlay('Preparing playback…', 'loading');
+  }
+
+  function bumpPlaybackGeneration() {
+    playbackGeneration += 1;
+    resolveFirstFrameWaiters();
+    return playbackGeneration;
+  }
+
+  function isStalePlayback(gen) {
+    return isStalePlaybackGeneration(gen, playbackGeneration);
+  }
+
+  function withPlaybackRestartLock(work) {
+    return playbackRestartLock.run(work);
+  }
+
+  function restartOffsetMs(fallbackMs) {
+    var ms = player.getCurrentTimeMs();
+    if (ms > 0) return ms;
+    if (fallbackMs != null && fallbackMs > 0) return fallbackMs;
+    return (session && session.offset) || params.offset || 0;
+  }
+
+  function activeTranscodeQualityKey() {
+    if (selectedQuality !== 'auto' && requiresServerTranscode(selectedQuality)) {
+      return selectedQuality;
+    }
+    if (effectivePlaybackQuality && requiresServerTranscode(effectivePlaybackQuality)) {
+      return effectivePlaybackQuality;
+    }
+    return null;
+  }
+
+  function applyTranscodeQualityDownshift(nextQuality) {
+    if (selectedQuality === 'auto') {
+      effectivePlaybackQuality = nextQuality;
+    } else {
+      selectedQuality = nextQuality;
+      effectivePlaybackQuality = nextQuality;
+    }
+  }
+
+  function resolveFirstFrameWaiters() {
+    var waiters = firstFrameWaiters;
+    firstFrameWaiters = [];
+    waiters.forEach(function (resolve) {
+      resolve();
+    });
+  }
+
+  function waitForFirstFrame() {
+    return new Promise(function (resolve) {
+      firstFrameWaiters.push(resolve);
+    });
+  }
+
+  function chainPlaybackReady(promise, gen) {
+    return promise.then(function (result) {
+      if (destroyed || !result) return result;
+      return waitForFirstFrame().then(function () {
+        if (destroyed || isStalePlayback(gen)) return;
+        return result;
+      });
+    });
+  }
+
+  function hidePrepareOverlayIfReady() {
+    if (!awaitingPrepareOverlay) return;
+    awaitingPrepareOverlay = false;
+    hideLoadingOverlay();
+  }
+
+  function showPlaybackRetry(show) {
+    playbackRetryVisible = !!show;
+    var btn = document.getElementById('btn-playback-retry');
+    if (btn) btn.hidden = !show;
+  }
+
+  function manualRetryPlayback() {
+    if (!currentItem) return;
+    return withPlaybackRestartLock(function () {
+      showPlaybackRetry(false);
+      resetPlaybackFallbackFlags(fallbackState);
+      setPlayerMessage('');
+      var offset = restartOffsetMs();
+      beginPrepareOverlay();
+      bumpPlaybackGeneration();
+      player.stop({ skipTimeline: true });
+      return startPlayback(currentItem, offset);
+    });
+  }
 
   function applySubtitleAppearance() {
     var video = document.querySelector('video.native-player');
@@ -296,6 +463,8 @@ function playerScreen(root, params, navigate) {
   }
 
   function getDurationMs() {
+    var canonical = player.getCanonicalDurationMs && player.getCanonicalDurationMs();
+    if (canonical > 0) return canonical;
     return player.getDurationMs() || (currentItem && currentItem.duration) || 1;
   }
 
@@ -348,7 +517,7 @@ function playerScreen(root, params, navigate) {
     overlayVisible = visible;
     overlay.classList.toggle('player-overlay--hidden', !visible);
     if (visible) {
-      scheduleOverlayHide();
+      if (shouldScheduleOverlayHideWhenShowing(overlayHideAfterFirstFrame)) scheduleOverlayHide();
     } else {
       clearOverlayHideTimer();
       closeMenu();
@@ -379,8 +548,10 @@ function playerScreen(root, params, navigate) {
       if (selA) selectedAudioId = selA.id;
     }
     if (selectedSubtitleId == null) {
-      var selS = subtitleTracks.filter(function (s) { return s.selected; })[0];
-      if (selS) selectedSubtitleId = selS.id;
+      var defaultSub = pickDefaultSubtitleTrack(
+        subtitleTracks.concat(graphicalSubtitleTracks)
+      );
+      if (defaultSub) selectedSubtitleId = defaultSub.id;
     }
     updateTrackButtonLabels();
   }
@@ -406,6 +577,8 @@ function playerScreen(root, params, navigate) {
       status.textContent = '';
       status.hidden = true;
     }
+    if (message && playbackRetryVisible) return;
+    if (!message) showPlaybackRetry(false);
   }
 
   function syncSubtitleDelayControls() {
@@ -454,7 +627,7 @@ function playerScreen(root, params, navigate) {
     if (selectedSubtitleId == null) return 'Off';
     var track = findSubtitleTrack(subtitleTracks.concat(graphicalSubtitleTracks), selectedSubtitleId);
     if (!track) return 'Subtitles';
-    return track.language || track.title || 'Subtitles';
+    return subtitleDisplayTitle(track);
   }
 
   function updateTrackButtonLabels() {
@@ -540,39 +713,79 @@ function playerScreen(root, params, navigate) {
     refreshIntroPromptChrome();
   }
 
+  function clearCreditsButtonFill() {
+    if (!btnSkipIntroPrompt) return;
+    btnSkipIntroPrompt.classList.remove('player-skip-intro-prompt--credits-countdown');
+    btnSkipIntroPrompt.style.removeProperty('--credits-fill-duration');
+  }
+
+  function applyCreditsButtonFill() {
+    if (!btnSkipIntroPrompt || skipPromptKind !== 'credit') return;
+    btnSkipIntroPrompt.classList.add('player-skip-intro-prompt--credits-countdown');
+    btnSkipIntroPrompt.style.setProperty(
+      '--credits-fill-duration',
+      AUTOPLAY_COUNTDOWN_SEC + 's'
+    );
+  }
+
   function clearAutoplayCountdown() {
-    if (autoplayTimer) {
-      clearInterval(autoplayTimer);
-      autoplayTimer = null;
-    }
-    autoplayRemaining = 0;
+    autoplayCountdown.clear();
+    clearCreditsButtonFill();
     if (autoplayPanel) autoplayPanel.hidden = true;
   }
 
-  function startAutoplayCountdown(seconds) {
+  function resetCreditsAutoplayState() {
+    creditsAutoplayTriggered = false;
+    creditsAutoplayMarkerKey = null;
+  }
+
+  function maybeStartCreditsAutoplay(activeCredit) {
+    if (!shouldTriggerAutoplayOnCreditPrompt({
+      hasNextQueueItem: queue.hasNext(),
+      autoplayCancelled: autoplayCancelled,
+      hasCreditMarkers: creditMarkers.length > 0,
+      skipPromptKind: 'credit'
+    })) return;
+
+    var key = activeCredit ? markerKey(activeCredit) : '';
+    if (!key) return;
+    if (creditsAutoplayMarkerKey === key &&
+      (autoplayCountdown.isRunning() || creditsAutoplayTriggered)) {
+      if (skipPromptKind === 'credit') applyCreditsButtonFill();
+      return;
+    }
+
+    creditsAutoplayMarkerKey = key;
+    creditsAutoplayTriggered = true;
+    startAutoplayCountdown(AUTOPLAY_COUNTDOWN_SEC, { fromCredits: true });
+  }
+
+  function startAutoplayCountdown(seconds, options) {
+    options = options || {};
     if (!queue.hasNext() || autoplayCancelled) return;
     clearAutoplayCountdown();
-    autoplayRemaining = seconds;
+    if (options.fromCredits) applyCreditsButtonFill();
+    else clearCreditsButtonFill();
+
     var nextItem = queue.peekNext();
     var textEl = document.getElementById('player-autoplay-text');
     if (autoplayPanel) autoplayPanel.hidden = false;
     setOverlayVisible(true);
     clearOverlayHideTimer();
-    function tick() {
-      if (textEl) {
-        var label = queue.formatNextUpLabel(nextItem);
-        textEl.textContent = 'Up next in ' + autoplayRemaining + 's' +
-          (label ? ' — ' + label : '');
-      }
-      if (autoplayRemaining <= 0) {
-        clearAutoplayCountdown();
-        playNextInQueue();
-        return;
-      }
-      autoplayRemaining -= 1;
+    function renderCountdown(remaining) {
+      if (!textEl) return;
+      var label = queue.formatNextUpLabel(nextItem);
+      textEl.textContent = 'Up next in ' + remaining + 's' +
+        (label ? ' — ' + label : '');
     }
-    tick();
-    autoplayTimer = setInterval(tick, 1000);
+    autoplayCountdown.start(seconds, {
+      onTick: renderCountdown,
+      onComplete: function () {
+        if (autoplayPanel) autoplayPanel.hidden = true;
+        clearCreditsButtonFill();
+        playNextInQueue();
+      }
+    });
   }
 
   function toggleInfoPanel() {
@@ -637,7 +850,10 @@ function playerScreen(root, params, navigate) {
     var sub = findSubtitleTrack(subtitleTracks.concat(graphicalSubtitleTracks), selectedSubtitleId);
     if (selectedSubtitleId == null) lines.push('Subtitles: Off');
     else if (sub) {
-      lines.push('Subtitles: ' + sub.title + (sub.graphical ? ' (burned via transcode)' : ' (client SRT)'));
+      var subNote = sub.graphical
+        ? ' (burned via transcode)'
+        : (canUseClientSubtitles(playbackMode, sub) ? ' (client SRT)' : ' (server transcode)');
+      lines.push('Subtitles: ' + sub.title + subNote);
     }
     body.textContent = lines.join('\n');
   }
@@ -647,9 +863,22 @@ function playerScreen(root, params, navigate) {
     return !!t;
   }
 
+  function selectedTextSubtitleTrack() {
+    return findSubtitleTrack(subtitleTracks, selectedSubtitleId);
+  }
+
+  function shouldApplyClientSubtitleAfterPlay(mode) {
+    if (selectedSubtitleId == null || isGraphicalSubtitleSelected()) return false;
+    return canUseClientSubtitles(mode, selectedTextSubtitleTrack());
+  }
+
+  function sessionSubtitleBurnIn() {
+    return selectedSubtitleId != null && isGraphicalSubtitleSelected();
+  }
+
   function applyClientSubtitle() {
     if (!session || selectedSubtitleId == null) return Promise.resolve();
-    var track = findSubtitleTrack(subtitleTracks, selectedSubtitleId);
+    var track = selectedTextSubtitleTrack();
     if (!canUseClientSubtitles(playbackMode, track)) return Promise.resolve();
     var url = buildClientSubtitleUrl(server, session);
     if (!url) return Promise.reject(new Error('Could not build subtitle URL'));
@@ -668,7 +897,7 @@ function playerScreen(root, params, navigate) {
       }
       setPlayerMessage('Subtitles need transcode — retrying…');
       session.forceTranscode = true;
-      return restartPlaybackAt(player.getCurrentTimeMs(), null, 'subtitle-fallback');
+      return restartPlaybackAt(restartOffsetMs(), null, 'subtitle-fallback');
     });
   }
 
@@ -717,6 +946,9 @@ function playerScreen(root, params, navigate) {
       qualityOptions.forEach(function (q) {
         options.push({ kind: 'quality', id: q.id, label: q.label, selected: q.id === selectedQuality });
       });
+    } else if (kind === 'more') {
+      if (titleEl) titleEl.textContent = 'More';
+      options.push({ kind: 'more', id: 'mark-watched', label: 'Mark watched', selected: false });
     }
     options.forEach(function (opt) {
       var btn = document.createElement('button');
@@ -751,7 +983,7 @@ function playerScreen(root, params, navigate) {
       selectedAudioId = id;
       closeMenu();
       updateTrackButtonLabels();
-      restartPlaybackAt(player.getCurrentTimeMs(), null, 'audio');
+      restartPlaybackAt(restartOffsetMs(), null, 'audio');
       return;
     }
     if (kind === 'subtitles') {
@@ -763,23 +995,37 @@ function playerScreen(root, params, navigate) {
       closeMenu();
       updateTrackButtonLabels();
       if (id == null) {
+        var hadBurnIn = session && session.subtitleBurnIn;
         player.clearSubtitles();
         syncSubtitleDelayControls();
-        if (playbackMode === 'direct') return;
-        restartPlaybackAt(player.getCurrentTimeMs(), null, 'subtitle-off');
+        if (session) {
+          session.subtitleStreamId = null;
+          session.subtitleBurnIn = false;
+        }
+        if (hadBurnIn) {
+          restartPlaybackAt(restartOffsetMs(), null, 'subtitle-off');
+        }
         return;
       }
       var track = findSubtitleTrack(subtitleTracks.concat(graphicalSubtitleTracks), id);
-      if (track && track.graphical) {
-        restartPlaybackAt(player.getCurrentTimeMs(), null, 'subtitle-burn');
+      if (track && shouldBurnInSubtitle(track)) {
+        restartPlaybackAt(restartOffsetMs(), null, 'subtitle-burn');
         return;
       }
       if (canUseClientSubtitles(playbackMode, track)) {
-        session.subtitleStreamId = id;
+        var switchingFromBurnIn = session && session.subtitleBurnIn;
+        if (session) {
+          session.subtitleStreamId = id;
+          session.subtitleBurnIn = false;
+        }
+        if (switchingFromBurnIn) {
+          restartPlaybackAt(restartOffsetMs(), null, 'subtitle-soft');
+          return;
+        }
         applyClientSubtitle();
         return;
       }
-      restartPlaybackAt(player.getCurrentTimeMs(), null, 'subtitle');
+      restartPlaybackAt(restartOffsetMs(), null, 'subtitle');
       return;
     }
     if (kind === 'quality') {
@@ -794,7 +1040,21 @@ function playerScreen(root, params, navigate) {
       }
       closeMenu();
       updateTrackButtonLabels();
-      restartPlaybackAt(player.getCurrentTimeMs(), null, 'quality');
+      restartPlaybackAt(restartOffsetMs(), null, 'quality');
+      return;
+    }
+    if (kind === 'more') {
+      closeMenu();
+      if (id === 'mark-watched' && currentItem && server) {
+        markWatched(server, currentItem.ratingKey).then(function () {
+          if (destroyed) return;
+          setPlayerMessage('Marked as watched.');
+          scheduleOverlayHide();
+        }).catch(function (err) {
+          if (destroyed) return;
+          setPlayerMessage('Could not mark watched: ' + err.message);
+        });
+      }
     }
   }
 
@@ -836,7 +1096,7 @@ function playerScreen(root, params, navigate) {
       e.stopImmediatePropagation();
       return;
     }
-    if (autoplayPanel && !autoplayPanel.hidden) {
+    if (autoplayCountdown.isRunning()) {
       clearAutoplayCountdown();
       autoplayCancelled = true;
       e.preventDefault();
@@ -860,7 +1120,10 @@ function playerScreen(root, params, navigate) {
 
   player.onBuffering(function (show) {
     if (show) showBuffering('Buffering…');
-    else hideBuffering();
+    else {
+      hideBuffering();
+      resetRebufferDownshiftForEpisode(fallbackState);
+    }
   });
 
   player.onRebufferTimeout(function () {
@@ -870,10 +1133,25 @@ function playerScreen(root, params, navigate) {
         ' Buffering with no transcode fallback.');
       return;
     }
-    if (session.transcodeProtocol !== 'http' && !httpFallbackTried) {
-      httpFallbackTried = true;
+    var qualityKey = activeTranscodeQualityKey();
+    var nextLower = qualityKey ? nextLowerTranscodeProfileKey(qualityKey) : null;
+    var onHlsTranscode = session.transcodeProtocol === 'hls' &&
+      (playbackMode === 'transcode-hls' || session.playbackStrategy === 'transcode');
+    var rebufferStep = decideRebufferFallback(fallbackState, {
+      transcodeProtocol: session.transcodeProtocol,
+      onHlsTranscode: onHlsTranscode,
+      nextLowerQuality: nextLower
+    });
+    if (rebufferStep.action === 'quality-downshift' && rebufferStep.nextQuality) {
+      applyTranscodeQualityDownshift(rebufferStep.nextQuality);
+      var prof = getProfile(rebufferStep.nextQuality);
+      setPlayerMessage('Slow buffering — lowering to ' + (prof && prof.label || rebufferStep.nextQuality) + '…');
+      restartPlaybackAt(restartOffsetMs(params.offset), null, 'quality');
+      return;
+    }
+    if (rebufferStep.action === 'http-transcode') {
       setPlayerMessage('Slow buffering — switching to HTTP transcode…');
-      restartPlaybackAt(player.getCurrentTimeMs() || params.offset, 'http', 'http-transcode-fallback');
+      restartPlaybackAt(restartOffsetMs(params.offset), 'http', 'http-transcode-fallback');
       return;
     }
     setPlayerMessage('Slow buffering — check network or lower quality in Settings.');
@@ -924,6 +1202,13 @@ function playerScreen(root, params, navigate) {
       );
     }
     refreshSkipPromptChrome();
+    if (show && kind === 'credit') {
+      maybeStartCreditsAutoplay(
+        findActiveCreditMarker(creditMarkers, player.getCurrentTimeMs())
+      );
+    } else if (kind !== 'credit') {
+      clearCreditsButtonFill();
+    }
   }
 
   function skipIntro() {
@@ -974,6 +1259,121 @@ function playerScreen(root, params, navigate) {
     });
   }
 
+  function scrubPreviewCacheKey() {
+    if (!currentItem) return '';
+    return String(currentItem.ratingKey || '') + ':' + String((currentVersion && currentVersion.partId) || '');
+  }
+
+  function resetScrubPreviewSource() {
+    scrubPreviewSource = null;
+    scrubPreviewSourceKey = null;
+    scrubPreviewLoadGen += 1;
+  }
+
+  function clearScrubPreviewApplyTimer() {
+    if (scrubPreviewApplyTimer) {
+      clearTimeout(scrubPreviewApplyTimer);
+      scrubPreviewApplyTimer = null;
+    }
+    scrubPreviewPendingMs = null;
+  }
+
+  function hideScrubPreview() {
+    clearScrubPreviewApplyTimer();
+    if (scrubPreviewEl) scrubPreviewEl.hidden = true;
+    if (scrubPreviewThumbEl) {
+      scrubPreviewThumbEl.style.backgroundImage = '';
+      scrubPreviewThumbEl.style.backgroundPosition = '';
+      scrubPreviewThumbEl.style.backgroundSize = '';
+      scrubPreviewThumbEl.innerHTML = '';
+    }
+  }
+
+  function positionScrubPreview(pct) {
+    if (!scrubPreviewEl || !seekBar) return;
+    var track = seekBar.querySelector('.player-seek-track');
+    var trackWidth = track ? track.offsetWidth : seekBar.offsetWidth;
+    var previewWidth = scrubPreviewEl.offsetWidth || 0;
+    var thumbX = (pct / 100) * trackWidth;
+    var left = Math.max(0, Math.min(trackWidth - previewWidth, thumbX - previewWidth / 2));
+    scrubPreviewEl.style.left = left + 'px';
+  }
+
+  function applyScrubPreviewVisual(preview, pct) {
+    if (!scrubPreviewEl || !scrubPreviewTimeEl) return;
+    scrubPreviewEl.hidden = false;
+    scrubPreviewTimeEl.textContent = formatTime(preview.timeMs);
+    positionScrubPreview(pct);
+    if (!scrubPreviewThumbEl) return;
+    if (preview.mode === 'sprite' || preview.mode === 'image') {
+      scrubPreviewThumbEl.hidden = false;
+      if (preview.mode === 'sprite') {
+        scrubPreviewThumbEl.innerHTML = '';
+        scrubPreviewThumbEl.style.backgroundImage = 'url("' + preview.imageUrl + '")';
+        scrubPreviewThumbEl.style.backgroundPosition = preview.backgroundPosition;
+        scrubPreviewThumbEl.style.backgroundSize = preview.backgroundSize;
+      } else {
+        scrubPreviewThumbEl.style.backgroundImage = '';
+        scrubPreviewThumbEl.style.backgroundPosition = '';
+        scrubPreviewThumbEl.style.backgroundSize = '';
+        scrubPreviewThumbEl.innerHTML = '';
+        var img = document.createElement('img');
+        img.alt = '';
+        img.decoding = 'async';
+        img.src = preview.imageUrl;
+        scrubPreviewThumbEl.appendChild(img);
+      }
+      return;
+    }
+    scrubPreviewThumbEl.hidden = true;
+    scrubPreviewThumbEl.style.backgroundImage = '';
+    scrubPreviewThumbEl.style.backgroundPosition = '';
+    scrubPreviewThumbEl.style.backgroundSize = '';
+    scrubPreviewThumbEl.innerHTML = '';
+  }
+
+  function scheduleScrubPreviewApply(offsetMs, pct) {
+    scrubPreviewPendingMs = offsetMs;
+    if (scrubPreviewApplyTimer) return;
+    scrubPreviewApplyTimer = setTimeout(function () {
+      scrubPreviewApplyTimer = null;
+      var ms = scrubPreviewPendingMs;
+      scrubPreviewPendingMs = null;
+      if (ms == null || scrubPreviewMs == null) return;
+      var preview = resolveScrubPreview(scrubPreviewSource, ms, getDurationMs());
+      applyScrubPreviewVisual(preview, pct);
+    }, SCRUB_PREVIEW_APPLY_MS);
+  }
+
+  function ensureScrubPreviewSource() {
+    var state = getState();
+    var server = state.server;
+    if (!server || !currentItem) return;
+    var key = scrubPreviewCacheKey();
+    if (scrubPreviewSource && scrubPreviewSourceKey === key) return;
+    scrubPreviewSourceKey = key;
+    var gen = ++scrubPreviewLoadGen;
+    loadScrubPreviewSource(server, currentItem, currentVersion).then(function (source) {
+      if (gen !== scrubPreviewLoadGen || destroyed) return;
+      scrubPreviewSource = source;
+      if (scrubPreviewMs != null) updateSeekUi(true);
+    });
+  }
+
+  function updateScrubPreviewUi(scrubbing, cur, dur) {
+    if (!scrubbing || scrubPreviewMs == null) {
+      hideScrubPreview();
+      return;
+    }
+    var pct = dur > 0 ? Math.min(100, Math.max(0, (cur / dur) * 100)) : 0;
+    ensureScrubPreviewSource();
+    if (!scrubPreviewSource) {
+      applyScrubPreviewVisual(resolveScrubPreview(null, cur, dur), pct);
+      return;
+    }
+    scheduleScrubPreviewApply(cur, pct);
+  }
+
   function updateSeekUi(scrubbing) {
     var dur = getDurationMs();
     var cur = getScrubMs();
@@ -993,6 +1393,7 @@ function playerScreen(root, params, navigate) {
     if (seekBar) {
       seekBar.setAttribute('aria-valuetext', formatTime(cur) + ' of ' + formatTime(dur));
     }
+    updateScrubPreviewUi(scrubbing, cur, dur);
     updateMarkerSkipUi();
   }
 
@@ -1009,10 +1410,11 @@ function playerScreen(root, params, navigate) {
     btn.setAttribute('aria-label', paused ? 'Play' : 'Pause');
   }
 
-  function playUrl(result, offset) {
+  function playUrl(result, offset, playbackSession) {
+    playbackSession = playbackSession || session;
     playbackMode = result.mode || 'unknown';
     player.setPlaybackMode(playbackMode);
-    player.play(result.url, session, { offset: offset, mode: playbackMode });
+    player.play(result.url, playbackSession, { offset: offset, mode: playbackMode });
     applySubtitleAppearance();
     if (!progressInterval) {
       progressInterval = setInterval(function () {
@@ -1025,26 +1427,37 @@ function playerScreen(root, params, navigate) {
     updateSeekUi(false);
   }
 
-  function tryPlayback(offset) {
-    return resolveStreamUrl(session).then(function (result) {
-      if (destroyed) return result;
-      playUrl(result, offset);
+  function tryPlayback(offset, gen) {
+    if (gen == null) gen = playbackGeneration;
+    var playbackSession = session;
+    if (!playbackSession) return Promise.resolve();
+    return resolveStreamUrl(playbackSession).then(function (result) {
+      if (destroyed || isStalePlayback(gen) || session !== playbackSession) return;
+      playUrl(result, offset, playbackSession);
       return result;
     }).catch(function (err) {
-      if (destroyed) return;
+      if (destroyed || isStalePlayback(gen)) return;
       setPlayerMessage('Playback failed: ' + err.message);
+      awaitingPrepareOverlay = false;
       hideLoadingOverlay();
     });
   }
 
+  function sessionQualityForPlay() {
+    if (selectedQuality !== 'auto') return selectedQuality;
+    return effectivePlaybackQuality || 'auto';
+  }
+
   function initialPlaybackStrategy(probe, forceTranscode) {
-    if (isStrictDirectPlay()) return 'direct';
-    if (requiresServerTranscode(selectedQuality)) return 'transcode';
-    if (forceTranscode) return 'transcode';
-    if (selectedQuality === 'auto' && probe && !probe.canDirectPlay && probe.canDirectStream) {
-      return 'direct-stream';
-    }
-    return 'direct';
+    return resolveInitialPlaybackStrategy({
+      prefsQuality: selectedQuality,
+      effectiveQuality: sessionQualityForPlay(),
+      playbackProbe: probe,
+      refinedProbe: playNetworkProbe,
+      forceTranscode: forceTranscode,
+      version: currentVersion,
+      directPlayOnly: isStrictDirectPlay()
+    });
   }
 
   function buildSessionOptions(offset, protocol, streamChange) {
@@ -1053,7 +1466,8 @@ function playerScreen(root, params, navigate) {
       audioStreamId: selectedAudioId,
       subtitleStreamId: selectedSubtitleId,
       subtitleOffset: subtitleOffset,
-      quality: selectedQuality,
+      subtitleBurnIn: sessionSubtitleBurnIn(),
+      quality: sessionQualityForPlay(),
       forceTranscode: params.forceTranscode || (session && session.forceTranscode),
       transcodeProtocol: protocol || (session && session.transcodeProtocol) || 'hls'
     };
@@ -1079,19 +1493,31 @@ function playerScreen(root, params, navigate) {
         streamChange === 'subtitle-fallback') {
       opts.forceTranscode = true;
       opts.playbackStrategy = 'transcode';
+      opts.subtitleBurnIn = true;
+    }
+    if (streamChange === 'subtitle-soft') {
+      opts.subtitleBurnIn = false;
+      if (session) {
+        opts.playbackStrategy = session.playbackStrategy;
+        opts.forceTranscode = session.forceTranscode;
+        opts.transcodeProtocol = session.transcodeProtocol;
+      }
     }
     if ((streamChange === 'audio' || streamChange === 'quality') &&
-        requiresServerTranscode(selectedQuality)) {
+        requiresServerTranscode(sessionQualityForPlay())) {
       opts.forceTranscode = true;
       opts.playbackStrategy = 'transcode';
     }
-    if (streamChange === 'subtitle-off' && playbackMode !== 'direct') {
+    if (streamChange === 'subtitle-off' && session && session.subtitleBurnIn) {
       opts.forceTranscode = true;
-      opts.playbackStrategy = 'transcode';
+      opts.playbackStrategy = session.playbackStrategy || 'transcode';
+      opts.transcodeProtocol = session.transcodeProtocol;
+      opts.subtitleBurnIn = false;
     }
     if (isGraphicalSubtitleSelected()) {
       opts.forceTranscode = true;
       opts.playbackStrategy = 'transcode';
+      opts.subtitleBurnIn = true;
     }
     var prof = getProfile(selectedQuality);
     if ((streamChange === 'quality' || streamChange === 'audio') && prof && prof.forceDirect) {
@@ -1109,36 +1535,36 @@ function playerScreen(root, params, navigate) {
 
   function restartPlaybackAt(offset, protocol, streamChange) {
     if (!currentItem) return Promise.resolve();
-    var wasProtocol = session && session.transcodeProtocol;
-    var isAutoFallback = streamChange && streamChange.indexOf('-fallback') >= 0;
-    showLoadingOverlay('Updating playback…', 'loading');
-    player.stop({ skipTimeline: true });
-    if (!isAutoFallback) {
-      directStreamFallbackTried = false;
-      fullTranscodeFallbackTried = false;
-      hlsFallbackTried = false;
-      httpFallbackTried = false;
-    }
-    if (streamChange === 'direct-stream-fallback') directStreamFallbackTried = true;
-    if (streamChange === 'full-transcode-fallback') fullTranscodeFallbackTried = true;
-    if (streamChange === 'http-transcode-fallback') {
-      hlsFallbackTried = true;
-      httpFallbackTried = true;
-    }
-    session = createSession(currentItem, currentVersion, buildSessionOptions(offset, protocol || wasProtocol, streamChange));
-    return tryPlayback(offset).then(function (result) {
-      if (destroyed) return result;
-      hideLoadingOverlay();
-      setOverlayVisible(true);
-      scheduleOverlayHide();
-      if (selectedSubtitleId != null && result.mode === 'direct' && !isGraphicalSubtitleSelected()) {
-        applyClientSubtitle();
-      } else {
-        if (selectedSubtitleId == null) player.clearSubtitles();
-        syncSubtitleDelayControls();
-      }
-      if (infoPanelVisible) updateInfoPanel();
-      return result;
+    return withPlaybackRestartLock(function () {
+      var gen = bumpPlaybackGeneration();
+      var wasProtocol = session && session.transcodeProtocol;
+      beginPrepareOverlay();
+      applyRestartPlaybackFallbackFlags(fallbackState, streamChange);
+      return player.flushProgress('stopped').catch(function () {
+        /* flushProgress already surfaced timeline failure */
+      }).then(function () {
+        if (destroyed || isStalePlayback(gen)) return;
+        player.stop({ skipTimeline: true });
+        if (destroyed || isStalePlayback(gen)) return;
+        session = createSession(
+          currentItem,
+          currentVersion,
+          buildSessionOptions(offset, protocol || wasProtocol, streamChange)
+        );
+        return chainPlaybackReady(tryPlayback(offset, gen), gen);
+      }).then(function (result) {
+        if (destroyed || isStalePlayback(gen) || !result) return result;
+        hidePrepareOverlayIfReady();
+        setOverlayVisible(true);
+        if (shouldApplyClientSubtitleAfterPlay(result.mode)) {
+          applyClientSubtitle();
+        } else {
+          if (selectedSubtitleId == null) player.clearSubtitles();
+          syncSubtitleDelayControls();
+        }
+        if (infoPanelVisible) updateInfoPanel();
+        return result;
+      });
     });
   }
 
@@ -1148,49 +1574,63 @@ function playerScreen(root, params, navigate) {
 
   player.onError(function (info) {
     if (destroyed) return;
-    var offset = player.getCurrentTimeMs() || (session && session.offset) || 0;
+    var offset = restartOffsetMs((session && session.offset) || 0);
     var codecUnsupported = isSrcNotSupportedError(info.mediaError);
 
     if (!canAutoFallback()) {
+      awaitingPrepareOverlay = false;
       hideLoadingOverlay();
       setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
       return;
     }
 
-    if (playbackMode === 'direct' && !directStreamFallbackTried) {
-      directStreamFallbackTried = true;
+    var errorStep = decideErrorFallback(fallbackState, {
+      playbackMode: playbackMode,
+      codecUnsupported: codecUnsupported,
+      isHls: info.isHls
+    });
+    if (errorStep.action === 'direct-stream') {
       setPlayerMessage('Direct play unavailable — trying stream copy…');
       restartPlaybackAt(offset, 'hls', 'direct-stream-fallback');
       return;
     }
-    if (playbackMode === 'direct-stream' && !fullTranscodeFallbackTried) {
-      fullTranscodeFallbackTried = true;
+    if (errorStep.action === 'full-transcode') {
       setPlayerMessage(codecUnsupported
         ? 'HLS codecs not supported on TV — transcoding…'
         : 'Stream copy failed — transcoding…');
       retryTranscode('hls', offset, 'full-transcode-fallback');
       return;
     }
-    if (info.isHls && !hlsFallbackTried && playbackMode !== 'transcode-http') {
-      hlsFallbackTried = true;
+    if (errorStep.action === 'http-transcode') {
       setPlayerMessage('HLS issue — retrying via HTTP transcode…');
       retryTranscode('http', offset, 'http-transcode-fallback');
       return;
     }
-    if (!httpFallbackTried) httpFallbackTried = true;
+    awaitingPrepareOverlay = false;
     hideLoadingOverlay();
-    setPlayerMessage(formatFinalPlaybackError(info, httpFallbackTried, {
+    setPlayerMessage(formatFinalPlaybackError(info, fallbackState.httpFallbackTried, {
       directPlayOnly: isStrictDirectPlay()
     }));
+    showPlaybackRetry(true);
+    setOverlayVisible(true);
+    var retryBtn = document.getElementById('btn-playback-retry');
+    if (retryBtn) retryBtn.focus();
   });
 
   function startPlayback(item, offset) {
-    directStreamFallbackTried = false;
-    fullTranscodeFallbackTried = false;
-    hlsFallbackTried = false;
-    httpFallbackTried = false;
+    return withPlaybackRestartLock(function () {
+      return startPlaybackLocked(item, offset);
+    });
+  }
+
+  function startPlaybackLocked(item, offset) {
+    var gen = bumpPlaybackGeneration();
+    resetPlaybackFallbackFlags(fallbackState);
+    showPlaybackRetry(false);
     currentItem = item;
     currentVersion = params.version || null;
+    resetScrubPreviewSource();
+    hideScrubPreview();
     currentProbe = probePlayback(item, currentVersion, null, deviceInfo);
     loadTrackLists(item);
 
@@ -1198,46 +1638,87 @@ function playerScreen(root, params, navigate) {
     creditMarkers = extractCreditMarkers(item);
     skippedIntroMarkerKeys = {};
     skippedCreditMarkerKeys = {};
-    var startOffsetMs = offset != null ? offset : (item.viewOffset || params.offset || 0);
+    resetCreditsAutoplayState();
+    var startOffsetMs = resolveInitialPlaybackOffset(
+      offset,
+      item.viewOffset,
+      params.offset
+    );
     markMarkersSkippedBeforeOffset(startOffsetMs);
 
-    session = createSession(item, currentVersion, buildSessionOptions(startOffsetMs));
     updateNowPlayingTitle(item);
-    setPlayerMessage('');
-    if (isStrictDirectPlay() && currentProbe && !currentProbe.canDirectPlay) {
-      setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
-    }
     updateNextUpUi();
 
-    tryPlayback(startOffsetMs).then(function (result) {
-      if (destroyed) return;
+    if (isStrictDirectPlay() && currentProbe && !currentProbe.canDirectPlay) {
+      setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
+      awaitingPrepareOverlay = false;
       hideLoadingOverlay();
-      setOverlayVisible(true);
-      scheduleOverlayHide();
-      if (isStrictDirectPlay() && result.mode !== 'direct') {
-        setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
+      return Promise.resolve();
+    }
+
+    setPlayerMessage('');
+    beginPrepareOverlay();
+    return ensureItemProbeForPlay(
+      server,
+      item,
+      currentVersion,
+      deviceInfo,
+      currentProbe
+    ).then(function (refined) {
+      if (destroyed || isStalePlayback(gen)) return;
+      playNetworkProbe = refined;
+      effectivePlaybackQuality = resolveEffectivePlaybackQuality(selectedQuality, refined);
+      setPlaybackActive(true);
+      session = createSession(item, currentVersion, buildSessionOptions(startOffsetMs));
+      if (selectedQuality === 'auto' && refined && refined.recommendedLabel &&
+          effectivePlaybackQuality !== 'auto') {
+        setPlayerMessage('Using ' + refined.recommendedLabel + ' based on connection test.');
       }
-      if (selectedSubtitleId != null && result.mode === 'direct' && !isGraphicalSubtitleSelected()) {
-        applyClientSubtitle();
-      } else {
-        if (selectedSubtitleId == null) player.clearSubtitles();
-        syncSubtitleDelayControls();
-      }
-      if (infoPanelVisible) updateInfoPanel();
-      if (result.mode === 'transcode-hls' && isHlsUrl(result.url)) {
-        hlsFallbackTried = false;
-      }
+      return chainPlaybackReady(tryPlayback(startOffsetMs, gen), gen).then(function (result) {
+        if (destroyed || isStalePlayback(gen) || !result) return result;
+        hidePrepareOverlayIfReady();
+        setOverlayVisible(true);
+        if (isStrictDirectPlay() && result.mode !== 'direct') {
+          setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
+        }
+        if (shouldApplyClientSubtitleAfterPlay(result.mode)) {
+          applyClientSubtitle();
+        } else {
+          if (selectedSubtitleId == null) player.clearSubtitles();
+          syncSubtitleDelayControls();
+        }
+        if (infoPanelVisible) updateInfoPanel();
+        clearHlsFallbackAfterHlsTranscodeStart(
+          fallbackState,
+          result.mode,
+          isHlsUrl(result.url)
+        );
+        return result;
+      });
+    }).catch(function (err) {
+      if (destroyed || isStalePlayback(gen)) return;
+      playNetworkProbe = null;
+      effectivePlaybackQuality = selectedQuality === 'auto' ? 'auto' : selectedQuality;
+      setPlaybackActive(true);
+      session = createSession(item, currentVersion, buildSessionOptions(startOffsetMs));
+      return chainPlaybackReady(tryPlayback(startOffsetMs, gen), gen).catch(function (playErr) {
+        if (destroyed || isStalePlayback(gen)) return;
+        setPlayerMessage('Playback failed: ' + ((playErr && playErr.message) || String(err)));
+        awaitingPrepareOverlay = false;
+        hideLoadingOverlay();
+      });
     });
   }
 
   function loadAndPlay(ratingKey, offset) {
     if (destroyed) return Promise.resolve();
-    showLoadingOverlay('Preparing playback…', 'loading');
+    beginPrepareOverlay();
     return getMetadata(server, ratingKey).then(function (item) {
       if (destroyed) return;
-      startPlayback(item, offset);
+      return startPlayback(item, offset);
     }).catch(function (err) {
       if (destroyed) return;
+      awaitingPrepareOverlay = false;
       hideLoadingOverlay();
       updateNowPlayingTitle(null);
       setPlayerMessage('Error: ' + err.message);
@@ -1246,6 +1727,7 @@ function playerScreen(root, params, navigate) {
 
   function exitPlayer() {
     hideExitConfirm();
+    awaitingPrepareOverlay = false;
     hideLoadingOverlay();
     player.stop();
     navigate('detail', params._detail || { ratingKey: params.ratingKey });
@@ -1256,10 +1738,11 @@ function playerScreen(root, params, navigate) {
     clearAutoplayCountdown();
     autoplayCancelled = false;
     advancing = true;
-    player.stop({ skipTimeline: true });
-    var nextItem = queue.next();
-    updateNextUpUi();
-    return loadAndPlay(nextItem.ratingKey, 0).then(function () {
+    return stopPlaybackForQueueAdvance(player).then(function () {
+      var nextItem = queue.next();
+      updateNextUpUi();
+      return loadAndPlay(nextItem.ratingKey, resolveQueueAdvanceOffset());
+    }).then(function () {
       if (destroyed) return false;
       advancing = false;
       return true;
@@ -1275,10 +1758,11 @@ function playerScreen(root, params, navigate) {
     clearAutoplayCountdown();
     autoplayCancelled = false;
     advancing = true;
-    player.stop({ skipTimeline: true });
-    var prevItem = queue.previous();
-    updateNextUpUi();
-    return loadAndPlay(prevItem.ratingKey, 0).then(function () {
+    return stopPlaybackForQueueAdvance(player).then(function () {
+      var prevItem = queue.previous();
+      updateNextUpUi();
+      return loadAndPlay(prevItem.ratingKey, resolveQueueAdvanceOffset());
+    }).then(function () {
       if (destroyed) return false;
       advancing = false;
       return true;
@@ -1290,12 +1774,20 @@ function playerScreen(root, params, navigate) {
   }
 
   function onPlaybackEnded() {
-    if (queue.hasNext() && !autoplayCancelled) {
+    if (shouldTriggerAutoplayOnEnded({
+      hasNextQueueItem: queue.hasNext(),
+      autoplayCancelled: autoplayCancelled,
+      hasCreditMarkers: creditMarkers.length > 0,
+      creditsAutoplayTriggered: creditsAutoplayTriggered
+    })) {
       startAutoplayCountdown(AUTOPLAY_COUNTDOWN_SEC);
       return;
     }
-    if (queue.hasNext()) {
-      exitPlayer();
+    if (queue.hasNext() && autoplayCancelled) {
+      clearAutoplayCountdown();
+      setOverlayVisible(true);
+      clearOverlayHideTimer();
+      updatePauseButton();
       return;
     }
     exitPlayer();
@@ -1332,6 +1824,14 @@ function playerScreen(root, params, navigate) {
   document.getElementById('btn-audio').addEventListener('click', function () { openMenu('audio'); });
   document.getElementById('btn-subtitles').addEventListener('click', function () { openMenu('subtitles'); });
   document.getElementById('btn-quality').addEventListener('click', function () { openMenu('quality'); });
+  document.getElementById('btn-more').addEventListener('click', function () { openMenu('more'); });
+  var btnPlaybackRetry = document.getElementById('btn-playback-retry');
+  if (btnPlaybackRetry) {
+    btnPlaybackRetry.addEventListener('click', function () {
+      manualRetryPlayback();
+      onOverlayActivity();
+    });
+  }
   document.getElementById('btn-exit-yes').addEventListener('click', exitPlayer);
   document.getElementById('btn-autoplay-play').addEventListener('click', function () {
     clearAutoplayCountdown();
@@ -1368,6 +1868,7 @@ function playerScreen(root, params, navigate) {
   });
   seekBar.addEventListener('blur', function () {
     scrubPreviewMs = null;
+    hideScrubPreview();
     updateSeekUi(false);
   });
   seekBar.addEventListener('keydown', function (e) {
@@ -1382,11 +1883,27 @@ function playerScreen(root, params, navigate) {
       scrubPreviewMs = null;
       e.preventDefault();
       e.stopPropagation();
-      seekToMs(targetMs).then(function () {
-        seekBar.blur();
-        updateSeekUi(false);
-        onOverlayActivity();
-      });
+      if (isTranscodePlayback()) {
+        seekCommitPendingMs = targetMs;
+        if (seekCommitTimer) clearTimeout(seekCommitTimer);
+        seekCommitTimer = setTimeout(function () {
+          seekCommitTimer = null;
+          var commitMs = seekCommitPendingMs;
+          seekCommitPendingMs = null;
+          if (commitMs == null) return;
+          restartPlaybackAt(commitMs).then(function () {
+            seekBar.blur();
+            updateSeekUi(false);
+            onOverlayActivity();
+          });
+        }, SEEK_COMMIT_DEBOUNCE_MS);
+      } else {
+        seekToMs(targetMs).then(function () {
+          seekBar.blur();
+          updateSeekUi(false);
+          onOverlayActivity();
+        });
+      }
       return;
     } else {
       return;
@@ -1435,6 +1952,27 @@ function playerScreen(root, params, navigate) {
   document.addEventListener('keydown', handlePlayerEnter, true);
 
   player.onEnded(onPlaybackEnded);
+
+  player.onFirstFrame(function () {
+    hidePrepareOverlayIfReady();
+    var overlayGate = onPlaybackFirstFrame(overlayHideAfterFirstFrame);
+    overlayHideAfterFirstFrame = overlayGate.hideAfterFirstFrame;
+    if (overlayGate.scheduleHide) scheduleOverlayHide();
+    resolveFirstFrameWaiters();
+  });
+
+  player.onTimelineSyncFailure(function () {
+    if (destroyed) return;
+    setPlayerMessage('Could not save watch progress to Plex.');
+    scheduleOverlayHide();
+  });
+
+  var detachAppBackground = onAppBackground(function () {
+    if (destroyed) return;
+    if (!player.getVideoElement() || player.getVideoElement().classList.contains('hidden')) return;
+    player.pause();
+    updatePauseButton();
+  });
 
   var detachRemote = attachRemoteKeys({
     onPlay: function () {
@@ -1492,6 +2030,7 @@ function playerScreen(root, params, navigate) {
         return loadAndPlay(params.ratingKey, offset);
       }).catch(function (err) {
         if (destroyed) return;
+        awaitingPrepareOverlay = false;
         hideLoadingOverlay();
         setPlayerMessage('Error: ' + err.message);
       });
@@ -1504,30 +2043,53 @@ function playerScreen(root, params, navigate) {
       startPlayback(item, offset);
     }).catch(function (err) {
       if (destroyed) return;
+      awaitingPrepareOverlay = false;
       hideLoadingOverlay();
       setPlayerMessage('Error: ' + err.message);
     });
   }
 
+  beginPrepareOverlay();
   initQueueAndStart();
   focusFirst(overlay);
-  scheduleOverlayHide();
 
   return {
     destroy: function () {
       destroyed = true;
+      setPlaybackActive(false);
       if (progressInterval) clearInterval(progressInterval);
       clearAutoplayCountdown();
       clearOverlayHideTimer();
+      if (seekCommitTimer) {
+        clearTimeout(seekCommitTimer);
+        seekCommitTimer = null;
+      }
+      hideScrubPreview();
+      resetScrubPreviewSource();
+      firstFrameWaiters = [];
+      awaitingPrepareOverlay = false;
       resetBufferingOverlay();
-      player.clearListeners();
-      player.stop({ skipTimeline: true });
-      queue.reset();
-      detachRemote();
-      detachFocus();
-      document.removeEventListener('keydown', handlePlayerBack, true);
-      document.removeEventListener('keydown', handlePlayerEnter, true);
-      overlay.remove();
+      if (detachAppBackground) detachAppBackground();
+
+      function teardown() {
+        player.clearListeners();
+        player.stop({ skipTimeline: true });
+        session = null;
+        queue.reset();
+        detachRemote();
+        detachFocus();
+        document.removeEventListener('keydown', handlePlayerBack, true);
+        document.removeEventListener('keydown', handlePlayerEnter, true);
+        overlay.remove();
+      }
+
+      if (session) {
+        player.flushProgress('stopped').catch(function () {
+          /* flushProgress already surfaced timeline failure */
+        }).finally(teardown);
+      } else {
+        teardown();
+      }
     }
   };
 }

@@ -144,6 +144,27 @@ function keepScreenOn(enable) {
   }
 }
 
+/**
+ * Background / suspend signal for playback pause policy.
+ *
+ * webOSTV.js does not expose dedicated app suspend or foreground Luna callbacks
+ * to packaged web apps. On webOS TV Chromium shells, losing focus (Home, app
+ * switch, or TV standby) is reflected via the Page Visibility API — the same
+ * signal LG documents for web apps — so visibilitychange is sufficient here.
+ *
+ * @param {function(): void} callback Invoked when document becomes hidden.
+ * @returns {function(): void} Detach listener.
+ */
+function onAppBackground(callback) {
+  function handler() {
+    if (document.visibilityState === 'hidden') callback();
+  }
+  document.addEventListener('visibilitychange', handler);
+  return function detachAppBackground() {
+    document.removeEventListener('visibilitychange', handler);
+  };
+}
+
 export {
   getWebOSVersion,
   getDeviceInfo,
@@ -151,6 +172,7 @@ export {
   probeCodec,
   getCodecCapabilities,
   keepScreenOn,
+  onAppBackground,
   isSimulatorRuntime,
   tvLikelySupportsDts,
   tvLikelySupportsDtsFromDevice,

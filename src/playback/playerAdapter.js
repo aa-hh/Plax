@@ -1,8 +1,13 @@
 import { keepScreenOn } from '../platform/webos.js';
-import { updateProgress, markWatched } from '../plex/library.js';
+import { updateProgress as libraryUpdateProgress, markWatched as libraryMarkWatched } from '../plex/library.js';
 import { fetchText } from '../utils/fetch.js';
 import { describeHlsError, isHlsUrl } from './hlsPolicy.js';
+import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
+import { shouldScrobble, shouldResetScrobble } from './scrobblePolicy.js';
+import { timelineStateForPlayback } from './timelineSyncState.js';
+import { flushTimelineProgress } from './timelineFlush.js';
 import { parseSrtToCues } from './tracks/srtParser.js';
+import { createRebufferWatchdog } from './rebufferWatchdog.js';
 
 var videoEl = null;
 var progressTimer = null;
@@ -11,17 +16,67 @@ var onEndedCb = null;
 var onErrorCb = null;
 var onBufferingCb = null;
 var onRebufferTimeoutCb = null;
+var onFirstFrameCb = null;
+var onTimelineSyncFailureCb = null;
+var firstFrameFired = false;
+var pendingSeekListener = null;
 var bufferingShown = false;
 var scrobbled = false;
 var lastTimelineMs = -1;
-var rebufferTimer = null;
-var rebufferFired = false;
+var lastKnownPositionMs = 0;
+/** @see docs/caching-and-buffering.md */
+var REBUFFER_TIMEOUT_MS = 12000;
+
+function fireRebufferTimeout() {
+  if (onRebufferTimeoutCb) {
+    try { onRebufferTimeoutCb(); } catch (e) { console.error(e); }
+  }
+}
+
+function createAdapterRebufferWatchdog(timerFns) {
+  var opts = {
+    timeoutMs: REBUFFER_TIMEOUT_MS,
+    onTimeout: fireRebufferTimeout
+  };
+  if (timerFns) {
+    if (timerFns.setTimeout) opts.setTimeout = timerFns.setTimeout;
+    if (timerFns.clearTimeout) opts.clearTimeout = timerFns.clearTimeout;
+  }
+  return createRebufferWatchdog(opts);
+}
+
+var rebufferWatchdog = createAdapterRebufferWatchdog();
+
+/** Inject fake setTimeout/clearTimeout in unit tests. Pass null to restore defaults. */
+function setRebufferTimersForTest(timerFns) {
+  if (rebufferWatchdog && rebufferWatchdog.destroy) rebufferWatchdog.destroy();
+  rebufferWatchdog = createAdapterRebufferWatchdog(timerFns || null);
+}
+var initialPlayingTimelineSynced = false;
+var initialTimelineTimeupdateListener = null;
 var activeTextTrack = null;
 var lastPlaybackUrl = null;
 var playbackModeRef = 'unknown';
 
 var TIMELINE_INTERVAL_MS = 10000;
-var SCROBBLE_THRESHOLD = 0.92;
+
+var defaultProgressApi = {
+  updateProgress: libraryUpdateProgress,
+  markWatched: libraryMarkWatched
+};
+var progressApi = defaultProgressApi;
+
+/** Override Plex timeline/scrobble calls in unit tests. Pass null to restore defaults. */
+function setProgressApiForTest(overrides) {
+  if (!overrides) {
+    progressApi = defaultProgressApi;
+    return;
+  }
+  progressApi = {
+    updateProgress: overrides.updateProgress || defaultProgressApi.updateProgress,
+    markWatched: overrides.markWatched || defaultProgressApi.markWatched
+  };
+}
 
 /**
  * webOS TV 5+ buffering policy (see docs/caching-and-buffering.md):
@@ -32,58 +87,97 @@ var SCROBBLE_THRESHOLD = 0.92;
  *     REBUFFER_TIMEOUT_MS without progressing, fire onRebufferTimeout so the
  *     screen can downshift quality / fall back to HTTP transcode.
  */
-var REBUFFER_TIMEOUT_MS = 12000;
+
+function redactPlexUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  try {
+    var parsed = new URL(url, window.location.href);
+    if (parsed.searchParams.has('X-Plex-Token')) {
+      parsed.searchParams.set('X-Plex-Token', '[redacted]');
+    }
+    return parsed.toString();
+  } catch (e) {
+    return url.replace(/([?&]X-Plex-Token=)[^&]*/gi, '$1[redacted]');
+  }
+}
 
 function notifyBuffering(show) {
-  if (bufferingShown === show) return;
+  if (!rebufferWatchdog.notifyBuffering(show)) return;
   bufferingShown = show;
   if (onBufferingCb) onBufferingCb(show);
-  if (show) startRebufferWatchdog();
-  else clearRebufferWatchdog();
-}
-
-function startRebufferWatchdog() {
-  clearRebufferWatchdog();
-  rebufferTimer = setTimeout(function () {
-    rebufferTimer = null;
-    if (rebufferFired || !bufferingShown) return;
-    rebufferFired = true;
-    if (onRebufferTimeoutCb) {
-      try { onRebufferTimeoutCb(); } catch (e) { console.error(e); }
-    }
-  }, REBUFFER_TIMEOUT_MS);
-}
-
-function clearRebufferWatchdog() {
-  if (rebufferTimer) {
-    clearTimeout(rebufferTimer);
-    rebufferTimer = null;
-  }
 }
 
 function getItemDurationMs() {
   if (sessionRef && sessionRef.item && sessionRef.item.duration) {
     return sessionRef.item.duration;
   }
-  return getDurationMs();
+  return 0;
 }
 
-function shouldScrobble(ms, duration) {
-  if (!duration || duration <= 0) return false;
-  if (ms / duration >= SCROBBLE_THRESHOLD) return true;
-  return duration - ms <= 30000;
+function getCanonicalDurationMs() {
+  var metaMs = getItemDurationMs();
+  var videoMs = getDurationMs();
+  if (playbackModeRef === 'direct' && videoMs > 0) return videoMs;
+  if (metaMs > 0) return metaMs;
+  return videoMs > 0 ? videoMs : metaMs;
+}
+
+function normalizePlaybackError(err, url) {
+  var src = url || lastPlaybackUrl || (videoEl && videoEl.src) || '';
+  var mediaErr = err && err.code != null ? err : null;
+  var msg = (err && err.message) ? err.message : String(err || 'Playback failed');
+  if (!mediaErr && videoEl && videoEl.error) mediaErr = videoEl.error;
+  return {
+    message: msg,
+    mediaError: mediaErr || err,
+    isHls: isHlsUrl(src),
+    url: redactPlexUrl(src)
+  };
 }
 
 function scrobbleIfNeeded(ms, duration) {
   var server = sessionRef && sessionRef.server;
   var ratingKey = sessionRef && sessionRef.item && sessionRef.item.ratingKey;
-  if (scrobbled || !server || !ratingKey) return Promise.resolve();
+  if (!server || !ratingKey) return Promise.resolve();
+  if (scrobbled) {
+    if (shouldResetScrobble(ms, duration)) scrobbled = false;
+    else return Promise.resolve();
+  }
   if (!shouldScrobble(ms, duration)) return Promise.resolve();
   scrobbled = true;
-  return markWatched(server, ratingKey).catch(function (err) {
+  return progressApi.markWatched(server, ratingKey).catch(function (err) {
     scrobbled = false;
     console.warn('Plex scrobble:', err.message);
   });
+}
+
+function cancelInitialPlayingTimelineSync() {
+  if (initialTimelineTimeupdateListener && videoEl) {
+    videoEl.removeEventListener('timeupdate', initialTimelineTimeupdateListener);
+    initialTimelineTimeupdateListener = null;
+  }
+}
+
+function syncInitialPlayingTimeline() {
+  if (initialPlayingTimelineSynced || !sessionRef || !videoEl) return;
+  initialPlayingTimelineSynced = true;
+  cancelInitialPlayingTimelineSync();
+  syncTimeline('playing', true);
+}
+
+function maybeSyncInitialPlayingTimelineFromTime() {
+  if (initialPlayingTimelineSynced || !sessionRef || !videoEl) return;
+  if (videoEl.currentTime > 0) syncInitialPlayingTimeline();
+}
+
+function armInitialPlayingTimelineSync() {
+  initialPlayingTimelineSynced = false;
+  cancelInitialPlayingTimelineSync();
+  if (!videoEl) return;
+  initialTimelineTimeupdateListener = function () {
+    maybeSyncInitialPlayingTimelineFromTime();
+  };
+  videoEl.addEventListener('timeupdate', initialTimelineTimeupdateListener);
 }
 
 function syncTimeline(state, force) {
@@ -92,7 +186,7 @@ function syncTimeline(state, force) {
   if (!server || !item || !item.ratingKey) return Promise.resolve();
   var ratingKey = item.ratingKey;
   var ms = getCurrentTimeMs();
-  var duration = getItemDurationMs();
+  var duration = getCanonicalDurationMs();
   if (!force && state === 'playing' && lastTimelineMs >= 0 && Math.abs(ms - lastTimelineMs) < 500) {
     return Promise.resolve();
   }
@@ -101,7 +195,7 @@ function syncTimeline(state, force) {
   if (state === 'stopped') extra.continuing = 0;
   return scrobbleIfNeeded(ms, duration).then(function () {
     if (!server) return Promise.resolve();
-    return updateProgress(server, ratingKey, ms, state, duration, extra);
+    return progressApi.updateProgress(server, ratingKey, ms, state, duration, extra);
   });
 }
 
@@ -116,7 +210,7 @@ function attachPlaybackEvents() {
     var ratingKey = sessionRef && sessionRef.item && sessionRef.item.ratingKey;
     var done = Promise.resolve();
     if (server && ratingKey) {
-      done = markWatched(server, ratingKey).catch(function (err) {
+      done = progressApi.markWatched(server, ratingKey).catch(function (err) {
         console.warn('Plex scrobble on end:', err.message);
       }).then(function () {
         return syncTimeline('stopped', true);
@@ -133,20 +227,23 @@ function attachPlaybackEvents() {
     notifyBuffering(false);
     var err = videoEl.error;
     var msg = describeHlsError(err);
-    console.error('Playback error', msg, err);
+    console.error('Playback error', msg, err, redactPlexUrl(videoEl.src));
     if (onErrorCb) {
       onErrorCb({
         message: msg,
         mediaError: err,
         isHls: isHlsUrl(videoEl.src),
-        url: videoEl.src
+        url: redactPlexUrl(videoEl.src)
       });
     }
   });
 
   videoEl.addEventListener('waiting', function () { notifyBuffering(true); });
   videoEl.addEventListener('stalled', function () { notifyBuffering(true); });
-  videoEl.addEventListener('playing', function () { notifyBuffering(false); });
+  videoEl.addEventListener('playing', function () {
+    notifyBuffering(false);
+    syncInitialPlayingTimeline();
+  });
   videoEl.addEventListener('canplay', function () { notifyBuffering(false); });
   videoEl.addEventListener('canplaythrough', function () { notifyBuffering(false); });
 }
@@ -175,16 +272,20 @@ function init() {
 
 function clearSubtitles() {
   if (!videoEl) return;
-  if (activeTextTrack) {
-    activeTextTrack.mode = 'disabled';
-    var cues = activeTextTrack.cues;
-    if (cues) {
-      for (var i = cues.length - 1; i >= 0; i--) {
-        try { activeTextTrack.removeCue(cues[i]); } catch (e) { /* ignore */ }
+  var textTracks = videoEl.textTracks;
+  if (textTracks) {
+    for (var i = 0; i < textTracks.length; i++) {
+      var tt = textTracks[i];
+      tt.mode = 'disabled';
+      var cues = tt.cues;
+      if (cues) {
+        for (var c = cues.length - 1; c >= 0; c--) {
+          try { tt.removeCue(cues[c]); } catch (e) { /* ignore */ }
+        }
       }
     }
-    activeTextTrack = null;
   }
+  activeTextTrack = null;
   var tracks = videoEl.querySelectorAll('track[data-xplay-sub]');
   for (var t = 0; t < tracks.length; t++) tracks[t].remove();
 }
@@ -240,31 +341,46 @@ function applyPlaybackOffset(offsetMs) {
   });
 }
 
+function notifyFirstFrame() {
+  if (firstFrameFired || !videoEl) return;
+  firstFrameFired = true;
+  if (onFirstFrameCb) {
+    try { onFirstFrameCb(); } catch (e) { console.error(e); }
+  }
+}
+
 function play(url, session, options) {
   options = options || {};
   sessionRef = session;
   scrobbled = false;
   lastTimelineMs = -1;
-  rebufferFired = false;
+  lastKnownPositionMs = options.offset || (session && session.offset) || 0;
+  initialPlayingTimelineSynced = false;
+  firstFrameFired = false;
   lastPlaybackUrl = url;
   playbackModeRef = options.mode || playbackModeRef;
-  clearRebufferWatchdog();
+  rebufferWatchdog.resetEpisode();
   notifyBuffering(true);
   videoEl.classList.remove('hidden');
   videoEl.src = url;
   keepScreenOn(true);
+  videoEl.addEventListener('canplay', notifyFirstFrame, { once: true });
+  videoEl.addEventListener('playing', notifyFirstFrame, { once: true });
   var offsetMs = options.offset || (session && session.offset) || 0;
-  if (offsetMs > 0) applyPlaybackOffset(offsetMs);
+  var mode = options.mode || playbackModeRef;
+  if (offsetMs > 0 && !shouldSkipClientPlaybackOffset(url, mode, offsetMs)) {
+    applyPlaybackOffset(offsetMs);
+  }
   var p = videoEl.play();
   if (p && p.catch) {
     p.catch(function (err) {
       console.error(err);
       notifyBuffering(false);
-      if (onErrorCb) onErrorCb(err);
+      if (onErrorCb) onErrorCb(normalizePlaybackError(err, url));
     });
   }
   startProgressSync();
-  syncTimeline('playing', true);
+  armInitialPlayingTimelineSync();
   return videoEl;
 }
 
@@ -275,7 +391,7 @@ function getVideoElement() {
 function pause() {
   if (videoEl) videoEl.pause();
   stopProgressSync();
-  clearRebufferWatchdog();
+  rebufferWatchdog.resetEpisode();
   syncTimeline('paused', true);
 }
 
@@ -290,11 +406,14 @@ function stop(options) {
   var server = sessionRef && sessionRef.server;
   var item = sessionRef && sessionRef.item;
   var ratingKey = item && item.ratingKey;
-  var duration = item && item.duration ? item.duration : getDurationMs();
+  var duration = getCanonicalDurationMs() || (item && item.duration) || getDurationMs();
   var ms = getCurrentTimeMs();
+  if (ms > 0) lastKnownPositionMs = ms;
 
   stopProgressSync();
-  clearRebufferWatchdog();
+  rebufferWatchdog.resetEpisode();
+  cancelInitialPlayingTimelineSync();
+  cancelPendingSeek();
   clearSubtitles();
   notifyBuffering(false);
   keepScreenOn(false);
@@ -310,16 +429,46 @@ function stop(options) {
   sessionRef = null;
   scrobbled = false;
   lastTimelineMs = -1;
-  rebufferFired = false;
+  /* keep lastKnownPositionMs for restart offset after teardown */
+  rebufferWatchdog.resetEpisode();
+  initialPlayingTimelineSynced = false;
   lastPlaybackUrl = null;
   playbackModeRef = 'unknown';
 
   if (server && ratingKey && !options.skipTimeline) {
     var continuing = options.continuing != null ? options.continuing : 0;
-    updateProgress(server, ratingKey, ms, 'stopped', duration, { continuing: continuing }).catch(function (err) {
+    progressApi.updateProgress(server, ratingKey, ms, 'stopped', duration, { continuing: continuing }).catch(function (err) {
       console.warn('Plex timeline on stop:', err.message);
+      if (onTimelineSyncFailureCb) {
+        try { onTimelineSyncFailureCb(err); } catch (e) { console.error(e); }
+      }
     });
   }
+}
+
+function flushProgress(state) {
+  if (!sessionRef) return Promise.resolve();
+  var ms = getCurrentTimeMs();
+  var duration = getCanonicalDurationMs();
+  return flushTimelineProgress({
+    session: sessionRef,
+    isPaused: isPaused(),
+    explicitState: state,
+    viewOffsetMs: ms,
+    durationMs: duration,
+    updateProgress: function (server, ratingKey, viewOffset, timelineState, dur, extra) {
+      lastTimelineMs = viewOffset;
+      return scrobbleIfNeeded(viewOffset, dur).then(function () {
+        return progressApi.updateProgress(server, ratingKey, viewOffset, timelineState, dur, extra);
+      });
+    },
+    onFailure: function (err) {
+      console.warn('Plex timeline flush:', err && err.message ? err.message : err);
+      if (onTimelineSyncFailureCb) {
+        try { onTimelineSyncFailureCb(err); } catch (e) { console.error(e); }
+      }
+    }
+  });
 }
 
 function clampSeekSeconds(seconds) {
@@ -331,25 +480,34 @@ function clampSeekSeconds(seconds) {
   return Math.max(0, seconds || 0);
 }
 
+function cancelPendingSeek() {
+  if (pendingSeekListener && videoEl) {
+    videoEl.removeEventListener('loadedmetadata', pendingSeekListener);
+    pendingSeekListener = null;
+  }
+}
+
 function seek(seconds) {
   if (!videoEl) return;
   seconds = clampSeekSeconds(seconds);
+  cancelPendingSeek();
   function apply() {
     try {
       videoEl.currentTime = seconds;
     } catch (e) {
       console.warn('Seek failed:', e && e.message ? e.message : e);
     }
-    syncTimeline('playing', true);
+    syncTimeline(timelineStateForPlayback(videoEl.paused), true);
   }
   if (videoEl.readyState >= 1 && isFinite(videoEl.duration) && videoEl.duration > 0) {
     apply();
     return;
   }
-  videoEl.addEventListener('loadedmetadata', function seekWhenReady() {
-    videoEl.removeEventListener('loadedmetadata', seekWhenReady);
+  pendingSeekListener = function seekWhenReady() {
+    pendingSeekListener = null;
     apply();
-  });
+  };
+  videoEl.addEventListener('loadedmetadata', pendingSeekListener, { once: true });
 }
 
 function seekMs(ms) {
@@ -372,7 +530,15 @@ function togglePlayPause() {
 }
 
 function getCurrentTimeMs() {
-  return videoEl ? Math.floor(videoEl.currentTime * 1000) : 0;
+  if (!videoEl) {
+    return lastKnownPositionMs > 0 ? lastKnownPositionMs : 0;
+  }
+  var ms = Math.floor(videoEl.currentTime * 1000);
+  if (ms > 0) {
+    lastKnownPositionMs = ms;
+    return ms;
+  }
+  return lastKnownPositionMs > 0 ? lastKnownPositionMs : 0;
 }
 
 function getDurationMs() {
@@ -384,7 +550,7 @@ function startProgressSync() {
   progressTimer = setInterval(function () {
     if (!sessionRef || !videoEl || videoEl.paused) return;
     var ms = getCurrentTimeMs();
-    var duration = getItemDurationMs();
+    var duration = getCanonicalDurationMs();
     scrobbleIfNeeded(ms, duration).then(function () {
       return syncTimeline('playing', true);
     }).catch(function (err) {
@@ -416,11 +582,21 @@ function onRebufferTimeout(fn) {
   onRebufferTimeoutCb = fn;
 }
 
+function onFirstFrame(fn) {
+  onFirstFrameCb = fn;
+}
+
+function onTimelineSyncFailure(fn) {
+  onTimelineSyncFailureCb = fn;
+}
+
 function clearListeners() {
   onEndedCb = null;
   onErrorCb = null;
   onBufferingCb = null;
   onRebufferTimeoutCb = null;
+  onFirstFrameCb = null;
+  onTimelineSyncFailureCb = null;
 }
 
 function showControls(visible) {
@@ -442,7 +618,7 @@ function getPlaybackStats() {
   var h = videoEl ? videoEl.videoHeight : 0;
   return {
     mode: playbackModeRef,
-    url: lastPlaybackUrl,
+    url: redactPlexUrl(lastPlaybackUrl),
     videoWidth: w,
     videoHeight: h,
     isHls: isHlsUrl(lastPlaybackUrl)
@@ -462,10 +638,15 @@ export {
   togglePlayPause,
   getCurrentTimeMs,
   getDurationMs,
+  getCanonicalDurationMs,
   onEnded,
   onError,
   onBuffering,
   onRebufferTimeout,
+  onFirstFrame,
+  onTimelineSyncFailure,
+  flushProgress,
+  redactPlexUrl,
   clearListeners,
   showControls,
   getVideoElement,
@@ -475,5 +656,7 @@ export {
   setPlaybackMode,
   getPlaybackMode,
   getPlaybackStats,
-  REBUFFER_TIMEOUT_MS
+  REBUFFER_TIMEOUT_MS,
+  setProgressApiForTest,
+  setRebufferTimersForTest
 };

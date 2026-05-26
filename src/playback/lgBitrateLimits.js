@@ -45,7 +45,17 @@ function checkBitrate(version, deviceInfo) {
     limitMbps: null,
     message: ''
   };
-  if (!version || version.bitrate == null || version.bitrate === '') return empty;
+  if (!version || version.bitrate == null || version.bitrate === '') {
+    return {
+      exceeds: false,
+      unknown: true,
+      actualKbps: null,
+      limitKbps: null,
+      actualMbps: null,
+      limitMbps: null,
+      message: 'Source bitrate not reported by Plex; direct play is not guaranteed on this TV'
+    };
+  }
 
   var kbps = parseInt(version.bitrate, 10);
   if (isNaN(kbps) || kbps <= 0) return empty;

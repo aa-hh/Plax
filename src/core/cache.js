@@ -14,6 +14,7 @@
  *   children   — TTL 5  min, max 32  entries  (seasons & episodes lists)
  *   search     — TTL 30 sec, max 16  entries  (hubs/search by query)
  *   ultrablur  — TTL 30 min, max 32  entries  (detail backdrop URLs)
+ *   storyboard — TTL 30 min, max 16  entries  (parsed sprite metadata per title)
  *
  * API:
  *   var cache = require('core/cache.js');
@@ -40,7 +41,8 @@ var DEFAULT_NAMESPACES = {
   metadata:  { ttlMs:  5 * 60 * 1000, max: 64 },
   children:  { ttlMs:  5 * 60 * 1000, max: 32 },
   search:    { ttlMs:      30 * 1000, max: 16 },
-  ultrablur: { ttlMs: 30 * 60 * 1000, max: 32 }
+  ultrablur: { ttlMs: 30 * 60 * 1000, max: 32 },
+  storyboard: { ttlMs: 30 * 60 * 1000, max: 16 }
 };
 
 var stores = {};

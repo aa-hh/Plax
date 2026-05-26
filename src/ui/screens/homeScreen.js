@@ -101,7 +101,13 @@ function homeScreen(root, params, navigate) {
     if (!rows || !rows.length) return;
     if (!append) el.innerHTML = '';
     rows.forEach(function (row) {
-      renderHubRow(el, row, navigate, { cols: 12, visibleCount: 20 });
+      renderHubRow(el, row, navigate, {
+        cols: 12,
+        visibleCount: 20,
+        server: state.activeServer,
+        directPlayFromRow: true,
+        playbackPrefs: state.playbackPrefs
+      });
     });
     primeVisiblePosters(el);
   }
@@ -170,7 +176,13 @@ function homeScreen(root, params, navigate) {
       rows.forEach(function (row) {
         if (!row.items || !row.items.length) return;
         hasRows = true;
-        renderHubRow(el, row, navigate, { cols: 12, visibleCount: 20 });
+        renderHubRow(el, row, navigate, {
+        cols: 12,
+        visibleCount: 20,
+        server: state.activeServer,
+        directPlayFromRow: true,
+        playbackPrefs: state.playbackPrefs
+      });
         var wlId = String(row.hubIdentifier || '').replace('watchlist.', '');
         var sections = el.querySelectorAll('.row-section');
         var section = sections[sections.length - 1];

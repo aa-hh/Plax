@@ -580,6 +580,7 @@ function loadHomeFeedPhased(server) {
 export {
   loadHomeFeedPhased,
   selectAccessibleHomeLibraries,
+  isContinueHubRow,
   isRecentlyAddedHub,
   composeHomeRows,
   filterItemsToAccessibleLibraries,

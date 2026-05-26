@@ -7,13 +7,36 @@ var DEFAULT_PREFS = {
   subtitleSize: 'm',
   subtitleBackground: true
 };
+var SUBTITLE_OFFSET_MIN_MS = -5000;
+var SUBTITLE_OFFSET_MAX_MS = 5000;
+var VALID_SUBTITLE_SIZES = { s: true, m: true, l: true };
 
 function getPlaybackPrefs() {
   return Object.assign({}, getState().playbackPrefs || {}, DEFAULT_PREFS);
 }
 
+function clampPlaybackPrefs(partial) {
+  var next = Object.assign({}, partial);
+  if (next.quality != null) {
+    var allowed = listProfiles().map(function (p) { return p.id; });
+    if (allowed.indexOf(next.quality) < 0) delete next.quality;
+  }
+  if (next.subtitleSize != null && !VALID_SUBTITLE_SIZES[next.subtitleSize]) {
+    delete next.subtitleSize;
+  }
+  if (next.subtitleOffsetMs != null) {
+    var ms = parseInt(next.subtitleOffsetMs, 10);
+    if (isNaN(ms)) ms = 0;
+    next.subtitleOffsetMs = Math.max(
+      SUBTITLE_OFFSET_MIN_MS,
+      Math.min(SUBTITLE_OFFSET_MAX_MS, ms)
+    );
+  }
+  return next;
+}
+
 function setPlaybackPrefs(partial) {
-  var merged = Object.assign({}, getPlaybackPrefs(), partial);
+  var merged = Object.assign({}, getPlaybackPrefs(), clampPlaybackPrefs(partial || {}));
   setState({ playbackPrefs: merged });
   persistAuth({ playbackPrefs: merged });
   return merged;

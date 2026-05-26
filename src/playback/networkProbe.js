@@ -2,7 +2,7 @@ import { getState, setState } from '../core/store.js';
 import { serverUrl, plexHeaders, getServerToken } from '../plex/client.js';
 import { getContinueWatching, getMetadata } from '../plex/library.js';
 import { getCodecCapabilities } from '../platform/webos.js';
-import { getProfile, PROFILES } from './qualityProfiles.js';
+import { getProfile, PROFILES, requiresServerTranscode } from './qualityProfiles.js';
 import { checkBitrate, kbpsToMbps } from './lgBitrateLimits.js';
 import { extractVersions, pickBestVersion } from './versionSelector.js';
 import { probePlayback } from './capabilityProbe.js';
@@ -10,6 +10,7 @@ import { loadDeviceDisplay } from '../platform/deviceDisplay.js';
 
 var DEFAULT_TIMEOUT_MS = 7000;
 var PROBE_BYTES = 512 * 1024;
+var MIN_PROBE_BYTES = 4096;
 var HEADROOM = 1.15;
 
 var ITEM_PROBE_CACHE_MAX = 32;
@@ -21,6 +22,19 @@ var SESSION_TTL_MS = 10 * 60 * 1000;
 var sessionController = null;
 var sessionProbePromise = null;
 var activeProbeController = null;
+var playbackActive = false;
+
+function setPlaybackActive(active) {
+  var wasActive = playbackActive;
+  playbackActive = !!active;
+  if (playbackActive && !wasActive) {
+    cancelNetworkProbe();
+  }
+}
+
+function isPlaybackActive() {
+  return playbackActive;
+}
 
 function serverScopeKey(server) {
   if (!server) return 'noserver';
@@ -98,8 +112,97 @@ function normalizePartPath(partKey) {
   return partKey.indexOf('/') === 0 ? partKey : '/' + partKey;
 }
 
+function mergeByteChunks(chunks, totalLength) {
+  var out = new Uint8Array(totalLength);
+  var offset = 0;
+  var i;
+  for (i = 0; i < chunks.length; i++) {
+    out.set(chunks[i], offset);
+    offset += chunks[i].byteLength;
+  }
+  return out.buffer;
+}
+
+function readCappedResponseBody(response, maxBytes, signal) {
+  if (!response || !response.body || typeof response.body.getReader !== 'function') {
+    return Promise.reject(new Error('Probe response is not streamable'));
+  }
+  if (signal && signal.aborted) {
+    return Promise.reject(new Error('cancelled'));
+  }
+  var reader = response.body.getReader();
+  var chunks = [];
+  var total = 0;
+
+  function onProbeAbort() {
+    reader.cancel().catch(function () {});
+  }
+
+  if (signal) {
+    signal.addEventListener('abort', onProbeAbort);
+  }
+
+  function cleanupProbeRead() {
+    if (signal) signal.removeEventListener('abort', onProbeAbort);
+  }
+
+  return (
+    function pump() {
+      if (signal && signal.aborted) {
+        return reader.cancel().catch(function () {}).then(function () {
+          throw new Error('cancelled');
+        });
+      }
+      return reader.read().then(function (result) {
+        if (signal && signal.aborted) {
+          return reader.cancel().catch(function () {}).then(function () {
+            throw new Error('cancelled');
+          });
+        }
+        if (result.done) {
+          cleanupProbeRead();
+          return mergeByteChunks(chunks, total);
+        }
+        var chunk = result.value instanceof Uint8Array ? result.value : new Uint8Array(result.value);
+        var remaining = maxBytes - total;
+        if (chunk.length <= remaining) {
+          chunks.push(chunk);
+          total += chunk.length;
+          return pump();
+        }
+        chunks.push(chunk.subarray(0, remaining));
+        total = maxBytes;
+        cleanupProbeRead();
+        return reader.cancel().catch(function () {}).then(function () {
+          return mergeByteChunks(chunks, total);
+        });
+      });
+    }
+  )().then(function (buf) {
+    cleanupProbeRead();
+    return buf;
+  }, function (err) {
+    cleanupProbeRead();
+    if (signal && signal.aborted) {
+      return reader.cancel().catch(function () {}).then(function () {
+        throw new Error('cancelled');
+      });
+    }
+    return reader.cancel().catch(function () {}).then(function () {
+      throw err;
+    });
+  });
+}
+
+function isAcceptableProbeStatus(status) {
+  return status === 206 || status === 200;
+}
+
 function measurePartDownload(server, partKey, options) {
   options = options || {};
+  if (playbackActive && !options.forceProbe) {
+    return Promise.reject(new Error('Network probe deferred during playback'));
+  }
   var path = normalizePartPath(partKey);
   if (!server || !server.connectionUri || !path) {
     return Promise.reject(new Error('No media file to test'));
@@ -108,6 +211,7 @@ function measurePartDownload(server, partKey, options) {
   var url = serverUrl(server.connectionUri, path, {}, server);
   var timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   var cancelled = options.isCancelled || function () { return false; };
+  var signal = options.signal || null;
   var endByte = PROBE_BYTES - 1;
   var headers = plexHeaders({ Range: 'bytes=0-' + endByte });
   var serverToken = getServerToken(server);
@@ -116,34 +220,56 @@ function measurePartDownload(server, partKey, options) {
   var started = Date.now();
 
   return new Promise(function (resolve, reject) {
+    if (signal && signal.aborted) {
+      reject(new Error('cancelled'));
+      return;
+    }
+
     var timer = setTimeout(function () {
       reject(new Error('Network test timed out'));
     }, timeoutMs);
 
-    fetch(url, { method: 'GET', headers: headers })
+    var fetchOpts = { method: 'GET', headers: headers };
+    if (signal) fetchOpts.signal = signal;
+
+    fetch(url, fetchOpts)
       .then(function (res) {
-        if (cancelled()) {
+        if (cancelled() || (signal && signal.aborted)) {
           clearTimeout(timer);
           reject(new Error('cancelled'));
           return null;
         }
-        if (!res.ok && res.status !== 206 && res.status !== 200) {
+        if (!isAcceptableProbeStatus(res.status)) {
           clearTimeout(timer);
           reject(new Error('HTTP ' + res.status));
           return null;
         }
-        return res.arrayBuffer();
+        if (res.status === 200) {
+          var contentLength = res.headers.get('Content-Length');
+          if (contentLength) {
+            var declaredLen = parseInt(contentLength, 10);
+            if (!isNaN(declaredLen) && declaredLen > PROBE_BYTES) {
+              if (res.body && typeof res.body.cancel === 'function') {
+                res.body.cancel().catch(function () {});
+              }
+              clearTimeout(timer);
+              reject(new Error('Server ignored Range request'));
+              return null;
+            }
+          }
+        }
+        return readCappedResponseBody(res, PROBE_BYTES, signal);
       })
       .then(function (buf) {
         clearTimeout(timer);
         if (!buf) return;
-        if (cancelled()) {
+        if (cancelled() || (signal && signal.aborted)) {
           reject(new Error('cancelled'));
           return;
         }
         var elapsedSec = Math.max(0.05, (Date.now() - started) / 1000);
         var bytes = buf.byteLength || 0;
-        if (bytes < 4096) {
+        if (bytes < MIN_PROBE_BYTES) {
           reject(new Error('Response too small to measure'));
           return;
         }
@@ -156,7 +282,8 @@ function measurePartDownload(server, partKey, options) {
       })
       .catch(function (err) {
         clearTimeout(timer);
-        if (cancelled() || (err && err.message === 'cancelled')) {
+        if (cancelled() || (signal && signal.aborted) ||
+            (err && (err.message === 'cancelled' || err.name === 'AbortError'))) {
           reject(new Error('cancelled'));
           return;
         }
@@ -409,9 +536,16 @@ function resolveSessionProbePart(server, prefetch) {
 
 function createNetworkProbeController() {
   var cancelled = false;
+  var abortController = new AbortController();
   return {
-    cancel: function () { cancelled = true; },
-    isCancelled: function () { return cancelled; }
+    signal: abortController.signal,
+    cancel: function () {
+      cancelled = true;
+      abortController.abort();
+    },
+    isCancelled: function () {
+      return cancelled || abortController.signal.aborted;
+    }
   };
 }
 
@@ -441,7 +575,8 @@ function runSessionNetworkProbe(options) {
     }
     return measurePartDownload(server, target.partKey, {
       timeoutMs: options.timeoutMs,
-      isCancelled: controller.isCancelled
+      isCancelled: controller.isCancelled,
+      signal: controller.signal
     }).then(function (measure) {
       if (controller.isCancelled()) throw new Error('cancelled');
       var recommendation = recommendSessionQuality(measure.measuredMbps, deviceInfo);
@@ -488,7 +623,8 @@ function runNetworkProbe(options) {
   var partKey = (version && version.partKey) || (item && item.key);
   return measurePartDownload(server, partKey, {
     timeoutMs: options.timeoutMs,
-    isCancelled: controller.isCancelled
+    isCancelled: controller.isCancelled,
+    signal: controller.signal
   }).then(function (measure) {
     if (controller.isCancelled()) throw new Error('cancelled');
     var recommendation = recommendPlaybackQuality({
@@ -554,6 +690,94 @@ function refineRecommendationForItem(cache, metadata, version, deviceInfo) {
   });
 }
 
+function resolveEffectivePlaybackQuality(prefsQuality, refinedProbe) {
+  if (prefsQuality !== 'auto') return prefsQuality;
+  if (!refinedProbe || refinedProbe.status !== 'done') return 'auto';
+  var id = refinedProbe.recommendedQualityId;
+  if (id && getProfile(id)) return id;
+  return 'auto';
+}
+
+function resolveInitialPlaybackStrategy(opts) {
+  opts = opts || {};
+  var prefsQuality = opts.prefsQuality || 'auto';
+  var effectiveQuality = opts.effectiveQuality != null ? opts.effectiveQuality : prefsQuality;
+  var probe = opts.playbackProbe;
+  var refinedProbe = opts.refinedProbe;
+  var forceTranscode = opts.forceTranscode;
+  var version = opts.version;
+
+  if (opts.directPlayOnly) return 'direct';
+  if (requiresServerTranscode(effectiveQuality)) return 'transcode';
+  if (forceTranscode) return 'transcode';
+
+  var measuredMbps = null;
+  if (refinedProbe) {
+    measuredMbps = refinedProbe.measuredMbps != null
+      ? refinedProbe.measuredMbps
+      : refinedProbe.mbps;
+  }
+  var required = version ? requiredMbpsForVersion(version) : 8;
+
+  if (prefsQuality === 'auto' && effectiveQuality !== 'auto') {
+    return 'transcode';
+  }
+
+  if (prefsQuality === 'auto' && probe) {
+    if (!probe.canDirectPlay && !probe.canDirectStream) return 'transcode';
+    if (!probe.canDirectPlay && probe.canDirectStream) return 'direct-stream';
+    if (measuredMbps != null && !isNaN(measuredMbps) && measuredMbps < required) {
+      return 'transcode';
+    }
+  }
+  return 'direct';
+}
+
+function buildRefinedProbeForPlay(server, item, version, deviceInfo, playbackProbe) {
+  if (!server || !item) return null;
+  var sessionCache = getState().networkProbe;
+  var summary = (sessionCache && sessionCache.deviceSummary) || [];
+  var cached = getCachedProbeResult(server, item.ratingKey, version && version.id);
+  if (cached) {
+    return refineRecommendationForItem(
+      probeResultToStore(cached, server, summary),
+      item,
+      version,
+      deviceInfo
+    );
+  }
+  if (sessionCache && sessionCache.status === 'done' &&
+      sessionCache.serverScope === serverScopeKey(server)) {
+    return refineRecommendationForItem(sessionCache, item, version, deviceInfo);
+  }
+  if (playbackProbe && sessionCache) {
+    return refineRecommendationForItem(sessionCache, item, version, deviceInfo);
+  }
+  return null;
+}
+
+function ensureItemProbeForPlay(server, item, version, deviceInfo, playbackProbe) {
+  var refined = buildRefinedProbeForPlay(server, item, version, deviceInfo, playbackProbe);
+  var cached = getCachedProbeResult(server, item.ratingKey, version && version.id);
+  if (cached || !version || !version.partKey) {
+    return Promise.resolve(refined);
+  }
+  if (playbackActive) {
+    return Promise.resolve(refined);
+  }
+  return startNetworkProbeIfNeeded(server, {
+    item: item,
+    version: version,
+    deviceInfo: deviceInfo,
+    playbackProbe: playbackProbe,
+    force: true
+  }).then(function () {
+    return buildRefinedProbeForPlay(server, item, version, deviceInfo, playbackProbe);
+  }).catch(function () {
+    return refined;
+  });
+}
+
 function cancelNetworkProbe() {
   if (sessionController) {
     sessionController.cancel();
@@ -569,6 +793,11 @@ function cancelNetworkProbe() {
 function startNetworkProbeIfNeeded(server, options) {
   options = options || {};
   if (!server) return Promise.resolve(null);
+  if (playbackActive && !options.force) {
+    var deferredCache = getState().networkProbe;
+    if (isCacheFresh(deferredCache, server)) return Promise.resolve(deferredCache);
+    return Promise.resolve(null);
+  }
 
   var cache = getState().networkProbe;
   if (!options.force && isCacheFresh(cache, server)) {
@@ -676,19 +905,31 @@ function startBootNetworkProbe(server, prefetch) {
 
 export {
   PROBE_BYTES,
+  MIN_PROBE_BYTES,
   DEFAULT_TIMEOUT_MS,
+  ITEM_PROBE_CACHE_MAX,
+  ITEM_PROBE_TTL_MS,
+  readCappedResponseBody,
+  isAcceptableProbeStatus,
   SESSION_TTL_MS,
   measurePartDownload,
   recommendPlaybackQuality,
   recommendForItem,
   recommendSessionQuality,
   requiredMbpsForVersion,
+  resolveEffectivePlaybackQuality,
+  resolveInitialPlaybackStrategy,
+  buildRefinedProbeForPlay,
+  ensureItemProbeForPlay,
+  probeCacheKey,
   runNetworkProbe,
   runSessionNetworkProbe,
   startSessionNetworkProbe,
   startNetworkProbeIfNeeded,
   startBootNetworkProbe,
   cancelNetworkProbe,
+  setPlaybackActive,
+  isPlaybackActive,
   isCacheFresh,
   refineRecommendationForItem,
   createNetworkProbeController,

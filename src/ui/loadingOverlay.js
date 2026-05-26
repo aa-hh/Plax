@@ -35,7 +35,6 @@ function showLoadingOverlay(message, mode) {
 function hideLoadingOverlay() {
   if (!overlayEl) return;
   overlayEl.classList.add('hidden');
-  bufferDepth = 0;
 }
 
 /** Player teardown: hide overlay and drop any buffering refcount. */

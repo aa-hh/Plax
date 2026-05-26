@@ -1,5 +1,9 @@
 import { createVirtualRow } from './virtualRow.js';
-import { createMediaCard } from './mediaCard.js';
+import { createMediaCard, resolveDetailRoute } from './mediaCard.js';
+import {
+  canDirectPlayFromHub,
+  playFromHubItem
+} from '../../playback/hubDirectPlay.js';
 
 function rowPrefersSeriesPoster(row) {
   if (!row) return false;
@@ -28,7 +32,19 @@ function renderHubRow(parent, row, navigate, options) {
     cols: options.cols || 10,
     renderItem: function (item, index) {
       return createMediaCard(item, function (selected, routeParams) {
-        var route = routeParams || { ratingKey: selected.ratingKey };
+        var route = routeParams || resolveDetailRoute(selected);
+        if (options.directPlayFromRow && options.server && canDirectPlayFromHub(row, selected)) {
+          playFromHubItem({
+            navigate: navigate,
+            server: options.server,
+            row: row,
+            item: selected,
+            detailRoute: route,
+            playbackPrefs: options.playbackPrefs,
+            deviceInfo: options.deviceInfo
+          });
+          return;
+        }
         navigate('detail', route);
       }, {
         preferSeriesPoster: rowPrefersSeriesPoster(row),

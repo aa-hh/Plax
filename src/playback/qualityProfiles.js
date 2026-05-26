@@ -7,6 +7,9 @@
  * - 4k / 1080 / 720 / 480: server transcode caps (HLS or HTTP).
  */
 
+/** Transcode ladder high → low (rebuffer / probe downshift). */
+var TRANSCODE_QUALITY_ORDER = ['4k', '1080', '720', '480'];
+
 var PROFILES = {
   auto: {
     label: 'Auto (direct → remux → transcode)',
@@ -84,6 +87,13 @@ function requiresServerTranscode(key) {
   return !!(profile && profile.requireTranscode);
 }
 
+function nextLowerTranscodeProfileKey(key) {
+  var normalized = normalizeQualityKey(key);
+  var idx = TRANSCODE_QUALITY_ORDER.indexOf(normalized);
+  if (idx < 0 || idx >= TRANSCODE_QUALITY_ORDER.length - 1) return null;
+  return TRANSCODE_QUALITY_ORDER[idx + 1];
+}
+
 function applyProfileToParams(params, profileKey, prefs) {
   var profile = getProfile(profileKey);
   prefs = prefs || {};
@@ -102,11 +112,13 @@ function applyProfileToParams(params, profileKey, prefs) {
 
 export {
   PROFILES,
+  TRANSCODE_QUALITY_ORDER,
   getProfile,
   normalizeQualityKey,
   listProfiles,
   applyProfileToParams,
   isDirectPlayOnlyQuality,
   allowsPlaybackFallback,
-  requiresServerTranscode
+  requiresServerTranscode,
+  nextLowerTranscodeProfileKey
 };

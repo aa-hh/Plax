@@ -153,6 +153,7 @@ function libraryScreen(root, params, navigate) {
       grid.appendChild(createMediaCard(item, function (selected, routeParams) {
         var route = routeParams || { ratingKey: selected.ratingKey };
         route.libraryType = lib.type;
+        route.libraryId = lib.id;
         navigate('detail', route);
       }, {
         layout: 'grid',

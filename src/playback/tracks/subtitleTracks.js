@@ -7,6 +7,9 @@ function parseSubtitleStreams(media, options) {
   return collectStreamsFromMedia(media, 3).map(function (s, i) {
     var codec = (s.codec || '').toLowerCase();
     var graphical = isGraphicalSubtitle(codec);
+    var forced = s.forced === '1' || s.forced === true || s.forced === 1;
+    var hearingImpaired = s.hearingImpaired === '1' || s.hearingImpaired === true ||
+      s.hearingImpaired === 1;
     return {
       id: s.id,
       index: s.index,
@@ -16,12 +19,42 @@ function parseSubtitleStreams(media, options) {
       format: codec.indexOf('srt') >= 0 ? 'srt' : codec,
       graphical: graphical,
       requiresTranscode: graphical,
+      forced: forced,
+      hearingImpaired: hearingImpaired,
       selected: s.selected === '1'
     };
   }).filter(function (s) {
     if (options.includeGraphical) return true;
     return !s.graphical;
   });
+}
+
+function subtitleDisplayTitle(track) {
+  if (!track) return '';
+  var title = track.title || 'Subtitle';
+  if (track.forced) return title + ' (Forced)';
+  if (track.hearingImpaired) return title + ' (SDH)';
+  return title;
+}
+
+/** Plex-selected track, else single forced track, else first non-SDH, else first. */
+function pickDefaultSubtitleTrack(tracks) {
+  if (!tracks || !tracks.length) return null;
+  var selected = null;
+  var i;
+  for (i = 0; i < tracks.length; i++) {
+    if (tracks[i].selected) {
+      selected = tracks[i];
+      break;
+    }
+  }
+  if (selected) return selected;
+  var forced = tracks.filter(function (t) { return t.forced; });
+  if (forced.length === 1) return forced[0];
+  for (i = 0; i < tracks.length; i++) {
+    if (!tracks[i].hearingImpaired) return tracks[i];
+  }
+  return tracks[0];
 }
 
 function findSubtitleTrack(tracks, streamId) {
@@ -32,9 +65,25 @@ function findSubtitleTrack(tracks, streamId) {
   return null;
 }
 
+/** Playback modes that can load Plex SRT via TextTrack without burn-in. */
+var CLIENT_SUBTITLE_MODES = {
+  direct: true,
+  'direct-stream': true,
+  'transcode-hls': true,
+  'transcode-http': true
+};
+
+function isClientSubtitlePlaybackMode(playbackMode) {
+  return !!CLIENT_SUBTITLE_MODES[playbackMode];
+}
+
+function shouldBurnInSubtitle(track) {
+  return !!(track && track.graphical);
+}
+
 function canUseClientSubtitles(playbackMode, track) {
   if (!track || track.graphical) return false;
-  return playbackMode === 'direct';
+  return isClientSubtitlePlaybackMode(playbackMode);
 }
 
 function buildClientSubtitleUrl(server, session) {
@@ -67,7 +116,9 @@ function buildClientSubtitleUrl(server, session) {
   );
 }
 
-function buildSubtitleTranscodeParams(streamId, offsetMs) {
+function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
+  options = options || {};
+  if (options.burnIn === false) return {};
   var p = {};
   if (streamId != null) {
     p['X-Plex-Subtitle-Stream'] = String(streamId);
@@ -84,5 +135,9 @@ export {
   buildSubtitleTranscodeParams,
   findSubtitleTrack,
   canUseClientSubtitles,
-  buildClientSubtitleUrl
+  isClientSubtitlePlaybackMode,
+  shouldBurnInSubtitle,
+  buildClientSubtitleUrl,
+  subtitleDisplayTitle,
+  pickDefaultSubtitleTrack
 };

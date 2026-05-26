@@ -36,16 +36,21 @@ function formatCardLines(item, options) {
     subtitle = item.title || '';
     meta = formatEpisodeMeta(item);
   } else if (type === 'season') {
-    subtitle = item.parentTitle || '';
-    if (item.index != null && item.index !== '') {
-      meta = 'Season ' + item.index;
-    } else if (item.parentIndex != null && item.parentIndex !== '') {
-      meta = 'Season ' + item.parentIndex;
-    }
-    if (item.leafCount) {
-      meta = meta
-        ? meta + ' · ' + item.leafCount + ' eps'
-        : item.leafCount + ' episodes';
+    if (options.cardText === 'titleOnly') {
+      subtitle = '';
+      meta = '';
+    } else {
+      subtitle = item.parentTitle || '';
+      if (item.index != null && item.index !== '') {
+        meta = 'Season ' + item.index;
+      } else if (item.parentIndex != null && item.parentIndex !== '') {
+        meta = 'Season ' + item.parentIndex;
+      }
+      if (item.leafCount) {
+        meta = meta
+          ? meta + ' · ' + item.leafCount + ' eps'
+          : item.leafCount + ' episodes';
+      }
     }
   } else if (type === 'show') {
     if (item.year) meta = String(item.year);
