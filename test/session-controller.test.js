@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 
 import { getState, setState } from '../src/core/store.js';
 import {
+  setPlexDeviceInfo,
+  resetPlexDeviceInfoForTest,
+  PMS_PRODUCT
+} from '../src/plex/clientIdentity.js';
+import { WEBOS_HLS_PROFILE_EXTRA } from '../src/playback/hlsPolicy.js';
+import {
   buildDirectPlayUrl,
   buildPlaybackUrl,
   resolvePlaybackStrategy,
@@ -38,13 +44,29 @@ function baseSession(overrides) {
 }
 
 var savedPlaybackPrefs;
+var savedPalmSystem;
+var savedWebOS;
 
 test.beforeEach(function () {
   savedPlaybackPrefs = Object.assign({}, getState().playbackPrefs);
+  resetPlexDeviceInfoForTest();
+  savedPalmSystem = globalThis.PalmSystem;
+  savedWebOS = globalThis.webOS;
 });
 
 test.afterEach(function () {
   setState({ playbackPrefs: savedPlaybackPrefs });
+  resetPlexDeviceInfoForTest();
+  if (savedPalmSystem === undefined) {
+    delete globalThis.PalmSystem;
+  } else {
+    globalThis.PalmSystem = savedPalmSystem;
+  }
+  if (savedWebOS === undefined) {
+    delete globalThis.webOS;
+  } else {
+    globalThis.webOS = savedWebOS;
+  }
 });
 
 test('buildDirectPlayUrl uses part path and server access token', function () {
@@ -75,8 +97,57 @@ test('buildPlaybackUrl HTTP targets universal start without m3u8', function () {
   var httpQ = parseQuery(httpUrl);
   assert.ok(/\/video\/:\/transcode\/universal\/start\?/.test(httpUrl));
   assert.ok(httpUrl.indexOf('.m3u8') < 0);
-  assert.ok(hlsQ['X-Plex-Client-Profile-Extra']);
+  assert.equal(hlsQ['X-Plex-Client-Profile-Extra'], undefined);
   assert.equal(httpQ['X-Plex-Client-Profile-Extra'], undefined);
+});
+
+test('buildPlaybackUrl HLS includes webOS profile extra only for Plex for LG', function () {
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'OLED55B9PUA', version: '4.9.0' });
+    }
+  };
+  setPlexDeviceInfo({ modelName: 'OLED55B9PUA', version: '4.9.0' });
+
+  var session = baseSession({ forceTranscode: true });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q['X-Plex-Product'], PMS_PRODUCT);
+  assert.equal(q['X-Plex-Client-Profile-Extra'], WEBOS_HLS_PROFILE_EXTRA);
+  assert.ok(q.path && q.path.indexOf('http') < 0);
+  assert.equal(q.location, 'wan');
+});
+
+test('buildPlaybackUrl simulator Plex Web omits profile extra on HLS', function () {
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'WEBOS26_SIMULATOR', version: '26.0.0' });
+    }
+  };
+  setPlexDeviceInfo({ modelName: 'WEBOS26_SIMULATOR', version: '26.0.0' });
+
+  var remote = {
+    connectionUri: 'http://185.203.56.20:17054',
+    accessToken: 'tok',
+    activeConnection: { uri: 'http://185.203.56.20:17054', local: false }
+  };
+  var session = baseSession({
+    server: remote,
+    playbackStrategy: 'direct-stream',
+    subtitleStreamId: 1894445,
+    subtitleBurnIn: false,
+    offset: 454000
+  });
+  var q = parseQuery(buildPlaybackUrl(remote, partKey, session, 'hls'));
+  assert.equal(q['X-Plex-Product'], 'Plex Web');
+  assert.equal(q['X-Plex-Client-Profile-Extra'], undefined);
+  assert.equal(q.path, partKey);
+  assert.equal(q.location, 'wan');
+  assert.equal(q.directStream, '1');
+  assert.equal(q.subtitles, 'auto');
 });
 
 test('buildPlaybackUrl transcode query includes offset seconds and fastSeek', function () {

@@ -9,15 +9,29 @@
  * - Buffering → inspect the variant bitrate that stalls.
  */
 
+import { getPlexClientIdentity, PMS_PRODUCT } from '../plex/clientIdentity.js';
+
+/**
+ * Plex ClientProfileExtra: append-transcode-target-codec requires videoCodec and/or
+ * audioCodec (not `codec=`). type=audioProfile is invalid for this directive.
+ * Plex Web / Chrome already ships a suitable profile — do not override on simulator.
+ */
+var WEBOS_HLS_PROFILE_EXTRA =
+  'append-transcode-target-codec(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec=h264&audioCodec=aac)';
+
+function usesWebOsTvPmsProfile() {
+  return getPlexClientIdentity().product === PMS_PRODUCT;
+}
+
 function applyWebOsHlsTranscodeParams(params) {
   params = params || {};
   /* Plex universal transcode: HLS with contained A/V where possible */
   params.protocol = 'hls';
   params.fastSeek = '1';
-  /* Encourage muxed output; reduces audio-only EXT-X-STREAM-INF entries */
-  params['X-Plex-Client-Profile-Extra'] =
-    'append-transcode-target-codec(type=videoProfile&context=streaming&protocol=hls&container=mpegts&codec=h264&bitrate=40000)' +
-    '+append-transcode-target-codec(type=audioProfile&context=streaming&protocol=hls&container=mpegts&codec=aac&bitrate=384)';
+  /* Encourage muxed output; reduces audio-only EXT-X-STREAM-INF entries on LG TVs */
+  if (usesWebOsTvPmsProfile()) {
+    params['X-Plex-Client-Profile-Extra'] = WEBOS_HLS_PROFILE_EXTRA;
+  }
   return params;
 }
 
@@ -81,6 +95,8 @@ function formatDirectPlayOnlyError(probe) {
 }
 
 export {
+  WEBOS_HLS_PROFILE_EXTRA,
+  usesWebOsTvPmsProfile,
   applyWebOsHlsTranscodeParams,
   buildHttpTranscodeFallbackParams,
   isHlsUrl,

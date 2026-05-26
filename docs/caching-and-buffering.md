@@ -241,8 +241,9 @@ Set in `src/playback/sessionController.js`:
 - `fastSeek=1` — enables seek-without-full-restart on transcoded streams.
 - `offset` — resume offset in ms.
 - `videoStartIndex` (when present on the session) — start at a given stream.
-- `X-Plex-Client-Profile-Extra` — pinned to muxed H.264/AAC mpegts on HLS
-  (see `hlsPolicy.js`) to avoid audio-only variants that LG can't parse.
+- `X-Plex-Client-Profile-Extra` — on **Plex for LG** only, augments the TV
+  profile with `videoCodec=h264&audioCodec=aac` for HLS (see `hlsPolicy.js`).
+  Omitted for Plex Web / simulator so PMS uses the built-in Chrome profile.
 
 ### 2.7 Next-episode pre-buffer policy
 
