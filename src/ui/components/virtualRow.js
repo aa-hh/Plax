@@ -3,6 +3,8 @@
  * Spacers preserve scroll extent; focusin shifts the rendered slice.
  */
 
+import { hydrateRowViewport } from '../posterImages.js';
+
 var ROW_SLOT_WIDTH = 172;
 
 function createVirtualRow(container, options) {
@@ -73,6 +75,7 @@ function createVirtualRow(container, options) {
       var card = scrollEl.querySelector('[data-item-index="' + activeIdx + '"]');
       if (card && card.focus) card.focus();
     }
+    hydrateRowViewport(scrollEl);
   }
 
   function ensureWindowAround(index) {
@@ -127,8 +130,23 @@ function createVirtualRow(container, options) {
     focusCardAt(nextIdx);
   }
 
+  var rowScrollTimer = null;
+
+  function scheduleRowViewportHydrate() {
+    if (rowScrollTimer) clearTimeout(rowScrollTimer);
+    rowScrollTimer = setTimeout(function () {
+      rowScrollTimer = null;
+      hydrateRowViewport(scrollEl);
+    }, 120);
+  }
+
+  function onScroll() {
+    scheduleRowViewportHydrate();
+  }
+
   scrollEl.addEventListener('focusin', onFocusIn);
   scrollEl.addEventListener('keydown', onRowKeydown, true);
+  scrollEl.addEventListener('scroll', onScroll);
 
   function setItems(newItems) {
     items = newItems;
@@ -141,6 +159,11 @@ function createVirtualRow(container, options) {
   function destroy() {
     scrollEl.removeEventListener('focusin', onFocusIn);
     scrollEl.removeEventListener('keydown', onRowKeydown, true);
+    scrollEl.removeEventListener('scroll', onScroll);
+    if (rowScrollTimer) {
+      clearTimeout(rowScrollTimer);
+      rowScrollTimer = null;
+    }
   }
 
   render();

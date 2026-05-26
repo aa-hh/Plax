@@ -1,4 +1,5 @@
 import { createMediaCard } from '../components/mediaCard.js';
+import { bindPosterImage } from '../posterImages.js';
 import { renderHubRow } from '../components/hubRow.js';
 import { createLoadingIndicator } from '../components/loadingIndicator.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
@@ -152,6 +153,10 @@ function designReviewScreen(root, params, navigate) {
     '</div>';
 
   root.appendChild(screen);
+  var reviewDetailPoster = screen.querySelector('.design-review-detail-layout .detail-poster');
+  if (reviewDetailPoster && reviewDetailPoster.getAttribute('src')) {
+    bindPosterImage(reviewDetailPoster, reviewDetailPoster.getAttribute('src'), { priority: true });
+  }
   var detachFocus = attachFocusNav(screen);
 
   screen.querySelector('[data-nav="home"]').addEventListener('click', function () {

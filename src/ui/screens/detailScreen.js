@@ -13,7 +13,7 @@ import {
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
-import { hydrateRowWindow } from '../posterImages.js';
+import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
 import {
@@ -124,6 +124,10 @@ function detailScreen(root, params, navigate) {
     return 'Season';
   }
 
+  function isVirtualAllEpisodesSeason(season) {
+    return String(season && season.title || '').trim().toLowerCase() === 'all episodes';
+  }
+
   function formatImdbRating(item) {
     if (!item || !item.audienceRating) return '';
     var img = (item.audienceRatingImage || '').toLowerCase();
@@ -167,6 +171,10 @@ function detailScreen(root, params, navigate) {
     }
     if (!activeLibrary && params.libraryType === 'movie' && state.activeLibrary &&
         state.activeLibrary.type === 'movie') {
+      activeLibrary = state.activeLibrary;
+    }
+    if (!activeLibrary && params.libraryType === 'show' && state.activeLibrary &&
+        state.activeLibrary.type === 'show') {
       activeLibrary = state.activeLibrary;
     }
     return mountBrowsingHubNav(host, {
@@ -285,9 +293,8 @@ function detailScreen(root, params, navigate) {
       escapeHtml(seriesBreadcrumbLabel(item)) + '</button></nav>';
   }
 
-  function wirePlaybackDetailCommon(item, layoutSelector) {
-    var layout = screen.querySelector(layoutSelector);
-    applyDetailBackground(layout, server, item);
+  function wirePlaybackDetailCommon(item) {
+    applyDetailBackground(detailHomeMainEl(), server, item);
     wireNetworkQualitySection();
     attachNetworkQualityObserver();
     prefetchItemNetworkProbe();
@@ -673,28 +680,32 @@ function detailScreen(root, params, navigate) {
     navigateToPlayer(defaultOffset != null ? defaultOffset : 0);
   }
 
-  function setDetailBackgroundImage(layout, imageUrl) {
-    if (!layout || !imageUrl) return;
-    layout.style.backgroundImage = DETAIL_BG_GRADIENT + ', url(' + imageUrl + ')';
-    layout.classList.add('detail-layout--has-bg');
+  function detailHomeMainEl() {
+    return screen.querySelector('.detail-home-main');
   }
 
-  function applyDetailBackground(layout, server, item) {
-    if (!layout) return;
-    layout.classList.remove('detail-layout--has-bg');
-    layout.style.backgroundImage = '';
+  function setDetailBackgroundImage(homeMain, imageUrl) {
+    if (!homeMain || !imageUrl) return;
+    homeMain.style.backgroundImage = DETAIL_BG_GRADIENT + ', url(' + imageUrl + ')';
+    homeMain.classList.add('detail-home-main--has-bg');
+  }
+
+  function applyDetailBackground(homeMain, server, item) {
+    if (!homeMain) return;
+    homeMain.classList.remove('detail-home-main--has-bg');
+    homeMain.style.backgroundImage = '';
 
     if (item.artPath && server) {
       loadUltraBlurBackground(server, item.artPath).then(function (blurUrl) {
         if (blurUrl) {
-          setDetailBackgroundImage(layout, blurUrl);
+          setDetailBackgroundImage(homeMain, blurUrl);
           return;
         }
-        if (item.art) setDetailBackgroundImage(layout, item.art);
+        if (item.art) setDetailBackgroundImage(homeMain, item.art);
       });
       return;
     }
-    if (item.art) setDetailBackgroundImage(layout, item.art);
+    if (item.art) setDetailBackgroundImage(homeMain, item.art);
   }
 
   function buildActiveDetailRoute(item) {
@@ -1027,8 +1038,10 @@ function detailScreen(root, params, navigate) {
     mountDetailHubNav();
 
     var art = screen.querySelector('#detail-episode-art');
-    if (art) art.src = item.thumb || item.art || item.grandparentThumbUrl || '';
-    wirePlaybackDetailCommon(item, '.detail-layout');
+    if (art) {
+      bindPosterImage(art, item.thumb || item.art || item.grandparentThumbUrl || '', { priority: true });
+    }
+    wirePlaybackDetailCommon(item);
     wireEpisodePlaybackActions(item, versions);
 
     var seasonCrumb = screen.querySelector('#detail-season-crumb');
@@ -1111,8 +1124,8 @@ function detailScreen(root, params, navigate) {
     mountDetailHubNav();
 
     var art = screen.querySelector('#detail-episode-art');
-    if (art) art.src = item.thumb || item.art || '';
-    wirePlaybackDetailCommon(item, '.detail-layout');
+    if (art) bindPosterImage(art, item.thumb || item.art || '', { priority: true });
+    wirePlaybackDetailCommon(item);
     wireEpisodePlaybackActions(item, versions);
 
     screen.querySelector('#detail-library-crumb').addEventListener('click', navigateToMovieLibrary);
@@ -1141,10 +1154,7 @@ function detailScreen(root, params, navigate) {
 
     var watchlistInActions = item.type === 'season' ? buildWatchlistActionHtml(item) : '';
 
-    screen.innerHTML = wrapDetailShell(
-      '<div class="' + layoutClass + '">' +
-      topBar +
-      '<img class="detail-poster" id="detail-poster" alt="" />' +
+    var detailInfoHtml =
       '<div class="detail-info">' +
       '<h1 class="screen-title">' + escapeHtml(item.title) + '</h1>' +
       '<p class="detail-meta" id="detail-meta"></p>' +
@@ -1175,7 +1185,16 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-rails' +
       (item.type === 'show' ? ' detail-rails--show' : '') +
       '" id="detail-rails" data-focus-zone="detail-rails"></div>' +
-      '</div></div>' +
+      '</div>';
+
+    var heroHtml = '<img class="detail-poster" id="detail-poster" alt="" />' + detailInfoHtml;
+    var layoutBody = item.type === 'season' && topBar
+      ? '<div class="detail-standard-panel">' + topBar +
+        '<div class="detail-standard-hero">' + heroHtml + '</div></div>'
+      : topBar + heroHtml;
+
+    screen.innerHTML = wrapDetailShell(
+      '<div class="' + layoutClass + '">' + layoutBody + '</div>' +
       '<div class="detail-modal" id="detail-modal" hidden>' +
       '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true">' +
       '<p class="detail-modal-title" id="detail-modal-title"></p>' +
@@ -1188,8 +1207,8 @@ function detailScreen(root, params, navigate) {
     mountDetailHubNav();
 
     var poster = screen.querySelector('#detail-poster');
-    if (poster) poster.src = item.thumb || item.art || '';
-    applyDetailBackground(screen.querySelector('.detail-layout'), server, item);
+    if (poster) bindPosterImage(poster, item.thumb || item.art || '', { priority: true });
+    applyDetailBackground(detailHomeMainEl(), server, item);
     var meta = screen.querySelector('#detail-meta');
     if (meta) {
       var metaParts = [item.year, formatDuration(item.duration), item.contentRating].filter(Boolean);
@@ -1432,6 +1451,7 @@ function detailScreen(root, params, navigate) {
       row.id = 'seasons-row';
       rails.appendChild(row);
       items.forEach(function (s) {
+        if (isVirtualAllEpisodesSeason(s)) return;
         row.appendChild(createMediaCard(s, function (selected, routeParams) {
           var route = routeParams || { ratingKey: selected.ratingKey };
           route.showKey = showKey;

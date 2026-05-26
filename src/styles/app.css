@@ -58,6 +58,9 @@
   --grid-poster-w: 176px;
   --grid-poster-h: 264px;
   --sidebar-w: 240px;
+  --detail-top-gap: var(--space-6);
+  --detail-margin-x: var(--space-8);
+  --detail-margin-y: var(--space-4);
   --focus-w: 3px;
   --z-player: 1000;
   --z-player-overlay: 1002;
@@ -190,6 +193,7 @@ html { min-width: 1280px; min-height: 720px; }
   flex-direction: column;
   gap: var(--space-5);
   width: 220px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .browsing-hub-section--search,
@@ -350,6 +354,11 @@ html { min-width: 1280px; min-height: 720px; }
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
+  --home-hub-poster-w: 220px;
+  --home-hub-poster-h: 330px;
+  --font-home-card-title: 22px;
+  --font-home-card-subtitle: 20px;
+  --font-home-card-meta: 18px;
 }
 
 .screen-subtitle {
@@ -511,10 +520,12 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .library-sidebar .browsing-hub-nav-host {
   flex-shrink: 0;
+  border-right: none;
 }
 
 .library-sidebar .library-action {
@@ -653,6 +664,28 @@ html { min-width: 1280px; min-height: 720px; }
   width: 100%;
   border-radius: var(--radius-lg);
   outline: var(--focus-w) solid transparent;
+}
+
+/* Poster artwork: skeleton/placeholder visible until load, then 200ms fade-in */
+.card-poster-wrap img.poster,
+.detail-poster,
+.detail-episode-art {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.card-poster-wrap img.poster.poster--loaded,
+.detail-poster.poster--loaded,
+.detail-episode-art.poster--loaded {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-poster-wrap img.poster,
+  .detail-poster,
+  .detail-episode-art {
+    transition: none;
+  }
 }
 
 .card-text {
@@ -807,15 +840,40 @@ html { min-width: 1280px; min-height: 720px; }
   gap: var(--row-card-gap);
   overflow-x: auto;
   overflow-y: visible;
-  padding: 8px 2px 16px;
+  padding: 8px 10px 16px;
   width: 100%;
   --row-count: 10;
   scrollbar-width: none;
 }
 
-.screen-home .row-scroll {
-  gap: 12px;
+.screen-home .home-feed .row-scroll {
+  gap: 20px;
   padding-bottom: 12px;
+}
+
+/* Home hub rows: one poster width (On Deck compact vs promoted/section rails). */
+.screen-home .home-feed .row-section .row-item,
+.screen-home .home-feed .row-section .row-scroll .media-card,
+.screen-home .home-feed .row-scroll--sparse .row-item,
+.screen-home .home-feed .row-scroll--sparse .media-card {
+  width: var(--home-hub-poster-w);
+}
+
+.screen-home .home-feed .row-skeleton-card {
+  width: var(--home-hub-poster-w);
+  height: var(--home-hub-poster-h);
+}
+
+.screen-home .home-feed .card-title {
+  font-size: var(--font-home-card-title);
+}
+
+.screen-home .home-feed .card-subtitle {
+  font-size: var(--font-home-card-subtitle);
+}
+
+.screen-home .home-feed .card-meta {
+  font-size: var(--font-home-card-meta);
 }
 
 .row-scroll::-webkit-scrollbar { display: none; }
@@ -891,7 +949,7 @@ html { min-width: 1280px; min-height: 720px; }
 
 .row-skeleton .row-skeleton-scroll {
   gap: var(--row-card-gap);
-  padding: 8px 2px 16px;
+  padding: 8px 10px 16px;
 }
 
 .row-skeleton-card {
@@ -911,7 +969,7 @@ html { min-width: 1280px; min-height: 720px; }
   min-height: 0;
 }
 
-.detail-layout--has-bg {
+.detail-home-main--has-bg {
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
@@ -1086,12 +1144,21 @@ html { min-width: 1280px; min-height: 720px; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-top: var(--detail-top-gap, var(--space-5));
+  position: relative;
 }
 
+.detail-screen-layout .detail-layout,
 .detail-screen-layout .detail-layout--episode {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--detail-top-gap) var(--detail-margin-x) var(--detail-margin-y);
+  position: relative;
+  z-index: 1;
+}
+
+.detail-screen-layout .detail-layout--episode {
   overflow: hidden;
 }
 
@@ -1185,6 +1252,27 @@ html { min-width: 1280px; min-height: 720px; }
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.detail-standard-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.detail-standard-hero {
+  display: flex;
+  gap: 40px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.detail-layout--season {
+  flex-direction: column;
 }
 
 .detail-layout--season .detail-poster,

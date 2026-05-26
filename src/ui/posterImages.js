@@ -1,5 +1,5 @@
 /** Poster sizing aligned with CSS (--row-poster-*, --grid-poster-*) plus modest overscan. */
-var POSTER_WIDTH_ROW = 200;
+var POSTER_WIDTH_ROW = 220;
 var POSTER_WIDTH_GRID = 220;
 var POSTER_WIDTH_EPISODE = 300;
 var POSTER_HEIGHT_EPISODE = 168;
@@ -48,6 +48,33 @@ function posterAlreadyBound(img, url) {
   return img.getAttribute('src') === url;
 }
 
+function clearPosterReveal(img) {
+  if (!img) return;
+  img.classList.remove('poster--loaded');
+}
+
+function revealPosterImage(img) {
+  if (!img || !(img.naturalWidth > 0)) return;
+  img.classList.add('poster--loaded');
+}
+
+/** Fade-in when decode finishes; safe alongside other load handlers (uses addEventListener). */
+function watchPosterReveal(img) {
+  if (!img) return;
+  clearPosterReveal(img);
+  if (img.complete && img.naturalWidth > 0) {
+    revealPosterImage(img);
+    return;
+  }
+  img.addEventListener(
+    'load',
+    function () {
+      revealPosterImage(img);
+    },
+    { once: true }
+  );
+}
+
 function markPosterLoaded(url) {
   if (url) {
     loadedUrls[url] = true;
@@ -63,11 +90,16 @@ function bindPosterImage(img, url, opts) {
   if (!url) {
     img.removeAttribute('src');
     delete img.dataset.posterSrc;
+    clearPosterReveal(img);
     return;
   }
   if (posterAlreadyBound(img, url) && img.complete && img.naturalWidth > 0) {
+    markPosterLoaded(url);
+    revealPosterImage(img);
     return;
   }
+
+  watchPosterReveal(img);
 
   img.decoding = 'async';
   img.loading = opts.priority ? 'eager' : 'lazy';
@@ -76,12 +108,16 @@ function bindPosterImage(img, url, opts) {
   if (img.getAttribute('src') !== url) {
     img.src = url;
   }
-  if (img.complete && img.naturalWidth > 0) markPosterLoaded(url);
-  else {
+  if (img.complete && img.naturalWidth > 0) {
+    markPosterLoaded(url);
+    revealPosterImage(img);
+  } else {
     img.onload = img.onerror = function () {
       img.onload = null;
       img.onerror = null;
       markPosterLoaded(url);
+      if (img.naturalWidth > 0) revealPosterImage(img);
+      else if (opts.onError) opts.onError();
     };
   }
 }
@@ -201,6 +237,37 @@ function neighborhoodNeedsHydrate(cards, start, end) {
     if (cardPosterNeedsHydrate(cards[i])) return true;
   }
   return false;
+}
+
+/** Hydrate posters for cards visible in a horizontal row (scroll without focus change). */
+function hydrateRowViewport(rowEl, opts) {
+  if (!rowEl || !rowEl.getBoundingClientRect) return;
+  opts = opts || {};
+  var pad = opts.padding != null ? opts.padding : 240;
+  var cards = rowEl.querySelectorAll('.media-card');
+  if (!cards.length) return;
+  var rowRect = rowEl.getBoundingClientRect();
+  var leftBound = rowRect.left - pad;
+  var rightBound = rowRect.right + pad;
+  var i;
+  var start = 0;
+  var end = cards.length - 1;
+
+  while (start < cards.length && cards[start].getBoundingClientRect().right < leftBound) {
+    start += 1;
+  }
+  while (end >= start && cards[end].getBoundingClientRect().left > rightBound) {
+    end -= 1;
+  }
+  if (start > end) return;
+
+  for (i = start; i <= end; i++) {
+    var card = cards[i];
+    if (!cardPosterNeedsHydrate(card)) continue;
+    var rect = card.getBoundingClientRect();
+    if (rect.right < leftBound || rect.left > rightBound) continue;
+    hydrateCardPoster(card, { priority: false });
+  }
 }
 
 /** Hydrate posters for cards near the grid viewport (scroll without focus change). */
@@ -388,6 +455,9 @@ export {
   POSTER_WIDTH_EPISODE,
   POSTER_HEIGHT_EPISODE,
   sizedPosterUrl,
+  clearPosterReveal,
+  revealPosterImage,
+  watchPosterReveal,
   bindPosterImage,
   hydrateCardPoster,
   hydrateRowWindow,
@@ -401,5 +471,6 @@ export {
   waitForPosterBatch,
   hydrateAndWaitForPosters,
   hydrateGridViewport,
+  hydrateRowViewport,
   clearPosterUrlMaps
 };

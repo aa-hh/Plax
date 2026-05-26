@@ -5,7 +5,8 @@ import {
   POSTER_WIDTH_ROW,
   POSTER_WIDTH_EPISODE,
   POSTER_HEIGHT_EPISODE,
-  sizedPosterUrl
+  sizedPosterUrl,
+  bindPosterImage
 } from '../posterImages.js';
 
 /**
@@ -173,11 +174,12 @@ function createMediaCard(item, onSelect, options) {
   if (sizedThumb) {
     img.dataset.posterSrc = sizedThumb;
     if (!options.deferPoster) {
-      img.loading = 'eager';
-      img.src = sizedThumb;
+      bindPosterImage(img, sizedThumb, {
+        priority: true,
+        onError: function () { img.style.display = 'none'; }
+      });
     }
   }
-  img.onerror = function () { img.style.display = 'none'; };
 
   posterWrap.appendChild(img);
 
