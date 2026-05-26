@@ -4,6 +4,10 @@ import { fetchText, buildQuery } from '../../utils/fetch.js';
 import { buildAudioTranscodeParam } from './audioTracks.js';
 import { collectStreamsFromMedia } from './streamUtils.js';
 import { normalizePlexPath } from '../plexPaths.js';
+import {
+  buildMinimalDecisionParams,
+  buildUniversalDecisionUrl
+} from '../transcodeDecision.js';
 
 /** @typedef {'graphical'|'embedded'|'sidecar'|'onDemand'} SubtitleDelivery */
 
@@ -287,27 +291,34 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   var directFlags = subtitleDirectFlagsForMode(playbackMode);
   var directPlayback = isDirectPlaybackMode(playbackMode);
   var subtitleEndpoint = options.subtitleEndpoint === true;
+  var decisionEndpoint = options.decisionEndpoint === true;
   var offsetSec = offsetSecondsForPlex(session);
   var pathParam = resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath;
   var params = Object.assign({
     path: pathParam,
     mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
     partIndex: session.partIndex != null ? session.partIndex : 0,
-    subtitles: options.subtitles || 'sidecar',
     hasMDE: '1',
     location: plexLocationForServer(server),
-    protocol: directPlayback ? 'http' : protocolForPlaybackMode(playbackMode),
-    fastSeek: '1'
+    protocol: directPlayback ? 'http' : protocolForPlaybackMode(playbackMode)
   }, directFlags);
-  if (options.omitSubtitleStreamId !== true) {
+  if (decisionEndpoint) {
+    params.fastSeek = '1';
+    params.autoAdjustQuality = '0';
+    params.mediaBufferSize = '102400';
+  } else {
+    params.subtitles = options.subtitles || 'sidecar';
+    if (!subtitleEndpoint) params.fastSeek = '1';
+  }
+  if (!decisionEndpoint && options.omitSubtitleStreamId !== true) {
     params.subtitleStreamID = String(session.subtitleStreamId);
   }
-  if (!directPlayback && !subtitleEndpoint) {
+  if (!directPlayback && !subtitleEndpoint && !decisionEndpoint) {
     params.encoding = 'utf-8';
     params.directStreamAudio = directFlags.directStreamAudio;
     params['X-Plex-Subtitle-Stream'] = String(session.subtitleStreamId);
   }
-  if (directPlayback && !subtitleEndpoint) {
+  if (directPlayback && !subtitleEndpoint && !decisionEndpoint) {
     params.copyts = '1';
     params.subtitleSize = '100';
     params.audioBoost = '100';
@@ -319,13 +330,13 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
   if (offsetSec > 0) params.offset = String(offsetSec);
   var playbackSessionId = resolveSubtitleSessionId(session);
   if (playbackSessionId) {
-    params.session = playbackSessionId;
+    if (!subtitleEndpoint || decisionEndpoint) params.session = playbackSessionId;
     params.transcodeSessionId = playbackSessionId;
   }
-  if (session.subtitleOffset) {
+  if (!decisionEndpoint && !subtitleEndpoint && session.subtitleOffset) {
     params['X-Plex-Subtitle-Offset'] = String(session.subtitleOffset);
   }
-  if (isAdvancedSubtitleCodec(track) && options.advancedSubtitles) {
+  if (!decisionEndpoint && isAdvancedSubtitleCodec(track) && options.advancedSubtitles) {
     params.advancedSubtitles = options.advancedSubtitles;
   }
   return params;
@@ -377,16 +388,14 @@ function buildUniversalSubtitleRequest(server, session, mediaPath, track, playba
 }
 
 function buildUniversalDecisionRequest(server, session, mediaPath, track, playbackMode, options) {
-  var params = buildUniversalTranscodeQuery(
+  var fullParams = buildUniversalTranscodeQuery(
     server, session, mediaPath, track, playbackMode,
-    Object.assign({}, options || {}, { subtitleEndpoint: true })
+    Object.assign({}, options || {}, { decisionEndpoint: true })
   );
-  if (!params) return null;
-  var query = buildQuery(params);
+  if (!fullParams) return null;
+  var params = buildMinimalDecisionParams(fullParams, mediaPath);
   return {
-    url: server.connectionUri.replace(/\/$/, '') +
-      '/video/:/transcode/universal/decision' +
-      (query ? '?' + query : ''),
+    url: buildUniversalDecisionUrl(server.connectionUri, params),
     init: { headers: subtitleFetchHeaders(server, session, 'application/xml') }
   };
 }

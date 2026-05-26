@@ -7,11 +7,14 @@ import {
   redactPlexUrl
 } from '../plex/client.js';
 import { applyPlexClientFields } from '../plex/clientIdentity.js';
-import { buildQuery } from '../utils/fetch.js';
 import {
   applyProfileToParams,
   isDirectPlayOnlyQuality
 } from './qualityProfiles.js';
+import {
+  buildMinimalDecisionParams,
+  buildUniversalDecisionUrl
+} from './transcodeDecision.js';
 import { buildAudioTranscodeParam } from './tracks/audioTracks.js';
 import { normalizePlexPath } from './plexPaths.js';
 import {
@@ -107,38 +110,9 @@ function buildPlaybackUrl(server, partKey, session, protocol) {
   return serverUrl(server.connectionUri, '/video/:/transcode/universal/start.m3u8', params, server);
 }
 
-function endpointUrl(base, path, params) {
-  var q = buildQuery(params || {});
-  return base.replace(/\/$/, '') + path + (q ? '?' + q : '');
-}
-
 function buildDecisionParams(server, partKey, session, protocol) {
   var full = buildTranscodeParams(server, partKey, session, protocol);
-  var params = {};
-  [
-    'path',
-    'mediaIndex',
-    'partIndex',
-    'fastSeek',
-    'hasMDE',
-    'directPlay',
-    'directStream',
-    'directStreamAudio',
-    'autoAdjustQuality',
-    'mediaBufferSize',
-    'session',
-    'transcodeSessionId',
-    'skipSubtitles',
-    'location',
-    'offset',
-    'maxVideoBitrate',
-    'videoResolution',
-    'protocol'
-  ].forEach(function (key) {
-    if (full[key] != null) params[key] = full[key];
-  });
-  params.path = resolveSessionMetadataPath(session) || full.path;
-  return params;
+  return buildMinimalDecisionParams(full, resolveSessionMetadataPath(session) || full.path);
 }
 
 function buildDecisionHeaders(server, session) {
@@ -176,7 +150,7 @@ function extractDecisionResourceSession(xmlText) {
 function buildDecisionUrl(server, partKey, session, protocol) {
   protocol = protocol || (session && session.transcodeProtocol) || 'hls';
   var params = buildDecisionParams(server, partKey, session, protocol);
-  return endpointUrl(server.connectionUri, '/video/:/transcode/universal/decision', params);
+  return buildUniversalDecisionUrl(server.connectionUri, params);
 }
 
 function primePlaybackSession(server, partKey, session, protocol) {

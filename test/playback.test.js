@@ -409,7 +409,7 @@ test('buildSubtitleFetchPlan tries metadata API first for embedded text subs', f
   assert.equal(attempts[0].label, 'universal-metadata-auto');
   assert.ok(attempts[0].url.indexOf('subtitles=auto') >= 0);
   assert.ok(attempts[0].url.indexOf('path=' + encodeURIComponent('/library/metadata/999')) >= 0);
-  assert.ok(attempts[0].url.indexOf('session=xplay-test-session') >= 0);
+  assert.ok(attempts[0].url.indexOf('session=xplay-test-session') < 0);
   assert.ok(attempts[0].url.indexOf('transcodeSessionId=xplay-test-session') >= 0);
   assert.equal(attempts[0].init.headers['X-Plex-Token'], 'tok');
   assert.equal(attempts[0].init.headers['X-Plex-Session-Identifier'], 'xplay-test-session');
@@ -429,9 +429,27 @@ test('buildSubtitleFetchPlan tries metadata API first for embedded text subs', f
   assert.ok(first.indexOf('X-Plex-Subtitle-Stream=') < 0);
   assert.ok(first.indexOf('subtitleFormat=') < 0);
   assert.ok(first.indexOf('directStreamAudio=1') >= 0);
-  assert.ok(first.indexOf('session=xplay-test-session') >= 0);
+  assert.ok(first.indexOf('session=xplay-test-session') < 0);
   assert.ok(first.indexOf('transcodeSessionId=xplay-test-session') >= 0);
   assert.ok(first.indexOf('directPlay=1') >= 0);
+  assert.ok(first.indexOf('fastSeek=') < 0);
+  new URL(first).searchParams.forEach(function (value, key) {
+    assert.ok([
+      'path',
+      'mediaIndex',
+      'partIndex',
+      'subtitles',
+      'hasMDE',
+      'location',
+      'protocol',
+      'directPlay',
+      'directStream',
+      'directStreamAudio',
+      'offset',
+      'transcodeSessionId',
+      'advancedSubtitles'
+    ].indexOf(key) >= 0, 'unexpected subtitle query param: ' + key);
+  });
   assert.ok(attempts.filter(function (a) { return a.label === 'stream-embedded'; }).length === 0);
 });
 
@@ -490,7 +508,7 @@ test('buildSubtitleFetchPlan uses transcode session and flags when transcoding',
   });
   var first = attempts[0].url;
   assert.ok(first.indexOf('directPlay=0') >= 0);
-  assert.ok(first.indexOf('session=plex-server-session') >= 0);
+  assert.ok(first.indexOf('session=plex-server-session') < 0);
   assert.ok(first.indexOf('transcodeSessionId=plex-server-session') >= 0);
   assert.ok(first.indexOf('session=xplay-should-not-win') < 0);
   assert.ok(first.indexOf('protocol=hls') >= 0);
@@ -540,10 +558,75 @@ test('prepareClientSubtitlePlayback primes direct subtitles with metadata path a
     var q = new URL(decision.url).searchParams;
     assert.equal(q.get('path'), '/library/metadata/999');
     assert.equal(q.get('transcodeSessionId'), 'plex-resource-session');
+    assert.equal(q.get('subtitles'), null);
+    assert.equal(q.get('copyts'), null);
+    assert.equal(q.get('audioBoost'), null);
+    assert.equal(q.get('X-Plex-Audio-Stream'), null);
+    assert.equal(q.get('X-Plex-Auto-Audio-Stream'), null);
+    assert.equal(q.get('mediaBufferSize'), '102400');
+    assert.equal(q.get('autoAdjustQuality'), '0');
     assert.equal(q.get('X-Plex-Token'), null);
+    assert.equal(q.get('X-Plex-Client-Identifier'), null);
+    assert.equal(q.get('X-Plex-Session-Identifier'), null);
     assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
     assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'plex-resource-session');
     assert.equal(decision.init.headers.Accept, 'application/xml');
+  } finally {
+    if (savedFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = savedFetch;
+  }
+});
+
+test('HAR regression: subtitle prime mirrors playback decision shape', async function () {
+  var savedFetch = globalThis.fetch;
+  var calls = [];
+  globalThis.fetch = function (url, init) {
+    calls.push({ url: String(url), init: init || {} });
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: function () { return Promise.resolve('<MediaContainer/>'); },
+      headers: { get: function () { return 'application/xml'; } }
+    });
+  };
+  try {
+    var server = {
+      connectionUri: 'http://185.203.56.20:17054',
+      accessToken: 'tok',
+      activeConnection: { local: false, uri: 'http://185.203.56.20:17054' }
+    };
+    var session = {
+      item: { key: '/library/metadata/33622', ratingKey: '33622' },
+      version: { partKey: '/library/parts/231208/1779142932/file.mkv' },
+      sessionId: 'xplay-1779812905191',
+      subtitleStreamId: 1894444,
+      audioStreamId: 1894443,
+      playbackOffsetMs: 676730,
+      mediaIndex: 0,
+      partIndex: 0
+    };
+    await prepareClientSubtitlePlayback(
+      server,
+      session,
+      { id: 1894444, codec: 'srt', delivery: 'embedded' },
+      'direct'
+    );
+    var decision = calls.filter(function (call) {
+      return call.url.indexOf('/video/:/transcode/universal/decision') >= 0;
+    })[0];
+    assert.ok(decision);
+    var q = new URL(decision.url).searchParams;
+    assert.equal(q.get('path'), '/library/metadata/33622');
+    assert.equal(q.get('subtitles'), null);
+    assert.equal(q.get('copyts'), null);
+    assert.equal(q.get('audioBoost'), null);
+    assert.equal(q.get('X-Plex-Audio-Stream'), null);
+    assert.equal(q.get('X-Plex-Client-Identifier'), null);
+    assert.equal(q.get('X-Plex-Token'), null);
+    assert.equal(q.get('X-Plex-Session-Identifier'), null);
+    assert.equal(decision.init.headers.Accept, 'application/xml');
+    assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
+    assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'xplay-1779812905191');
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;
