@@ -1,10 +1,10 @@
 import { getState } from '../core/store.js';
 import { fetchJson, fetchText, buildQuery } from '../utils/fetch.js';
 import { parsePlexXml } from '../utils/xml.js';
+import { AUTH_PRODUCT, VERSION, plexClientFields } from './clientIdentity.js';
 
 var PLEX_TV = 'https://plex.tv';
-var PRODUCT = 'XPlay Lite';
-var VERSION = '0.1.0';
+var PRODUCT = AUTH_PRODUCT;
 
 function PlexApiError(message, status, body) {
   this.name = 'PlexApiError';
@@ -28,15 +28,7 @@ function getToken() {
 
 function plexHeaders(extra) {
   extra = extra || {};
-  var h = {
-    Accept: 'application/json',
-    'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': VERSION,
-    'X-Plex-Client-Identifier': getClientId(),
-    'X-Plex-Platform': 'LG webOS',
-    'X-Plex-Device': 'TV',
-    'X-Plex-Device-Name': 'LG webOS TV'
-  };
+  var h = Object.assign({ Accept: 'application/json' }, plexClientFields());
   var token = getToken();
   if (token) h['X-Plex-Token'] = token;
   var k;
@@ -49,14 +41,7 @@ function plexHeaders(extra) {
 /** Query params for endpoints where headers cannot be sent (e.g. <video src>). */
 function plexClientQuery(extra) {
   extra = extra || {};
-  var q = {
-    'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': VERSION,
-    'X-Plex-Client-Identifier': getClientId(),
-    'X-Plex-Platform': 'LG webOS',
-    'X-Plex-Device': 'TV',
-    'X-Plex-Device-Name': 'LG webOS TV'
-  };
+  var q = Object.assign({}, plexClientFields());
   var token = getToken();
   if (token) q['X-Plex-Token'] = token;
   var k;

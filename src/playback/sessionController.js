@@ -1,5 +1,6 @@
 import { getState } from '../core/store.js';
-import { serverUrl, getClientId, PRODUCT, VERSION } from '../plex/client.js';
+import { serverUrl } from '../plex/client.js';
+import { applyPlexClientFields } from '../plex/clientIdentity.js';
 import {
   applyProfileToParams,
   isDirectPlayOnlyQuality
@@ -37,7 +38,7 @@ function buildTranscodeParams(server, partKey, session, protocol) {
   var strategy = resolvePlaybackStrategy(session);
   var fullTranscode = strategy === 'transcode' || strategy === 'http-transcode';
   var directStream = strategy === 'direct-stream';
-  var params = {
+  var params = applyPlexClientFields({
     path: path,
     mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
     partIndex: session.partIndex != null ? session.partIndex : 0,
@@ -45,13 +46,8 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     directPlay: fullTranscode ? '0' : (directStream ? '0' : '1'),
     directStream: fullTranscode ? '0' : '1',
     session: getActiveTranscodeSession(session) || session.sessionId || 'xplay-' + Date.now(),
-    'X-Plex-Client-Identifier': getClientId(),
-    'X-Plex-Product': PRODUCT,
-    'X-Plex-Version': VERSION,
-    'X-Plex-Platform': 'LG webOS',
-    'X-Plex-Device': 'TV',
     location: plexLocationForServer(server)
-  };
+  });
   var offsetSec = offsetSecondsForPlex(session);
   if (offsetSec > 0) params.offset = String(offsetSec);
   applyProfileToParams(params, session.quality || prefs.quality, prefs);

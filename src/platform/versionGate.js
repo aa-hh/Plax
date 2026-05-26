@@ -5,7 +5,9 @@
 var MIN_WEBOS_TV_MAJOR = 4;
 
 function isTvRuntime() {
-  return !!(window.PalmSystem && window.PalmSystem.identifier);
+  var root = typeof globalThis !== 'undefined' ? globalThis
+    : (typeof window !== 'undefined' ? window : null);
+  return !!(root && root.PalmSystem && root.PalmSystem.identifier);
 }
 
 function parseMajor(device) {
