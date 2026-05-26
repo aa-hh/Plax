@@ -4,20 +4,8 @@
  */
 
 import { loadDeviceDisplay, applyGraphicsViewport } from './deviceDisplay.js';
-
-function getWebOSVersion() {
-  if (typeof webOS !== 'undefined' && webOS.platform && webOS.platform.tv) {
-    try {
-      if (webOS.deviceInfo && typeof webOS.deviceInfo === 'function') {
-        return 'tv';
-      }
-    } catch (e) { /* ignore */ }
-  }
-  if (window.PalmSystem && window.PalmSystem.identifier) {
-    return 'simulator';
-  }
-  return 'browser';
-}
+import { initMotionCursor } from './motionCursor.js';
+import { getWebOSVersion, isSimulatorRuntime } from './webosRuntime.js';
 
 function getDeviceInfo(callback) {
   if (typeof webOS !== 'undefined' && webOS.deviceInfo) {
@@ -64,22 +52,14 @@ function initPlatform() {
     var backEv = new KeyboardEvent('keydown', { keyCode: 461 });
     document.dispatchEvent(backEv);
   });
+
+  initMotionCursor();
 }
 
 function probeCodec(mime) {
   var v = document.createElement('video');
   if (!v.canPlayType) return '';
   return v.canPlayType(mime) || '';
-}
-
-function isSimulatorRuntime() {
-  if (getWebOSVersion() === 'simulator') return true;
-  if (getWebOSVersion() !== 'tv') return false;
-  try {
-    var id = window.PalmSystem && window.PalmSystem.identifier;
-    if (id && /simulator|emulator/i.test(String(id))) return true;
-  } catch (e) { /* ignore */ }
-  return false;
 }
 
 function parseWebOsMajor(deviceInfo) {

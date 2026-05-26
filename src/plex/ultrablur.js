@@ -67,19 +67,38 @@ function buildUltraBlurImageUrl(server, colors, opts) {
   }, server);
 }
 
-function loadUltraBlurBackground(server, artPath) {
+function buildUltraBlurColorGradient(colors) {
+  if (!colors) return '';
+  return (
+    'linear-gradient(135deg, #' + colors.topLeft + ' 0%, #' + colors.topRight +
+    ' 38%, #' + colors.bottomRight + ' 72%, #' + colors.bottomLeft + ' 100%)'
+  );
+}
+
+function loadUltraBlurBackdrop(server, artPath) {
   if (!server || !artPath) return Promise.resolve(null);
   var key = cache.buildKey(serverScope(server), artPath);
   return cache.remember('ultrablur', key, function () {
     return fetchUltraBlurColors(server, artPath).then(function (colors) {
       if (!colors) return null;
-      return buildUltraBlurImageUrl(server, colors);
+      return {
+        colors: colors,
+        imageUrl: buildUltraBlurImageUrl(server, colors)
+      };
     });
+  });
+}
+
+function loadUltraBlurBackground(server, artPath) {
+  return loadUltraBlurBackdrop(server, artPath).then(function (backdrop) {
+    return backdrop && backdrop.imageUrl ? backdrop.imageUrl : null;
   });
 }
 
 export {
   fetchUltraBlurColors,
   buildUltraBlurImageUrl,
+  buildUltraBlurColorGradient,
+  loadUltraBlurBackdrop,
   loadUltraBlurBackground
 };

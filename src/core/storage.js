@@ -1,5 +1,6 @@
 var PREFIX = 'xplay_lite_';
 var SESSION_OWNER_KEY = PREFIX + 'session_ownerAuthToken';
+var SESSION_HOME_SIZE_KEY = PREFIX + 'session_homeSize';
 
 function get(key) {
   try {
@@ -41,6 +42,25 @@ function writeSessionOwnerToken(token) {
 
 function clearSessionOwnerToken() {
   writeSessionOwnerToken(null);
+}
+
+function readSessionHomeSize() {
+  try {
+    var raw = sessionStorage.getItem(SESSION_HOME_SIZE_KEY);
+    if (raw == null || raw === '') return null;
+    var n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeSessionHomeSize(homeSize) {
+  try {
+    if (homeSize != null && homeSize >= 1) {
+      sessionStorage.setItem(SESSION_HOME_SIZE_KEY, String(homeSize));
+    }
+  } catch (e) { /* ignore */ }
 }
 
 /** Owner token for Plex Home admin APIs and restricted-profile server discovery. */
@@ -111,5 +131,7 @@ export {
   persistAuth,
   clearAuth,
   getOwnerAuthToken,
-  persistOwnerTokenForProfile
+  persistOwnerTokenForProfile,
+  readSessionHomeSize,
+  writeSessionHomeSize
 };

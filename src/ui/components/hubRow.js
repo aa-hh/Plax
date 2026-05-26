@@ -18,6 +18,7 @@ function renderHubRow(parent, row, navigate, options) {
   if (!row || !row.items || !row.items.length) return;
   var section = document.createElement('div');
   section.className = 'row-section';
+  section.setAttribute('data-focus-zone', 'hub-row');
   if (row.displayVariant === 'compact') section.classList.add('row-section--compact');
   section.innerHTML = row.title
     ? '<p class="row-label">' + row.title + '</p>'

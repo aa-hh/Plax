@@ -74,7 +74,18 @@ import {
 } from '../../playback/networkProbe.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
 import { onAppBackground } from '../../platform/webos.js';
-import { getFocusables, focusFirst, attachFocusNav, scrollFocusedIntoView } from '../focus.js';
+import {
+  isMotionCursorVisible,
+  MOTION_CURSOR_SHOW_EVENT,
+  MOTION_CURSOR_HIDE_EVENT
+} from '../../platform/motionCursor.js';
+import {
+  getFocusables,
+  focusFirst,
+  attachFocusNav,
+  scrollFocusedIntoView,
+  focusableSelector
+} from '../focus.js';
 import { getPlaybackPrefs, setPlaybackPrefs } from '../../settings/playbackSettings.js';
 import {
   loadScrubPreviewSource,
@@ -190,7 +201,7 @@ function playerScreen(root, params, navigate) {
     '<span class="player-skip-intro-prompt-hint">OK</span>' +
     '</button>' +
     '<div class="player-bottom">' +
-    '<div class="player-seek-row" data-cols="3">' +
+    '<div class="player-seek-row" data-focus-zone="player-seek">' +
     '<span class="player-time player-time--elapsed" id="player-time-elapsed" aria-hidden="true">0:00</span>' +
     '<div class="player-seek-wrap">' +
     '<div class="player-scrub-preview" id="player-scrub-preview" hidden aria-hidden="true">' +
@@ -212,7 +223,8 @@ function playerScreen(root, params, navigate) {
     '<button type="button" class="btn player-retry-btn" id="btn-playback-retry" hidden tabindex="0">Retry</button>' +
     '<p class="player-next-up" id="player-next-up" hidden></p>' +
     '</div>' +
-    '<div class="player-transport-col" data-cols="6">' +
+    '<div class="player-taskbar" data-focus-zone="player-taskbar">' +
+    '<div class="player-transport-col">' +
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-prev" tabindex="0" aria-label="Previous in queue">' + ICON_PREV + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-rewind" tabindex="0" aria-label="Rewind 10 seconds">' + ICON_REWIND + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon player-control-pill--play" id="btn-pause" tabindex="0" aria-label="Pause">' + ICON_PAUSE + '</button>' +
@@ -220,7 +232,7 @@ function playerScreen(root, params, navigate) {
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-next" tabindex="0" aria-label="Next in queue">' + ICON_NEXT + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon player-control-pill--danger" id="btn-stop" tabindex="0" aria-label="Stop">' + ICON_STOP + '</button>' +
     '</div>' +
-    '<div class="player-settings-col" data-cols="4">' +
+    '<div class="player-settings-col">' +
     '<button type="button" class="player-stream-pill" id="btn-quality" tabindex="0" aria-haspopup="dialog">' +
     '<span class="player-stream-active-mark" id="mark-quality" hidden></span>' +
     ICON_QUALITY +
@@ -242,8 +254,9 @@ function playerScreen(root, params, navigate) {
     '</div>' +
     '</div>' +
     '</div>' +
+    '</div>' +
     '<div class="player-track-modal" id="player-track-modal" hidden>' +
-    '<div class="player-track-modal-sheet" id="player-track-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="player-menu-title">' +
+    '<div class="player-track-modal-sheet" id="player-track-modal-sheet" data-focus-zone="player-menu" role="dialog" aria-modal="true" aria-labelledby="player-menu-title">' +
     '<p class="player-track-modal-title" id="player-menu-title"></p>' +
     '<div class="player-menu-list" id="player-menu-list"></div>' +
     '<div class="player-track-modal-footer">' +
@@ -505,6 +518,7 @@ function playerScreen(root, params, navigate) {
 
   function scheduleOverlayHide() {
     clearOverlayHideTimer();
+    if (isMotionCursorVisible()) return;
     if (!overlayVisible || menuOpen || exitConfirmVisible || infoPanelVisible) return;
     if (autoplayPanel && !autoplayPanel.hidden) return;
     overlayHideTimer = setTimeout(function () {
@@ -517,7 +531,9 @@ function playerScreen(root, params, navigate) {
     overlayVisible = visible;
     overlay.classList.toggle('player-overlay--hidden', !visible);
     if (visible) {
-      if (shouldScheduleOverlayHideWhenShowing(overlayHideAfterFirstFrame)) scheduleOverlayHide();
+      if (shouldScheduleOverlayHideWhenShowing(overlayHideAfterFirstFrame) && !isMotionCursorVisible()) {
+        scheduleOverlayHide();
+      }
     } else {
       clearOverlayHideTimer();
       closeMenu();
@@ -659,7 +675,7 @@ function playerScreen(root, params, navigate) {
   function setPlayerBottomFocusable(enabled) {
     var bottom = overlay.querySelector('.player-bottom');
     if (!bottom) return;
-    getFocusables(bottom).forEach(function (el) {
+    bottom.querySelectorAll(focusableSelector).forEach(function (el) {
       if (enabled) {
         if (el.dataset.prevTabindex != null) {
           if (el.dataset.prevTabindex === '') el.removeAttribute('tabindex');
@@ -671,6 +687,15 @@ function playerScreen(root, params, navigate) {
         el.tabIndex = -1;
       }
     });
+  }
+
+  function shouldTrapPlayerChromeFocus() {
+    return !!(menuOpen || exitConfirmVisible || infoPanelVisible ||
+      (autoplayPanel && !autoplayPanel.hidden));
+  }
+
+  function syncPlayerChromeFocusable() {
+    setPlayerBottomFocusable(!shouldTrapPlayerChromeFocus());
   }
 
   function onTrackModalKeyDown(e) {
@@ -704,7 +729,7 @@ function playerScreen(root, params, navigate) {
     menuOpen = null;
     overlay.classList.remove('player-overlay--track-modal');
     if (trackModal) trackModal.hidden = true;
-    setPlayerBottomFocusable(true);
+    syncPlayerChromeFocusable();
     if (menuReturnFocus && menuReturnFocus.focus) {
       try { menuReturnFocus.focus(); } catch (err) { /* ignore */ }
     }
@@ -732,6 +757,7 @@ function playerScreen(root, params, navigate) {
     autoplayCountdown.clear();
     clearCreditsButtonFill();
     if (autoplayPanel) autoplayPanel.hidden = true;
+    syncPlayerChromeFocusable();
   }
 
   function resetCreditsAutoplayState() {
@@ -770,6 +796,7 @@ function playerScreen(root, params, navigate) {
     var nextItem = queue.peekNext();
     var textEl = document.getElementById('player-autoplay-text');
     if (autoplayPanel) autoplayPanel.hidden = false;
+    syncPlayerChromeFocusable();
     setOverlayVisible(true);
     clearOverlayHideTimer();
     function renderCountdown(remaining) {
@@ -802,6 +829,7 @@ function playerScreen(root, params, navigate) {
       infoPanel.hidden = true;
       scheduleOverlayHide();
     }
+    syncPlayerChromeFocusable();
   }
 
   function formatPlaybackModeLabel(mode) {
@@ -914,7 +942,7 @@ function playerScreen(root, params, navigate) {
     if (!trackModal || !listEl) return;
     trackModal.hidden = false;
     overlay.classList.add('player-overlay--track-modal');
-    setPlayerBottomFocusable(false);
+    syncPlayerChromeFocusable();
     listEl.innerHTML = '';
     listEl.scrollTop = 0;
     var options = [];
@@ -1063,6 +1091,7 @@ function playerScreen(root, params, navigate) {
     closeMenu();
     setOverlayVisible(true);
     clearOverlayHideTimer();
+    syncPlayerChromeFocusable();
     if (exitConfirm) {
       exitConfirm.hidden = false;
       focusFirst(exitConfirm);
@@ -1072,6 +1101,7 @@ function playerScreen(root, params, navigate) {
   function hideExitConfirm() {
     exitConfirmVisible = false;
     if (exitConfirm) exitConfirm.hidden = true;
+    syncPlayerChromeFocusable();
     scheduleOverlayHide();
     refreshIntroPromptChrome();
   }
@@ -1115,6 +1145,7 @@ function playerScreen(root, params, navigate) {
   }
 
   function onOverlayActivity() {
+    if (isMotionCursorVisible()) return;
     if (overlayVisible) scheduleOverlayHide();
   }
 
@@ -1951,6 +1982,18 @@ function playerScreen(root, params, navigate) {
 
   document.addEventListener('keydown', handlePlayerEnter, true);
 
+  function onMotionCursorShow() {
+    setOverlayVisible(true);
+    clearOverlayHideTimer();
+  }
+
+  function onMotionCursorHide() {
+    setOverlayVisible(false);
+  }
+
+  document.addEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);
+  document.addEventListener(MOTION_CURSOR_HIDE_EVENT, onMotionCursorHide);
+
   player.onEnded(onPlaybackEnded);
 
   player.onFirstFrame(function () {
@@ -2080,6 +2123,8 @@ function playerScreen(root, params, navigate) {
         detachFocus();
         document.removeEventListener('keydown', handlePlayerBack, true);
         document.removeEventListener('keydown', handlePlayerEnter, true);
+        document.removeEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);
+        document.removeEventListener(MOTION_CURSOR_HIDE_EVENT, onMotionCursorHide);
         overlay.remove();
       }
 

@@ -169,40 +169,12 @@ function searchScreen(root, params, navigate) {
   input.addEventListener('input', scheduleSearch);
 
   input.addEventListener('keydown', function (e) {
-    var code = e.keyCode;
-    if (code === 13) {
+    if (e.keyCode === 13) {
       e.preventDefault();
       e.stopPropagation();
       if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
       lastQuery = input.value.trim();
       runSearch(lastQuery);
-      return;
-    }
-    if (code === 40) {
-      e.preventDefault();
-      e.stopPropagation();
-      var firstCard = results.querySelector('.card, .row-item, [tabindex]');
-      if (firstCard) firstCard.focus();
-      return;
-    }
-    if (code === 38) {
-      e.preventDefault();
-      e.stopPropagation();
-      var host = screen.querySelector('.browsing-hub-nav-host');
-      var searchBtn = host && host.querySelector('.browsing-hub-item[data-hub-id="search"]');
-      if (searchBtn) searchBtn.focus();
-      return;
-    }
-    if (code === 37) {
-      e.preventDefault();
-      e.stopPropagation();
-      var sidebar = screen.querySelector('.browsing-hub-nav-host');
-      var active = sidebar && sidebar.querySelector('.browsing-hub-item.active');
-      if (active) active.focus();
-      return;
-    }
-    if (code === 39) {
-      e.stopPropagation();
     }
   });
 

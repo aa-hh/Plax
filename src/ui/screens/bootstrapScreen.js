@@ -15,6 +15,7 @@ import {
   isRestrictedProfile
 } from '../../security/libraryAccess.js';
 import { createLoadingIndicator } from '../components/loadingIndicator.js';
+import { focusFirst, attachFocusNav } from '../focus.js';
 
 function shouldBlockIncompleteRestrictedSession(state) {
   return !!(
@@ -29,12 +30,17 @@ function shouldBlockIncompleteRestrictedSession(state) {
 function bootstrapScreen(root, params, navigate) {
   var screen = document.createElement('div');
   screen.className = 'screen screen-center bootstrap-screen';
+  screen.setAttribute('data-focus-mode', 'sequential');
   screen.innerHTML =
     '<h1 class="screen-title">Starting XPlay Lite</h1>' +
     '<p class="screen-subtitle">Signing in, finding your server, and preparing Home…</p>' +
     '<div id="boot-loader"></div>' +
-    '<p class="status-msg bootstrap-status" id="boot-status">Validating Plex account…</p>';
+    '<p class="status-msg bootstrap-status" id="boot-status">Validating Plex account…</p>' +
+    '<div class="bootstrap-actions" id="boot-actions" hidden>' +
+    '<button type="button" class="btn" id="btn-boot-continue" tabindex="0">Continue</button>' +
+    '</div>';
   root.appendChild(screen);
+  var detachFocus = attachFocusNav(screen);
 
   var loaderSlot = screen.querySelector('#boot-loader');
   if (loaderSlot) {
@@ -44,17 +50,54 @@ function bootstrapScreen(root, params, navigate) {
   var state = getState();
   var clientId = state.clientId;
   var token = state.authToken;
+  var bootNavigateTimer = null;
+  var lastBootExit = { route: 'profile-picker', params: { _retry: true, _from: 'bootstrap' } };
 
-  if (shouldBlockIncompleteRestrictedSession(state)) {
-    fail('Profile session incomplete. Choose your profile again.');
-    setTimeout(function () {
-      navigate('profile-picker', { _retry: true, _from: 'bootstrap' });
-    }, 1500);
-    return { destroy: function () {} };
+  function clearBootNavigateTimer() {
+    if (bootNavigateTimer) {
+      clearTimeout(bootNavigateTimer);
+      bootNavigateTimer = null;
+    }
+  }
+
+  function scheduleBootNavigate(route, params, delayMs) {
+    lastBootExit = { route: route, params: params || {} };
+    clearBootNavigateTimer();
+    bootNavigateTimer = setTimeout(function () {
+      bootNavigateTimer = null;
+      navigate(lastBootExit.route, lastBootExit.params);
+    }, delayMs != null ? delayMs : 2500);
   }
 
   function fail(msg) {
     document.getElementById('boot-status').textContent = msg;
+    var actions = document.getElementById('boot-actions');
+    if (actions) {
+      actions.hidden = false;
+      focusFirst(screen);
+    }
+  }
+
+  function resolveBootExit(err, msg) {
+    var authFailed = err && (err.status === 401 || /auth/i.test(msg));
+    var hasHomeProfile = !!(getState().activeHomeUser);
+    var goProfilePicker = authFailed || hasHomeProfile ||
+      /no reachable plex servers/i.test(msg);
+    return {
+      route: goProfilePicker ? 'profile-picker' : 'pairing',
+      params: goProfilePicker ? { _retry: true, _from: 'bootstrap' } : {}
+    };
+  }
+
+  if (shouldBlockIncompleteRestrictedSession(state)) {
+    fail('Profile session incomplete. Choose your profile again.');
+    scheduleBootNavigate('profile-picker', { _retry: true, _from: 'bootstrap' }, 1500);
+    return {
+      destroy: function () {
+        clearBootNavigateTimer();
+        detachFocus();
+      }
+    };
   }
 
   fetchUser(token, clientId).then(function (user) {
@@ -116,17 +159,24 @@ function bootstrapScreen(root, params, navigate) {
       msg = 'Libraries for this profile could not be loaded. Try another profile or re-link Plex.';
     }
     fail(msg);
-    var authFailed = err && (err.status === 401 || /auth/i.test(msg));
-    var hasHomeProfile = !!(getState().activeHomeUser);
-    var goProfilePicker = authFailed || hasHomeProfile ||
-      /no reachable plex servers/i.test(msg);
-    setTimeout(function () {
-      navigate(goProfilePicker ? 'profile-picker' : 'pairing',
-        goProfilePicker ? { _retry: true, _from: 'bootstrap' } : {});
-    }, 2500);
+    var exit = resolveBootExit(err, msg);
+    scheduleBootNavigate(exit.route, exit.params);
   });
 
-  return { destroy: function () {} };
+  var btnBootContinue = document.getElementById('btn-boot-continue');
+  if (btnBootContinue) {
+    btnBootContinue.addEventListener('click', function () {
+      clearBootNavigateTimer();
+      navigate(lastBootExit.route, lastBootExit.params);
+    });
+  }
+
+  return {
+    destroy: function () {
+      clearBootNavigateTimer();
+      detachFocus();
+    }
+  };
 }
 
 export { bootstrapScreen, shouldBlockIncompleteRestrictedSession };

@@ -62,6 +62,8 @@
   --detail-margin-x: var(--space-8);
   --detail-margin-y: var(--space-4);
   --focus-w: 3px;
+  /* Space for outline + box-shadow outside poster (≥ prior 10px row padding) */
+  --focus-ring-pad: max(10px, calc(var(--focus-w) + 4px));
   --z-player: 1000;
   --z-player-overlay: 1002;
   --z-loading: 1005;
@@ -80,6 +82,28 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: var(--font-body);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Magic Remote pointer mode (global; D-pad focus unchanged when hidden) */
+body {
+  cursor: none;
+}
+
+body.cursor-visible {
+  cursor: default;
+}
+
+body.cursor-visible .btn,
+body.cursor-visible .card:not(.media-card),
+body.cursor-visible .nav-item,
+body.cursor-visible .library-item,
+body.cursor-visible .row-item:not(.media-card),
+body.cursor-visible .media-card,
+body.cursor-visible .detail-link,
+body.cursor-visible .player-control-pill,
+body.cursor-visible .player-stream-pill,
+body.cursor-visible .player-skip-intro-prompt {
+  cursor: pointer;
 }
 
 html { min-width: 1280px; min-height: 720px; }
@@ -341,6 +365,10 @@ html { min-width: 1280px; min-height: 720px; }
   margin-top: var(--space-6);
   min-height: 1.5em;
   color: var(--text-secondary);
+}
+
+.bootstrap-actions {
+  margin-top: var(--space-6);
 }
 
 .home-feed-host {
@@ -638,7 +666,8 @@ html { min-width: 1280px; min-height: 720px; }
   gap: 24px 20px;
   overflow-y: auto;
   flex: 1;
-  padding: 4px 0 16px;
+  padding: var(--focus-ring-pad) var(--focus-ring-pad) 16px;
+  scroll-padding-inline: var(--focus-ring-pad);
   align-content: flex-start;
 }
 
@@ -840,7 +869,8 @@ html { min-width: 1280px; min-height: 720px; }
   gap: var(--row-card-gap);
   overflow-x: auto;
   overflow-y: visible;
-  padding: 8px 10px 16px;
+  padding: 8px var(--focus-ring-pad) 16px;
+  scroll-padding-inline: var(--focus-ring-pad);
   width: 100%;
   --row-count: 10;
   scrollbar-width: none;
@@ -949,7 +979,7 @@ html { min-width: 1280px; min-height: 720px; }
 
 .row-skeleton .row-skeleton-scroll {
   gap: var(--row-card-gap);
-  padding: 8px 10px 16px;
+  padding: 8px var(--focus-ring-pad) 16px;
 }
 
 .row-skeleton-card {
@@ -1893,7 +1923,7 @@ html { min-width: 1280px; min-height: 720px; }
 
 .player-control-bar {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) auto minmax(420px, 1fr);
+  grid-template-columns: minmax(320px, 1fr) minmax(420px, 1fr);
   align-items: center;
   gap: var(--space-5);
   padding: 12px 14px;
@@ -2117,6 +2147,15 @@ html { min-width: 1280px; min-height: 720px; }
   font-size: 26px;
   line-height: 1;
   padding: 6px 12px;
+}
+
+.player-taskbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-5);
+  min-width: 0;
+  flex: 1;
 }
 
 .player-transport-col {
@@ -2635,39 +2674,76 @@ html { min-width: 1280px; min-height: 720px; }
 
 /* ── Profile picker ── */
 .profile-picker-screen {
+  --profile-picker-cols: 1;
+  --profile-card-min: 160px;
+  --profile-picker-gap: var(--space-6);
+  /* max 4 cards + gutters: 4×160 + 3×24 = 712px; cols set from homeSize on mount */
+  --profile-picker-max-w: calc(
+    var(--profile-picker-cols) * var(--profile-card-min)
+    + (var(--profile-picker-cols) - 1) * var(--profile-picker-gap)
+  );
+  justify-content: flex-start;
   align-items: center;
-  text-align: center;
+  padding-top: 14vh;
+  padding-bottom: var(--pad-screen-y);
 }
 
-.profile-picker-subtitle {
-  max-width: 640px;
-  margin: 0 auto var(--space-4);
-  text-align: center;
+.profile-picker-main {
+  width: 100%;
+  max-width: var(--profile-picker-max-w);
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+
+.profile-picker-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+/* Spinner matches compact title cap height (var(--font-title-compact) = 36px) */
+.profile-picker-header .xplay-spinner-wrap {
+  font-size: var(--font-title-compact);
+  line-height: 1.1;
+}
+
+.profile-picker-title {
+  margin-bottom: 0;
+  text-align: left;
 }
 
 .profile-picker-status {
   min-height: 1.4em;
   margin-bottom: var(--space-4);
+  text-align: left;
+}
+
+.profile-picker-status[hidden] {
+  display: none;
 }
 
 .profile-picker-body {
   width: 100%;
-  max-width: 1200px;
   position: relative;
 }
 
 .profile-picker-row {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(var(--profile-picker-cols), minmax(var(--profile-card-min), 1fr));
+  gap: var(--profile-picker-gap);
+  justify-items: center;
   align-items: flex-start;
-  gap: var(--space-6);
-  flex-wrap: wrap;
-  padding: var(--space-6) 0;
+  padding: 0;
   transition: opacity 0.25s ease;
 }
 
 .profile-picker--pin-mode .profile-picker-row {
+  display: flex;
   justify-content: center;
+  align-items: flex-start;
+  gap: var(--profile-picker-gap);
   min-height: 160px;
 }
 
@@ -2676,12 +2752,17 @@ html { min-width: 1280px; min-height: 720px; }
   display: none !important;
 }
 
+.profile-picker-row .profile-card {
+  width: 100%;
+  max-width: var(--profile-card-min);
+}
+
 .profile-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-  min-width: 160px;
+  min-width: var(--profile-card-min);
   padding: var(--space-5);
   background: var(--bg-surface);
   border-radius: var(--radius-lg);
@@ -2933,6 +3014,55 @@ video.native-player.subtitle-no-bg ::cue {
   font-size: var(--font-meta);
   color: var(--text-secondary);
   text-align: center;
+}
+
+/* ── Circular spinner (animated ring) ── */
+.xplay-spinner-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.xplay-spinner-wrap[hidden] {
+  display: none;
+}
+
+.xplay-spinner {
+  display: block;
+  border-radius: 50%;
+  border-style: solid;
+  border-color: rgba(125, 136, 157, 0.35);
+  border-top-color: var(--accent);
+  animation: xplay-spinner-spin 0.75s linear infinite;
+}
+
+.xplay-spinner-small .xplay-spinner {
+  width: 28px;
+  height: 28px;
+  border-width: 2px;
+}
+
+.xplay-spinner-medium .xplay-spinner {
+  width: 40px;
+  height: 40px;
+  border-width: 3px;
+}
+
+.xplay-spinner-large .xplay-spinner {
+  width: 52px;
+  height: 52px;
+  border-width: 4px;
+}
+
+.xplay-spinner-em .xplay-spinner {
+  width: 1em;
+  height: 1em;
+  border-width: 0.085em;
+}
+
+@keyframes xplay-spinner-spin {
+  to { transform: rotate(360deg); }
 }
 
 .spinner {

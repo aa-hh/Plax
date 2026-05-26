@@ -31,7 +31,10 @@ import {
   supportsWatchlistBookmark,
   wireWatchlistBookmark
 } from '../components/watchlistBookmark.js';
-import { loadUltraBlurBackground } from '../../plex/ultrablur.js';
+import {
+  buildUltraBlurColorGradient,
+  loadUltraBlurBackdrop
+} from '../../plex/ultrablur.js';
 import {
   startNetworkProbeIfNeeded,
   cancelNetworkProbe,
@@ -294,7 +297,6 @@ function detailScreen(root, params, navigate) {
   }
 
   function wirePlaybackDetailCommon(item) {
-    applyDetailBackground(detailHomeMainEl(), server, item);
     wireNetworkQualitySection();
     attachNetworkQualityObserver();
     prefetchItemNetworkProbe();
@@ -690,22 +692,28 @@ function detailScreen(root, params, navigate) {
     homeMain.classList.add('detail-home-main--has-bg');
   }
 
+  function setDetailBackgroundColors(homeMain, colors) {
+    var gradient = buildUltraBlurColorGradient(colors);
+    if (!homeMain || !gradient) return;
+    homeMain.style.backgroundImage = DETAIL_BG_GRADIENT + ', ' + gradient;
+    homeMain.classList.add('detail-home-main--has-bg');
+  }
+
   function applyDetailBackground(homeMain, server, item) {
     if (!homeMain) return;
     homeMain.classList.remove('detail-home-main--has-bg');
     homeMain.style.backgroundImage = '';
 
-    if (item.artPath && server) {
-      loadUltraBlurBackground(server, item.artPath).then(function (blurUrl) {
-        if (blurUrl) {
-          setDetailBackgroundImage(homeMain, blurUrl);
-          return;
-        }
-        if (item.art) setDetailBackgroundImage(homeMain, item.art);
-      });
-      return;
-    }
-    if (item.art) setDetailBackgroundImage(homeMain, item.art);
+    if (!item.artPath || !server) return;
+
+    loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
+      if (!backdrop) return;
+      if (backdrop.imageUrl) {
+        setDetailBackgroundImage(homeMain, backdrop.imageUrl);
+        return;
+      }
+      if (backdrop.colors) setDetailBackgroundColors(homeMain, backdrop.colors);
+    });
   }
 
   function buildActiveDetailRoute(item) {
@@ -997,7 +1005,7 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-layout detail-layout--episode">' +
       '<div class="detail-episode-panel">' +
       buildDetailTopBar(buildEpisodeBreadcrumbTrail(item)) +
-      '<div class="detail-episode-main" data-focus-zone="detail-episode-main">' +
+      '<div class="detail-episode-main">' +
       '<div class="detail-episode-art-wrap">' +
       '<img class="detail-episode-art" id="detail-episode-art" alt="" />' +
       progressHtml +
@@ -1019,7 +1027,7 @@ function detailScreen(root, params, navigate) {
       '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       buildWatchlistActionHtml(item) +
       '</div>' +
-      '<div class="detail-disclosure" id="direct-play-disclosure" hidden>' +
+      '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
       '</div>' +
@@ -1041,6 +1049,7 @@ function detailScreen(root, params, navigate) {
     if (art) {
       bindPosterImage(art, item.thumb || item.art || item.grandparentThumbUrl || '', { priority: true });
     }
+    applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
     wireEpisodePlaybackActions(item, versions);
 
@@ -1081,7 +1090,7 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-layout detail-layout--episode detail-layout--movie">' +
       '<div class="detail-episode-panel">' +
       buildDetailTopBar(buildFilmBreadcrumbTrail()) +
-      '<div class="detail-episode-main" data-focus-zone="detail-episode-main">' +
+      '<div class="detail-episode-main">' +
       '<div class="detail-episode-art-wrap">' +
       '<img class="detail-episode-art" id="detail-episode-art" alt="" />' +
       progressHtml +
@@ -1104,7 +1113,7 @@ function detailScreen(root, params, navigate) {
       '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       buildWatchlistActionHtml(item) +
       '</div>' +
-      '<div class="detail-disclosure" id="direct-play-disclosure" hidden>' +
+      '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
       '</div>' +
@@ -1124,7 +1133,8 @@ function detailScreen(root, params, navigate) {
     mountDetailHubNav();
 
     var art = screen.querySelector('#detail-episode-art');
-    if (art) bindPosterImage(art, item.thumb || item.art || '', { priority: true });
+    if (art) bindPosterImage(art, item.thumb || '', { priority: true });
+    applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
     wireEpisodePlaybackActions(item, versions);
 
@@ -1164,14 +1174,15 @@ function detailScreen(root, params, navigate) {
       watchlistInActions +
       '<button class="btn" id="btn-more-actions" tabindex="0">More actions</button>' +
       '</div>' +
-      '<div class="detail-actions detail-actions-secondary hidden" id="detail-actions-secondary">' +
+      '<div class="detail-actions detail-actions-secondary hidden" id="detail-actions-secondary" ' +
+      'data-focus-zone="detail-secondary-actions" data-cols="5">' +
       '<button class="btn" id="btn-play" tabindex="0">Play from start</button>' +
       '<button class="btn" id="btn-resume" tabindex="0"' + (item.viewOffset ? '' : ' disabled') + '>Resume</button>' +
       '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
       '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       '<button class="btn" id="btn-refresh" tabindex="0">Refresh metadata</button>' +
       '</div>' +
-      '<div class="detail-disclosure" id="direct-play-disclosure" hidden>' +
+      '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
       '</div>' +

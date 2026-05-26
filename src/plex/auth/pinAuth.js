@@ -59,10 +59,35 @@ function fetchUser(authToken, clientId) {
   });
 }
 
+function parseHomeSize(user) {
+  if (!user) return null;
+  var raw = user.homeSize;
+  if (raw == null || raw === '') return null;
+  var n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.floor(n);
+}
+
+function fetchHomeSize(authToken, clientId) {
+  return fetchUser(authToken, clientId).then(parseHomeSize).catch(function () {
+    return null;
+  });
+}
+
 function signInWithToken(authToken, clientId) {
   return fetchUser(authToken, clientId).then(function (user) {
     return { authToken: authToken, user: user };
   });
 }
 
-export { createPin, checkPin, pollPin, getAuthPageUrl, getQrImageUrl, fetchUser, signInWithToken };
+export {
+  createPin,
+  checkPin,
+  pollPin,
+  getAuthPageUrl,
+  getQrImageUrl,
+  fetchUser,
+  fetchHomeSize,
+  parseHomeSize,
+  signInWithToken
+};

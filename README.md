@@ -109,11 +109,13 @@ WEBOS_SIM_PATH="/Applications/webOS_TV_6.0_Simulator_1.4.1.app" npm run sim
 npm run sim -- --simulator-path "/Applications/webOS_TV_6.0_Simulator_1.4.1.app"
 ```
 
-You can also just open the Simulator app yourself and use **File → Open** on `dist/appinfo.json` after running `npm run build`.
+You can also open the Simulator manually and use **File → Launch App** on the `dist/` folder (the directory that contains `appinfo.json`) after `npm run build`.
 
 Tips:
-- Keep one simulator window open and use `npm run sim:watch` in another terminal to rebuild quickly.
-- `npm run sim:launch` skips the rebuild step.
+- `npm run sim` always rebuilds, verifies `dist/app.js` markers (`Select User`, spinners), quits any running simulator, then launches via `ares-launch`.
+- `npm run sim:watch` only rebuilds `dist/`; the simulator does **not** pick up changes until you re-run `npm run sim` or use **File → Launch App** on `dist/` again. Saving files may auto-reload only if that exact folder is already the launched app.
+- If you still see the old **Who's watching?** screen, remove the XPlay icon from the simulator home screen (right-click → Remove), then **Action → Database Reset**, and run `npm run sim` again. Do not launch from an old home-screen icon after renaming the project folder.
+- `npm run sim:launch` skips the rebuild step (run `npm run build` first).
 
 ## Install on TV
 

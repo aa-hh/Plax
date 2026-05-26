@@ -32,7 +32,7 @@ function watchlistScreen(root, params, navigate) {
     '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
     '<div class="home-main">' +
     '<h1 class="screen-title screen-title-compact" id="watchlist-title">Watchlist</h1>' +
-    '<div class="watchlist-manage-actions" id="watchlist-actions"></div>' +
+    '<div class="watchlist-manage-actions" id="watchlist-actions" data-focus-zone="watchlist-manage" data-cols="2"></div>' +
     '<div class="home-feed-host watchlist-feed-host">' +
     '<div id="watchlist-feed" class="home-feed"><p class="status-msg">Loading…</p></div>' +
     '</div></div></div>';

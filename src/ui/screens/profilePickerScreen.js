@@ -1,11 +1,34 @@
 import { getState, setState } from '../../core/store.js';
-import { persistAuth, getOwnerAuthToken } from '../../core/storage.js';
+import {
+  persistAuth,
+  getOwnerAuthToken,
+  readSessionHomeSize,
+  writeSessionHomeSize
+} from '../../core/storage.js';
+import { fetchHomeSize } from '../../plex/auth/pinAuth.js';
 import { fetchHomeUsers, switchToHomeUser } from '../../plex/users/homeUsers.js';
 import { createPinEntry, isNumericKeyCode } from '../pinEntry.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import { createSpinner } from '../components/spinner.js';
 import * as cache from '../../core/cache.js';
 
 var BACK_KEYCODE = 461;
+var PROFILE_PICKER_MAX_COLS = 4;
+
+function clampProfilePickerCols(count) {
+  var n = Number(count);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(Math.floor(n), PROFILE_PICKER_MAX_COLS);
+}
+
+function profilePickerCols(homeSize, userCount) {
+  var fromHome = homeSize != null ? clampProfilePickerCols(homeSize) : null;
+  var fromUsers = userCount != null ? clampProfilePickerCols(userCount) : null;
+  if (fromHome != null && fromUsers != null) {
+    return Math.min(Math.max(fromHome, fromUsers), PROFILE_PICKER_MAX_COLS);
+  }
+  return fromUsers || fromHome || 1;
+}
 
 function profileInitials(user) {
   var name = user.title || user.username || '?';
@@ -44,19 +67,27 @@ function profilePickerScreen(root, params, navigate) {
   var screen = document.createElement('div');
   screen.className = 'screen profile-picker-screen';
   screen.innerHTML =
-    '<h1 class="screen-title screen-title-compact">Who\'s watching?</h1>' +
-    '<p class="screen-subtitle profile-picker-subtitle">Choose a Plex Home profile. No extra sign-in — your TV is already linked.</p>' +
-    '<p class="status-msg profile-picker-status" id="profile-status"></p>' +
+    '<div class="profile-picker-main" id="profile-picker-main">' +
+    '<div class="profile-picker-header" id="profile-header">' +
+    '<h1 class="screen-title screen-title-compact profile-picker-title">Select User</h1>' +
+    '</div>' +
+    '<p class="status-msg profile-picker-status" id="profile-status" hidden></p>' +
     '<div class="profile-picker-body" id="profile-body">' +
-    '<div class="profile-picker-row" id="profile-row"></div>' +
+    '<div class="profile-picker-row" id="profile-row" data-focus-zone="profile-picker-profiles"></div>' +
     '<div class="profile-picker-pin" id="profile-pin" hidden>' +
     '<p class="pin-display" id="pin-display"></p>' +
     '<p class="pin-error" id="pin-error" hidden></p>' +
-    '<div class="pin-pad" id="pin-pad" data-cols="3"></div>' +
-    '</div></div>';
+    '<div class="pin-pad" id="pin-pad"></div>' +
+    '</div></div></div>';
 
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
+
+  var headerEl = document.getElementById('profile-header');
+  var titleEl = headerEl ? headerEl.querySelector('.profile-picker-title') : null;
+  var profileSpinner = createSpinner({ size: 'em', label: 'Loading profiles' });
+  profileSpinner.id = 'profile-spinner';
+  if (headerEl) headerEl.appendChild(profileSpinner);
 
   var statusEl = document.getElementById('profile-status');
   var rowEl = document.getElementById('profile-row');
@@ -71,6 +102,41 @@ function profilePickerScreen(root, params, navigate) {
   var selectedUser = null;
   var selectedCard = null;
   var switching = false;
+  var profilesLoading = false;
+  var resolvedHomeSize = readSessionHomeSize();
+
+  function applyProfilePickerCols(cols) {
+    var n = clampProfilePickerCols(cols);
+    screen.style.setProperty('--profile-picker-cols', String(n));
+    if (rowEl) rowEl.setAttribute('data-cols', String(n));
+  }
+
+  if (resolvedHomeSize != null) {
+    applyProfilePickerCols(profilePickerCols(resolvedHomeSize, null));
+  }
+
+  function spinnerLabel() {
+    if (profilesLoading) return 'Loading profiles';
+    if (mode === 'pinEntry' && switching) return 'Verifying PIN';
+    return 'Loading';
+  }
+
+  function syncHeaderSpinner() {
+    var show = profilesLoading || (mode === 'pinEntry' && switching);
+    if (!profileSpinner) return;
+    profileSpinner.hidden = !show;
+    var ring = profileSpinner.querySelector('.xplay-spinner');
+    if (ring) ring.setAttribute('aria-label', spinnerLabel());
+  }
+
+  function setProfileLoading(loading) {
+    profilesLoading = !!loading;
+    syncHeaderSpinner();
+  }
+
+  function syncHeaderTitle() {
+    if (titleEl) titleEl.textContent = mode === 'pinEntry' ? 'Enter PIN' : 'Select User';
+  }
 
   var pinEntry = createPinEntry({
     onChange: function () {
@@ -84,7 +150,9 @@ function profilePickerScreen(root, params, navigate) {
 
   function setStatus(text, isError) {
     if (!statusEl) return;
-    statusEl.textContent = text || '';
+    var msg = text || '';
+    statusEl.textContent = msg;
+    statusEl.hidden = !msg;
     statusEl.className = 'status-msg profile-picker-status' + (isError ? ' watch-status-error' : '');
   }
 
@@ -121,17 +189,16 @@ function profilePickerScreen(root, params, navigate) {
     pinPad.innerHTML = '';
     var grid = document.createElement('div');
     grid.className = 'pin-pad-grid';
+    grid.setAttribute('data-cols', '3');
     ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach(function (key) {
       addPinKeyButton(grid, key);
     });
+    var spacer = document.createElement('span');
+    spacer.className = 'pin-pad-spacer';
+    grid.appendChild(spacer);
+    addPinKeyButton(grid, '0');
+    addPinKeyButton(grid, 'Delete');
     pinPad.appendChild(grid);
-
-    var bottom = document.createElement('div');
-    bottom.className = 'pin-pad-row-bottom';
-    bottom.appendChild(document.createElement('span')).className = 'pin-pad-spacer';
-    addPinKeyButton(bottom, '0');
-    addPinKeyButton(bottom, 'Delete');
-    pinPad.appendChild(bottom);
   }
 
   function setProfileRowVisible(showAll) {
@@ -153,6 +220,7 @@ function profilePickerScreen(root, params, navigate) {
 
   function enterPinMode(user, card) {
     mode = 'pinEntry';
+    syncHeaderTitle();
     selectedUser = user;
     selectedCard = card;
     screen.classList.add('profile-picker--pin-mode');
@@ -169,6 +237,8 @@ function profilePickerScreen(root, params, navigate) {
 
   function exitPinMode() {
     mode = 'browsing';
+    syncHeaderTitle();
+    syncHeaderSpinner();
     pinEntry.clear();
     pinPanel.hidden = true;
     setPinError('');
@@ -186,11 +256,16 @@ function profilePickerScreen(root, params, navigate) {
   function completeSwitch(user, pin) {
     if (switching) return;
     switching = true;
-    setStatus('Switching profile…', false);
+    if (mode === 'pinEntry') {
+      syncHeaderSpinner();
+    } else {
+      setStatus('Switching profile…', false);
+    }
     var ownerToken = getOwnerToken();
     var switchTimeout = setTimeout(function () {
       if (!switching) return;
       switching = false;
+      syncHeaderSpinner();
       var msg = 'Profile switch timed out. Try again.';
       if (mode === 'pinEntry') setPinError(msg);
       else setStatus(msg, true);
@@ -223,6 +298,7 @@ function profilePickerScreen(root, params, navigate) {
     }).catch(function (err) {
       clearTimeout(switchTimeout);
       switching = false;
+      syncHeaderSpinner();
       if (mode === 'pinEntry') {
         setPinError(err.message || 'Incorrect PIN. Try again.');
         pinEntry.clear();
@@ -249,6 +325,7 @@ function profilePickerScreen(root, params, navigate) {
 
   function renderProfiles(homeUsers) {
     users = homeUsers;
+    applyProfilePickerCols(profilePickerCols(resolvedHomeSize, homeUsers.length));
     rowEl.innerHTML = '';
     homeUsers.forEach(function (u) {
       var card = document.createElement('button');
@@ -304,36 +381,50 @@ function profilePickerScreen(root, params, navigate) {
   }
 
   function loadProfiles() {
-    setStatus('Loading profiles…', false);
+    setProfileLoading(true);
     rowEl.innerHTML = '';
     switching = false;
+    var ownerToken = getOwnerToken();
+    var clientId = getState().clientId;
     var loadTimeout = setTimeout(function () {
-      if (rowEl.innerHTML === '' && statusEl.textContent.indexOf('Loading') >= 0) {
+      if (profilesLoading && rowEl.innerHTML === '') {
+        setProfileLoading(false);
         if (params._from) showLoadError('Loading profiles timed out. Check your connection.');
         else navigate('bootstrap', {});
       }
     }, 20000);
 
-    fetchHomeUsers(getOwnerToken(), getState().clientId).then(function (homeUsers) {
-      clearTimeout(loadTimeout);
-      if (!homeUsers.length) {
+    fetchHomeSize(ownerToken, clientId)
+      .then(function (homeSize) {
+        if (homeSize != null) {
+          resolvedHomeSize = homeSize;
+          writeSessionHomeSize(homeSize);
+          applyProfilePickerCols(profilePickerCols(homeSize, null));
+        }
+        return fetchHomeUsers(ownerToken, clientId);
+      })
+      .then(function (homeUsers) {
+        clearTimeout(loadTimeout);
+        setProfileLoading(false);
+        if (!homeUsers.length) {
+          if (params._from) {
+            showLoadError('No Plex Home profiles found.');
+            return;
+          }
+          navigate('bootstrap', {});
+          return;
+        }
+        setStatus('', false);
+        renderProfiles(homeUsers);
+      }).catch(function (err) {
+        clearTimeout(loadTimeout);
+        setProfileLoading(false);
         if (params._from) {
-          showLoadError('No Plex Home profiles found.');
+          showLoadError(err.message || 'Could not load profiles.');
           return;
         }
         navigate('bootstrap', {});
-        return;
-      }
-      setStatus('', false);
-      renderProfiles(homeUsers);
-    }).catch(function (err) {
-      clearTimeout(loadTimeout);
-      if (params._from) {
-        showLoadError(err.message || 'Could not load profiles.');
-        return;
-      }
-      navigate('bootstrap', {});
-    });
+      });
   }
 
   if (params._retry) {
@@ -350,4 +441,9 @@ function profilePickerScreen(root, params, navigate) {
   };
 }
 
-export { profilePickerScreen, shouldRejectManagedSwitchToken };
+export {
+  profilePickerScreen,
+  shouldRejectManagedSwitchToken,
+  profilePickerCols,
+  clampProfilePickerCols
+};

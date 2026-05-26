@@ -17,6 +17,7 @@ function pairingScreen(root, params, navigate) {
 
   var screen = document.createElement('div');
   screen.className = 'screen screen-center pairing-screen';
+  screen.setAttribute('data-focus-mode', 'sequential');
   screen.innerHTML =
     '<h1 class="screen-title">Sign in to Plex</h1>' +
     '<p class="screen-subtitle">Visit <strong>plex.tv/link</strong> and enter this code, or scan the QR code</p>' +

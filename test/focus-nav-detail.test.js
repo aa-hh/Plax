@@ -53,8 +53,15 @@ function buildDetailFixture(opts) {
   main.className = 'home-main detail-home-main';
 
   var topBar = zone('detail-top-bar', 'detail-top-bar');
-  topBar.appendChild(btn('detail-breadcrumb', 'detail-breadcrumb'));
+  topBar.appendChild(btn('detail-season-crumb', 'detail-breadcrumb-trail__btn'));
+  topBar.appendChild(btn('detail-episode-picker', 'detail-breadcrumb-trail__btn detail-episode-picker'));
   main.appendChild(topBar);
+
+  if (opts.withEpisodeMain !== false) {
+    var episodeMain = createElement('div');
+    episodeMain.className = 'detail-episode-main';
+    main.appendChild(episodeMain);
+  }
 
   var actions = zone('detail-episode-actions', 'detail-actions detail-episode-actions');
   actions.setAttribute('data-cols', '4');
@@ -105,7 +112,7 @@ test('Down from breadcrumb reaches sidebar first when hub present', function () 
   var screen = buildDetailFixture();
   document.registerTree(screen);
 
-  var breadcrumb = screen.querySelector('#detail-breadcrumb');
+  var breadcrumb = screen.querySelector('#detail-season-crumb');
   breadcrumb.focus();
 
   var zones = getZones(screen);
@@ -203,9 +210,43 @@ test('without hub Down from breadcrumb reaches actions not sidebar', function ()
   var screen = buildDetailFixture({ withHub: false });
   document.registerTree(screen);
 
-  screen.querySelector('#detail-breadcrumb').focus();
+  screen.querySelector('#detail-season-crumb').focus();
   handleKeyNav(screen, keyEvent(ARROW_DOWN));
   assert.equal(document.activeElement.id, 'btn-start');
+});
+
+test('episode breadcrumb trail cycles left and right', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#detail-season-crumb').focus();
+  handleKeyNav(screen, keyEvent(ARROW_RIGHT));
+  assert.equal(document.activeElement.id, 'detail-episode-picker');
+  handleKeyNav(screen, keyEvent(ARROW_LEFT));
+  assert.equal(document.activeElement.id, 'detail-season-crumb');
+});
+
+test('without hub Down from breadcrumb skips non-focusable hero to actions', function () {
+  installMinimalDom();
+  var screen = buildDetailFixture({ withHub: false, withEpisodeMain: true });
+  document.registerTree(screen);
+
+  screen.querySelector('#detail-season-crumb').focus();
+  handleKeyNav(screen, keyEvent(ARROW_DOWN));
+  assert.equal(document.activeElement.id, 'btn-start');
+});
+
+test('getZones does not duplicate row-scroll inside detail rails', function () {
+  installMinimalDom();
+  var screen = buildFilmDetailFixture();
+  document.registerTree(screen);
+
+  var zones = getZones(screen);
+  var railsZone = screen.querySelector('[data-focus-zone="detail-rails"]');
+  var rowScroll = railsZone.querySelector('.row-scroll');
+  assert.ok(zones.indexOf(railsZone) >= 0);
+  assert.equal(zones.indexOf(rowScroll), -1);
 });
 
 test('Down from middle file row focuses next file row', function () {

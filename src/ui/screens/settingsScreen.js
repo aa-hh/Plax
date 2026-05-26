@@ -51,7 +51,7 @@ function settingsScreen(root, params, navigate) {
     '<div id="network-section"></div>' +
     '<h2 class="settings-section-title">About</h2>' +
     '<div id="about-section"></div>' +
-    '<div class="detail-actions settings-actions">' +
+    '<div class="settings-actions detail-actions">' +
     '<button class="btn" id="btn-back" tabindex="0">Back</button>' +
     '<button class="btn" id="btn-signout" tabindex="0">Sign out</button>' +
     '</div>' +

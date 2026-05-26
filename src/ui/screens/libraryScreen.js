@@ -35,7 +35,7 @@ function libraryScreen(root, params, navigate) {
   screen.className = 'screen library-screen';
   screen.innerHTML =
     '<div class="library-layout">' +
-    '<div class="library-sidebar">' +
+    '<div class="library-sidebar" data-focus-zone="library-sidebar">' +
     '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
     '<button class="library-item library-action" id="btn-scan-library" tabindex="0">Scan for new media</button>' +
     '</div>' +
@@ -150,7 +150,7 @@ function libraryScreen(root, params, navigate) {
     var batch = items.length > room ? items.slice(0, room) : items;
     batch.forEach(function (item, index) {
       var absoluteIndex = startIndex + index;
-      grid.appendChild(createMediaCard(item, function (selected, routeParams) {
+      var card = createMediaCard(item, function (selected, routeParams) {
         var route = routeParams || { ratingKey: selected.ratingKey };
         route.libraryType = lib.type;
         route.libraryId = lib.id;
@@ -158,7 +158,9 @@ function libraryScreen(root, params, navigate) {
       }, {
         layout: 'grid',
         deferPoster: absoluteIndex >= LIBRARY_INITIAL_POSTERS
-      }));
+      });
+      card.setAttribute('data-item-index', String(absoluteIndex));
+      grid.appendChild(card);
     });
     return batch.length;
   }
