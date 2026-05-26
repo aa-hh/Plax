@@ -341,10 +341,11 @@ test('buildSubtitleFetchPlan skips stream GET for embedded text subs', function 
   assert.ok(urls.length >= 2);
   assert.ok(urls[0].indexOf('/video/:/transcode/universal/subtitles') >= 0);
   assert.ok(urls.every(function (u) { return u.indexOf('/library/streams/') < 0; }));
-  assert.ok(urls[0].indexOf('subtitles=sidecar') >= 0);
+  assert.ok(urls[0].indexOf('subtitles=auto') >= 0);
   assert.ok(urls[0].indexOf('hasMDE=1') >= 0);
   assert.ok(urls[0].indexOf('location=lan') >= 0);
   assert.ok(urls[0].indexOf(encodeURIComponent('/library/metadata/999')) >= 0);
+  assert.ok(urls[0].indexOf('subtitleStreamID=1893985') >= 0);
   assert.ok(urls[0].indexOf('X-Plex-Subtitle-Stream=1893985') >= 0);
   assert.ok(urls[0].indexOf('directPlay=1') >= 0);
 });

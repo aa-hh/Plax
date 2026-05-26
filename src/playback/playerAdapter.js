@@ -104,6 +104,28 @@ function redactPlexUrl(url) {
   }
 }
 
+function streamTypeLabel(mode) {
+  if (mode === 'direct') return 'direct-play';
+  if (mode === 'direct-stream') return 'direct-stream (HLS)';
+  if (mode === 'transcode-hls' || mode === 'transcode-http') return 'pure-transcode';
+  return 'unknown';
+}
+
+function compactPlaybackUrl(url) {
+  var redacted = redactPlexUrl(url);
+  if (!redacted || redacted.length <= 180) return redacted || '';
+  return redacted.slice(0, 177) + '...';
+}
+
+function logPlaybackStreamType(mode, url) {
+  console.info(
+    '[playback] stream type: ' +
+      streamTypeLabel(mode) +
+      ' (mode=' + (mode || 'unknown') +
+      ', url=' + compactPlaybackUrl(url) + ')'
+  );
+}
+
 function notifyBuffering(show) {
   if (!rebufferWatchdog.notifyBuffering(show)) return;
   bufferingShown = show;
@@ -396,6 +418,7 @@ function play(url, session, options) {
   firstFrameFired = false;
   lastPlaybackUrl = url;
   playbackModeRef = mode;
+  logPlaybackStreamType(mode, url);
   rebufferWatchdog.resetEpisode();
   notifyBuffering(true);
   videoEl.classList.remove('hidden');

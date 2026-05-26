@@ -171,8 +171,7 @@ function parseTranscodeSessionFromUrl(url) {
 
 function getActiveTranscodeSession(session) {
   if (!session) return null;
-  if (session.transcodeSessionId) return session.transcodeSessionId;
-  return session.sessionId || null;
+  return session.transcodeSessionId || null;
 }
 
 function protocolForPlaybackMode(playbackMode) {
@@ -244,14 +243,13 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
     location: 'lan',
     protocol: protocolForPlaybackMode(playbackMode),
     fastSeek: '1',
+    subtitleStreamID: String(session.subtitleStreamId),
     'X-Plex-Subtitle-Stream': String(session.subtitleStreamId)
   }, directFlags);
   if (offsetSec > 0) params.offset = String(offsetSec);
   var transcodeSession = getActiveTranscodeSession(session);
-  if (transcodeSession && directFlags.directPlay === '0') {
-    params.session = transcodeSession;
-  } else if (transcodeSession && playbackMode === 'direct') {
-    params.session = transcodeSession;
+  if (directFlags.directPlay === '0') {
+    params.session = transcodeSession || session.sessionId || null;
   }
   if (session.subtitleOffset) {
     params['X-Plex-Subtitle-Offset'] = String(session.subtitleOffset);
@@ -289,11 +287,11 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'convert' : null;
   pushUniqueUrl(urls, buildUniversalSubtitleUrl(
     server, session, metadataPath, resolvedTrack, playbackMode,
-    { subtitles: 'sidecar', advancedSubtitles: advanced }
+    { subtitles: 'auto', advancedSubtitles: advanced }
   ));
   pushUniqueUrl(urls, buildUniversalSubtitleUrl(
     server, session, metadataPath, resolvedTrack, playbackMode,
-    { subtitles: 'auto', advancedSubtitles: advanced }
+    { subtitles: 'sidecar', advancedSubtitles: advanced }
   ));
 
   var partPath = resolveSessionPartPath(session);

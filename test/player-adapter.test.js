@@ -107,6 +107,26 @@ test('play defers first playing timeline until playing event', async function ()
   assert.equal(playingCalls()[0].ratingKey, '99');
 });
 
+test('play logs stream type with mode and redacted url', function () {
+  var logs = [];
+  var origInfo = console.info;
+  console.info = function () {
+    logs.push(Array.prototype.join.call(arguments, ' '));
+  };
+  try {
+    playerModule.play('http://127.0.0.1/video.m3u8?X-Plex-Token=abc123&offset=60', session, {
+      mode: 'transcode-hls'
+    });
+  } finally {
+    console.info = origInfo;
+  }
+
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /^\[playback\] stream type: pure-transcode \(mode=transcode-hls, url=/);
+  assert.ok(logs[0].indexOf('abc123') < 0);
+  assert.ok(logs[0].indexOf('X-Plex-Token=%5Bredacted%5D') >= 0);
+});
+
 test('timeupdate at zero does not sync playing before progress', async function () {
   var video = playerModule.getVideoElement();
   playerModule.play('http://127.0.0.1/video.mkv', session);
