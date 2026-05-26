@@ -84,9 +84,7 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     session.subtitleOffset,
     {
       burnIn: session.subtitleBurnIn === true,
-      clientSubtitles: false,
-      remux: softTextSubs,
-      segmented: softTextSubs
+      clientSubtitles: softTextSubs
     }
   ));
 

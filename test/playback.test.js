@@ -285,6 +285,14 @@ test('buildSubtitleTranscodeParams clientSubtitles skips server HLS subs', funct
   assert.equal(skip.subtitles, undefined);
 });
 
+test('buildSubtitleTranscodeParams clientSubtitles wins over remux subtitles', function () {
+  var skip = buildSubtitleTranscodeParams(3, 50, { clientSubtitles: true, remux: true, segmented: true });
+  assert.equal(skip.skipSubtitles, '1');
+  assert.equal(skip.subtitleStreamID, undefined);
+  assert.equal(skip.subtitles, undefined);
+  assert.equal(skip['X-Plex-Subtitle-Stream'], undefined);
+});
+
 test('upgradeStrategyForTextSubtitles promotes direct to direct-stream when subs selected', function () {
   var session = { subtitleStreamId: 2, subtitleBurnIn: false };
   assert.equal(upgradeStrategyForTextSubtitles('direct', session), 'direct-stream');

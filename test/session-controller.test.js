@@ -154,10 +154,10 @@ test('buildPlaybackUrl simulator Plex Web omits profile extra on HLS', function 
   assert.equal(q.path, '/library/metadata/12345');
   assert.equal(q.location, 'wan');
   assert.equal(q.directStream, '1');
-  assert.equal(q.skipSubtitles, undefined);
-  assert.equal(q.subtitles, 'segmented');
-  assert.equal(q.subtitleStreamID, '1894445');
-  assert.equal(q['X-Plex-Subtitle-Stream'], '1894445');
+  assert.equal(q.skipSubtitles, '1');
+  assert.equal(q.subtitles, undefined);
+  assert.equal(q.subtitleStreamID, undefined);
+  assert.equal(q['X-Plex-Subtitle-Stream'], undefined);
   assert.equal(q.transcodeSessionId, 'xplay-test-session');
 });
 
@@ -212,17 +212,17 @@ test('buildPlaybackUrl includes location=lan for local PMS', function () {
   assert.equal(q.location, 'lan');
 });
 
-test('buildPlaybackUrl direct-stream with text subs requests segmented HLS subs', function () {
+test('buildPlaybackUrl direct-stream with text subs skips server HLS subs', function () {
   var session = baseSession({
     playbackStrategy: 'direct-stream',
     subtitleStreamId: 1894297,
     subtitleBurnIn: false
   });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
-  assert.equal(q.skipSubtitles, undefined);
-  assert.equal(q.subtitles, 'segmented');
-  assert.equal(q.subtitleStreamID, '1894297');
-  assert.equal(q['X-Plex-Subtitle-Stream'], '1894297');
+  assert.equal(q.skipSubtitles, '1');
+  assert.equal(q.subtitles, undefined);
+  assert.equal(q.subtitleStreamID, undefined);
+  assert.equal(q['X-Plex-Subtitle-Stream'], undefined);
   assert.notEqual(q.subtitles, 'burn');
 });
 
@@ -321,9 +321,9 @@ test('resolveStreamUrl primes decision with metadata path and headers', async fu
   assert.equal(startQuery.path, '/library/metadata/12345');
   assert.equal(startQuery.session, 'plex-decision-session');
   assert.equal(startQuery.transcodeSessionId, 'plex-decision-session');
-  assert.equal(startQuery.skipSubtitles, undefined);
-  assert.equal(startQuery.subtitles, 'segmented');
-  assert.equal(startQuery.subtitleStreamID, '1894445');
+  assert.equal(startQuery.skipSubtitles, '1');
+  assert.equal(startQuery.subtitles, undefined);
+  assert.equal(startQuery.subtitleStreamID, undefined);
   assert.equal(startQuery['X-Plex-Audio-Stream'], '1894443');
   assert.equal(startQuery['X-Plex-Token'], 'server-token-xyz');
 });
