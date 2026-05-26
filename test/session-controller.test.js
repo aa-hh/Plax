@@ -46,12 +46,14 @@ function baseSession(overrides) {
 var savedPlaybackPrefs;
 var savedPalmSystem;
 var savedWebOS;
+var savedFetch;
 
 test.beforeEach(function () {
   savedPlaybackPrefs = Object.assign({}, getState().playbackPrefs);
   resetPlexDeviceInfoForTest();
   savedPalmSystem = globalThis.PalmSystem;
   savedWebOS = globalThis.webOS;
+  savedFetch = globalThis.fetch;
 });
 
 test.afterEach(function () {
@@ -66,6 +68,11 @@ test.afterEach(function () {
     delete globalThis.webOS;
   } else {
     globalThis.webOS = savedWebOS;
+  }
+  if (savedFetch === undefined) {
+    delete globalThis.fetch;
+  } else {
+    globalThis.fetch = savedFetch;
   }
 });
 
@@ -260,6 +267,54 @@ test('resolveStreamUrl HLS transcode returns m3u8 and transcode-hls mode', async
   var result = await resolveStreamUrl(session);
   assert.equal(result.mode, 'transcode-hls');
   assert.ok(/start\.m3u8/.test(result.url));
+});
+
+test('resolveStreamUrl primes decision with metadata path and headers', async function () {
+  var calls = [];
+  globalThis.fetch = function (url, init) {
+    calls.push({ url: String(url), init: init || {} });
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: function () { return Promise.resolve('<MediaContainer/>'); },
+      headers: { get: function () { return 'application/xml'; } }
+    });
+  };
+
+  var session = baseSession({
+    item: { key: '/library/metadata/12345', ratingKey: '12345' },
+    playbackStrategy: 'direct-stream',
+    audioStreamId: 1894443,
+    subtitleStreamId: 1894445,
+    subtitleBurnIn: false,
+    offset: 454000
+  });
+  var result = await resolveStreamUrl(session);
+  var decision = calls.filter(function (call) {
+    return call.url.indexOf('/video/:/transcode/universal/decision') >= 0;
+  })[0];
+  assert.ok(decision);
+  var decisionQuery = parseQuery(decision.url);
+  var startQuery = parseQuery(result.url);
+
+  assert.equal(decisionQuery.path, '/library/metadata/12345');
+  assert.equal(decisionQuery.directStream, '1');
+  assert.equal(decisionQuery.offset, '454');
+  assert.equal(decisionQuery.skipSubtitles, undefined);
+  assert.equal(decisionQuery['X-Plex-Audio-Stream'], undefined);
+  assert.equal(decisionQuery['X-Plex-Auto-Audio-Stream'], undefined);
+  assert.equal(decisionQuery['X-Plex-Session-Identifier'], undefined);
+  assert.equal(decisionQuery['X-Plex-Token'], undefined);
+  assert.equal(decisionQuery['X-Plex-Client-Identifier'], undefined);
+  assert.equal(decision.init.headers['X-Plex-Token'], 'server-token-xyz');
+  assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'xplay-test-session');
+  assert.equal(decision.init.headers['X-Plex-Product'], 'Plex Web');
+
+  assert.equal(result.mode, 'direct-stream');
+  assert.equal(startQuery.path, partKey);
+  assert.equal(startQuery.skipSubtitles, '1');
+  assert.equal(startQuery['X-Plex-Audio-Stream'], '1894443');
+  assert.equal(startQuery['X-Plex-Token'], 'server-token-xyz');
 });
 
 test('resolveStreamUrl http-transcode returns start URL and transcode-http mode', async function () {

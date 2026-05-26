@@ -1,6 +1,13 @@
 import { getState } from '../core/store.js';
-import { serverUrl, fetchText } from '../plex/client.js';
+import {
+  serverUrl,
+  fetchText,
+  plexHeaders,
+  getServerToken,
+  redactPlexUrl
+} from '../plex/client.js';
 import { applyPlexClientFields } from '../plex/clientIdentity.js';
+import { buildQuery } from '../utils/fetch.js';
 import {
   applyProfileToParams,
   isDirectPlayOnlyQuality
@@ -10,6 +17,7 @@ import { normalizePlexPath } from './plexPaths.js';
 import {
   buildSubtitleTranscodeParams,
   resolveSessionPartPath,
+  resolveSessionMetadataPath,
   offsetSecondsForPlex,
   getActiveTranscodeSession,
   upgradeStrategyForTextSubtitles,
@@ -98,6 +106,57 @@ function buildPlaybackUrl(server, partKey, session, protocol) {
   return serverUrl(server.connectionUri, '/video/:/transcode/universal/start.m3u8', params, server);
 }
 
+function endpointUrl(base, path, params) {
+  var q = buildQuery(params || {});
+  return base.replace(/\/$/, '') + path + (q ? '?' + q : '');
+}
+
+function buildDecisionParams(server, partKey, session, protocol) {
+  var full = buildTranscodeParams(server, partKey, session, protocol);
+  var params = {};
+  [
+    'path',
+    'mediaIndex',
+    'partIndex',
+    'fastSeek',
+    'hasMDE',
+    'directPlay',
+    'directStream',
+    'directStreamAudio',
+    'autoAdjustQuality',
+    'mediaBufferSize',
+    'session',
+    'location',
+    'offset',
+    'maxVideoBitrate',
+    'videoResolution',
+    'protocol'
+  ].forEach(function (key) {
+    if (full[key] != null) params[key] = full[key];
+  });
+  params.path = resolveSessionMetadataPath(session) || full.path;
+  return params;
+}
+
+function buildDecisionHeaders(server, session) {
+  var transcodeSession = getActiveTranscodeSession(session) ||
+    session.sessionId || null;
+  var headers = plexHeaders({ Accept: 'application/xml' });
+  var token = getServerToken(server);
+  if (token) headers['X-Plex-Token'] = token;
+  if (transcodeSession) headers['X-Plex-Session-Identifier'] = transcodeSession;
+  return headers;
+}
+
+function decisionErrorDetails(err) {
+  if (!err || !err.status) return '';
+  var detail = ' HTTP ' + err.status;
+  if (err.status === 400 && err.body) {
+    detail += ' body="' + String(err.body).replace(/\s+/g, ' ').slice(0, 240) + '"';
+  }
+  return detail;
+}
+
 /**
  * Prime the playback session with PMS by calling `/decision` before requesting
  * the actual stream. Plex Web and PMP do this on every play and the transcoder
@@ -107,20 +166,24 @@ function buildPlaybackUrl(server, partKey, session, protocol) {
  */
 function buildDecisionUrl(server, partKey, session, protocol) {
   protocol = protocol || (session && session.transcodeProtocol) || 'hls';
-  var params = buildTranscodeParams(server, partKey, session, protocol);
-  return serverUrl(server.connectionUri, '/video/:/transcode/universal/decision', params, server);
+  var params = buildDecisionParams(server, partKey, session, protocol);
+  return endpointUrl(server.connectionUri, '/video/:/transcode/universal/decision', params);
 }
 
 function primePlaybackSession(server, partKey, session, protocol) {
   var url = buildDecisionUrl(server, partKey, session, protocol);
   if (!url) return Promise.resolve();
-  return fetchText(url, { timeout: 15000 }).then(function () {
+  return fetchText(url, {
+    headers: buildDecisionHeaders(server, session),
+    timeout: 15000
+  }).then(function () {
     /* PMS uses 200 OK with a MediaContainer describing the chosen
      * delivery; we don't need the body, only the side effect of
      * registering the session. */
   }).catch(function (err) {
     console.warn(
-      '[playback] decision prime failed: ' +
+      '[playback] decision prime failed for ' + redactPlexUrl(url) +
+        decisionErrorDetails(err) + ': ' +
         (err && err.message ? err.message : String(err))
     );
   });
