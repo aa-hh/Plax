@@ -270,6 +270,14 @@ test('buildSubtitleTranscodeParams remux passes soft subtitle stream to HLS sess
   assert.equal(remux.subtitleFormat, undefined);
 });
 
+test('buildSubtitleTranscodeParams remux can request segmented HLS subtitles', function () {
+  var remux = buildSubtitleTranscodeParams(3, 50, { remux: true, segmented: true });
+  assert.equal(remux.subtitleStreamID, '3');
+  assert.equal(remux.subtitles, 'segmented');
+  assert.equal(remux['X-Plex-Subtitle-Stream'], '3');
+  assert.equal(remux['X-Plex-Subtitle-Offset'], '50');
+});
+
 test('buildSubtitleTranscodeParams clientSubtitles skips server HLS subs', function () {
   var skip = buildSubtitleTranscodeParams(3, 50, { clientSubtitles: true });
   assert.equal(skip.skipSubtitles, '1');

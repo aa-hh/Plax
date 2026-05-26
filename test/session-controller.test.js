@@ -151,11 +151,14 @@ test('buildPlaybackUrl simulator Plex Web omits profile extra on HLS', function 
   var q = parseQuery(buildPlaybackUrl(remote, partKey, session, 'hls'));
   assert.equal(q['X-Plex-Product'], 'Plex Web');
   assert.equal(q['X-Plex-Client-Profile-Extra'], undefined);
-  assert.equal(q.path, partKey);
+  assert.equal(q.path, '/library/metadata/12345');
   assert.equal(q.location, 'wan');
   assert.equal(q.directStream, '1');
-  assert.equal(q.skipSubtitles, '1');
-  assert.equal(q.subtitles, undefined);
+  assert.equal(q.skipSubtitles, undefined);
+  assert.equal(q.subtitles, 'segmented');
+  assert.equal(q.subtitleStreamID, '1894445');
+  assert.equal(q['X-Plex-Subtitle-Stream'], '1894445');
+  assert.equal(q.transcodeSessionId, 'xplay-test-session');
 });
 
 test('buildPlaybackUrl transcode query includes offset seconds and fastSeek', function () {
@@ -209,16 +212,17 @@ test('buildPlaybackUrl includes location=lan for local PMS', function () {
   assert.equal(q.location, 'lan');
 });
 
-test('buildPlaybackUrl direct-stream with text subs skips server HLS subs', function () {
+test('buildPlaybackUrl direct-stream with text subs requests segmented HLS subs', function () {
   var session = baseSession({
     playbackStrategy: 'direct-stream',
     subtitleStreamId: 1894297,
     subtitleBurnIn: false
   });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
-  assert.equal(q.skipSubtitles, '1');
-  assert.equal(q.subtitleStreamID, undefined);
-  assert.equal(q['X-Plex-Subtitle-Stream'], undefined);
+  assert.equal(q.skipSubtitles, undefined);
+  assert.equal(q.subtitles, 'segmented');
+  assert.equal(q.subtitleStreamID, '1894297');
+  assert.equal(q['X-Plex-Subtitle-Stream'], '1894297');
   assert.notEqual(q.subtitles, 'burn');
 });
 
@@ -276,7 +280,9 @@ test('resolveStreamUrl primes decision with metadata path and headers', async fu
     return Promise.resolve({
       ok: true,
       status: 200,
-      text: function () { return Promise.resolve('<MediaContainer/>'); },
+      text: function () {
+        return Promise.resolve('<MediaContainer resourceSession="plex-decision-session"/>');
+      },
       headers: { get: function () { return 'application/xml'; } }
     });
   };
@@ -300,6 +306,7 @@ test('resolveStreamUrl primes decision with metadata path and headers', async fu
   assert.equal(decisionQuery.path, '/library/metadata/12345');
   assert.equal(decisionQuery.directStream, '1');
   assert.equal(decisionQuery.offset, '454');
+  assert.equal(decisionQuery.transcodeSessionId, 'xplay-test-session');
   assert.equal(decisionQuery.skipSubtitles, undefined);
   assert.equal(decisionQuery['X-Plex-Audio-Stream'], undefined);
   assert.equal(decisionQuery['X-Plex-Auto-Audio-Stream'], undefined);
@@ -311,8 +318,12 @@ test('resolveStreamUrl primes decision with metadata path and headers', async fu
   assert.equal(decision.init.headers['X-Plex-Product'], 'Plex Web');
 
   assert.equal(result.mode, 'direct-stream');
-  assert.equal(startQuery.path, partKey);
-  assert.equal(startQuery.skipSubtitles, '1');
+  assert.equal(startQuery.path, '/library/metadata/12345');
+  assert.equal(startQuery.session, 'plex-decision-session');
+  assert.equal(startQuery.transcodeSessionId, 'plex-decision-session');
+  assert.equal(startQuery.skipSubtitles, undefined);
+  assert.equal(startQuery.subtitles, 'segmented');
+  assert.equal(startQuery.subtitleStreamID, '1894445');
   assert.equal(startQuery['X-Plex-Audio-Stream'], '1894443');
   assert.equal(startQuery['X-Plex-Token'], 'server-token-xyz');
 });

@@ -526,7 +526,7 @@ function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
   if (options.remux === true) {
     var remux = {
       subtitleStreamID: String(streamId),
-      subtitles: 'auto',
+      subtitles: options.segmented === true ? 'segmented' : 'auto',
       'X-Plex-Subtitle-Stream': String(streamId)
     };
     if (offsetMs) {

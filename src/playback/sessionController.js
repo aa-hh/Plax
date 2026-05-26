@@ -44,8 +44,8 @@ function resolvePlaybackStrategy(session) {
 
 function buildTranscodeParams(server, partKey, session, protocol) {
   var prefs = getState().playbackPrefs || {};
-  var path = normalizePlexPath(partKey);
   var strategy = resolvePlaybackStrategy(session);
+  var path = resolveSessionMetadataPath(session) || normalizePlexPath(partKey);
   var fullTranscode = strategy === 'transcode' || strategy === 'http-transcode';
   var directStream = strategy === 'direct-stream';
   var transcodeSession = getActiveTranscodeSession(session) ||
@@ -69,6 +69,7 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     autoAdjustQuality: '0',
     mediaBufferSize: '102400',
     session: transcodeSession,
+    transcodeSessionId: transcodeSession,
     'X-Plex-Session-Identifier': transcodeSession,
     location: plexLocationForServer(server)
   });
@@ -83,8 +84,9 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     session.subtitleOffset,
     {
       burnIn: session.subtitleBurnIn === true,
-      clientSubtitles: softTextSubs,
-      remux: false
+      clientSubtitles: false,
+      remux: softTextSubs,
+      segmented: softTextSubs
     }
   ));
 
@@ -126,6 +128,7 @@ function buildDecisionParams(server, partKey, session, protocol) {
     'autoAdjustQuality',
     'mediaBufferSize',
     'session',
+    'transcodeSessionId',
     'location',
     'offset',
     'maxVideoBitrate',
@@ -157,6 +160,12 @@ function decisionErrorDetails(err) {
   return detail;
 }
 
+function extractDecisionResourceSession(xmlText) {
+  if (!xmlText) return null;
+  var match = String(xmlText).match(/\bresourceSession=(["'])(.*?)\1/);
+  return match && match[2] ? match[2] : null;
+}
+
 /**
  * Prime the playback session with PMS by calling `/decision` before requesting
  * the actual stream. Plex Web and PMP do this on every play and the transcoder
@@ -176,7 +185,9 @@ function primePlaybackSession(server, partKey, session, protocol) {
   return fetchText(url, {
     headers: buildDecisionHeaders(server, session),
     timeout: 15000
-  }).then(function () {
+  }).then(function (body) {
+    var resourceSession = extractDecisionResourceSession(body);
+    if (resourceSession && session) session.transcodeSessionId = resourceSession;
     /* PMS uses 200 OK with a MediaContainer describing the chosen
      * delivery; we don't need the body, only the side effect of
      * registering the session. */
