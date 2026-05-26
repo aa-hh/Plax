@@ -18,6 +18,7 @@ import {
   isClientSubtitlePlaybackMode,
   shouldBurnInSubtitle,
   buildSubtitleTranscodeParams,
+  upgradeStrategyForTextSubtitles,
   buildClientSubtitleUrl,
   buildSubtitleFetchPlan,
   prepareClientSubtitlePlayback,
@@ -258,6 +259,23 @@ test('buildSubtitleTranscodeParams only burns when burnIn is explicitly true', f
   assert.equal(burned.subtitleFormat, 'srt');
   assert.equal(burned.subtitles, 'burn');
   assert.equal(burned['X-Plex-Subtitle-Offset'], '100');
+});
+
+test('buildSubtitleTranscodeParams remux passes soft subtitle stream to HLS session', function () {
+  var remux = buildSubtitleTranscodeParams(3, 50, { remux: true });
+  assert.equal(remux.subtitleStreamID, '3');
+  assert.equal(remux.subtitles, 'auto');
+  assert.equal(remux['X-Plex-Subtitle-Stream'], '3');
+  assert.equal(remux['X-Plex-Subtitle-Offset'], '50');
+  assert.equal(remux.subtitleFormat, undefined);
+});
+
+test('upgradeStrategyForTextSubtitles promotes direct to direct-stream when subs selected', function () {
+  var session = { subtitleStreamId: 2, subtitleBurnIn: false };
+  assert.equal(upgradeStrategyForTextSubtitles('direct', session), 'direct-stream');
+  assert.equal(upgradeStrategyForTextSubtitles('transcode', session), 'transcode');
+  assert.equal(upgradeStrategyForTextSubtitles('direct', { subtitleBurnIn: true, subtitleStreamId: 2 }), 'direct');
+  assert.equal(upgradeStrategyForTextSubtitles('direct', { subtitleStreamId: null }), 'direct');
 });
 
 test('resolveSessionPartPath prefers version partKey over metadata key', function () {

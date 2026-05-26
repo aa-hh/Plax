@@ -936,6 +936,25 @@ function playerScreen(root, params, navigate) {
     return selectedSubtitleId != null && isGraphicalSubtitleSelected();
   }
 
+  function hasSelectedTextSubtitle() {
+    return selectedSubtitleId != null && !isGraphicalSubtitleSelected();
+  }
+
+  function shouldPreferRemuxForSubtitles() {
+    if (!hasSelectedTextSubtitle() || isStrictDirectPlay()) return false;
+    return allowsPlaybackFallback(selectedQuality);
+  }
+
+  function applyRemuxStrategyForSubtitles(opts) {
+    if (!opts || !shouldPreferRemuxForSubtitles()) return opts;
+    if (opts.playbackStrategy === 'direct' || opts.playbackStrategy == null) {
+      opts.playbackStrategy = 'direct-stream';
+      opts.forceTranscode = false;
+      opts.transcodeProtocol = 'hls';
+    }
+    return opts;
+  }
+
   function applyClientSubtitle() {
     if (!session || selectedSubtitleId == null) return Promise.resolve();
     var track = selectedTextSubtitleTrack();
@@ -1070,18 +1089,21 @@ function playerScreen(root, params, navigate) {
         closeMenu();
         return;
       }
+      var previousSubtitleId = selectedSubtitleId;
       selectedSubtitleId = id;
       closeMenu();
       updateTrackButtonLabels();
       if (id == null) {
         var hadBurnIn = session && session.subtitleBurnIn;
+        var wasRemuxForSubs = playbackMode === 'direct-stream' && previousSubtitleId != null &&
+          !findSubtitleTrack(graphicalSubtitleTracks, previousSubtitleId);
         player.clearSubtitles();
         syncSubtitleDelayControls();
         if (session) {
           session.subtitleStreamId = null;
           session.subtitleBurnIn = false;
         }
-        if (hadBurnIn) {
+        if (hadBurnIn || wasRemuxForSubs) {
           restartPlaybackAt(restartOffsetMs(), null, 'subtitle-off');
         }
         return;
@@ -1093,12 +1115,17 @@ function playerScreen(root, params, navigate) {
       }
       if (canUseClientSubtitles(playbackMode, track)) {
         var switchingFromBurnIn = session && session.subtitleBurnIn;
+        var needsRemux = playbackMode === 'direct' && shouldPreferRemuxForSubtitles();
         if (session) {
           session.subtitleStreamId = id;
           session.subtitleBurnIn = false;
         }
         if (switchingFromBurnIn) {
           restartPlaybackAt(restartOffsetMs(), null, 'subtitle-soft');
+          return;
+        }
+        if (needsRemux) {
+          restartPlaybackAt(restartOffsetMs(), 'hls', 'subtitle-remux');
           return;
         }
         applyClientSubtitle();
@@ -1559,7 +1586,7 @@ function playerScreen(root, params, navigate) {
       forceTranscode: params.forceTranscode || (session && session.forceTranscode),
       transcodeProtocol: protocol || (session && session.transcodeProtocol) || 'hls'
     };
-    if (streamChange === 'direct-stream-fallback') {
+    if (streamChange === 'direct-stream-fallback' || streamChange === 'subtitle-remux') {
       opts.playbackStrategy = 'direct-stream';
       opts.forceTranscode = false;
       opts.transcodeProtocol = 'hls';
@@ -1600,11 +1627,17 @@ function playerScreen(root, params, navigate) {
       opts.forceTranscode = true;
       opts.playbackStrategy = 'transcode';
     }
-    if (streamChange === 'subtitle-off' && session && session.subtitleBurnIn) {
-      opts.forceTranscode = true;
-      opts.playbackStrategy = session.playbackStrategy || 'transcode';
-      opts.transcodeProtocol = session.transcodeProtocol;
+    if (streamChange === 'subtitle-off') {
       opts.subtitleBurnIn = false;
+      if (session && session.subtitleBurnIn) {
+        opts.forceTranscode = true;
+        opts.playbackStrategy = session.playbackStrategy || 'transcode';
+        opts.transcodeProtocol = session.transcodeProtocol;
+      } else if (playbackMode === 'direct-stream' && selectedSubtitleId == null) {
+        opts.forceTranscode = false;
+        opts.playbackStrategy = initialPlaybackStrategy(currentProbe, false);
+        opts.transcodeProtocol = 'hls';
+      }
     }
     if (isGraphicalSubtitleSelected()) {
       opts.forceTranscode = true;
@@ -1622,6 +1655,7 @@ function playerScreen(root, params, navigate) {
         opts.forceTranscode
       );
     }
+    applyRemuxStrategyForSubtitles(opts);
     return opts;
   }
 

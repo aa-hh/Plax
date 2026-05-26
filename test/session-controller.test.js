@@ -110,6 +110,27 @@ test('buildPlaybackUrl direct-stream strategy remux flags', function () {
   assert.equal(q.directStream, '1');
 });
 
+test('buildPlaybackUrl direct-stream with text subs includes soft subtitle params', function () {
+  var session = baseSession({
+    playbackStrategy: 'direct-stream',
+    subtitleStreamId: 1894297,
+    subtitleBurnIn: false
+  });
+  var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.subtitles, 'auto');
+  assert.equal(q.subtitleStreamID, '1894297');
+  assert.equal(q['X-Plex-Subtitle-Stream'], '1894297');
+  assert.notEqual(q.subtitles, 'burn');
+});
+
+test('resolvePlaybackStrategy upgrades direct to direct-stream when text subs selected', function () {
+  setState({ playbackPrefs: Object.assign({}, savedPlaybackPrefs, { quality: 'auto', directPlay: true }) });
+  assert.equal(
+    resolvePlaybackStrategy({ quality: 'auto', subtitleStreamId: 5, subtitleBurnIn: false }),
+    'direct-stream'
+  );
+});
+
 test('resolvePlaybackStrategy honors explicit session.playbackStrategy', function () {
   assert.equal(resolvePlaybackStrategy({ playbackStrategy: 'direct-stream' }), 'direct-stream');
   assert.equal(resolvePlaybackStrategy({ playbackStrategy: 'http-transcode' }), 'http-transcode');

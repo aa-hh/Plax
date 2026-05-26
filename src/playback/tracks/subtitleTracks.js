@@ -492,18 +492,49 @@ function shouldRetrySubtitleFetch(err) {
   return status >= 400;
 }
 
+function hasTextSubtitleStream(session) {
+  return !!(session && session.subtitleStreamId != null && session.subtitleBurnIn !== true);
+}
+
+/** Prefer HLS remux over progressive direct play when soft text subs are active. */
+function preferRemuxForTextSubtitles(session) {
+  if (!hasTextSubtitleStream(session)) return false;
+  if (session.forceTranscode) return false;
+  return true;
+}
+
+function upgradeStrategyForTextSubtitles(strategy, session) {
+  if (strategy !== 'direct') return strategy;
+  if (!preferRemuxForTextSubtitles(session)) return strategy;
+  return 'direct-stream';
+}
+
 function buildSubtitleTranscodeParams(streamId, offsetMs, options) {
   options = options || {};
-  if (options.burnIn !== true || streamId == null) return {};
-  var p = {
-    'X-Plex-Subtitle-Stream': String(streamId),
-    subtitleFormat: 'srt',
-    subtitles: 'burn'
-  };
-  if (offsetMs) {
-    p['X-Plex-Subtitle-Offset'] = String(offsetMs);
+  if (streamId == null) return {};
+  if (options.burnIn === true) {
+    var burned = {
+      'X-Plex-Subtitle-Stream': String(streamId),
+      subtitleFormat: 'srt',
+      subtitles: 'burn'
+    };
+    if (offsetMs) {
+      burned['X-Plex-Subtitle-Offset'] = String(offsetMs);
+    }
+    return burned;
   }
-  return p;
+  if (options.remux === true) {
+    var remux = {
+      subtitleStreamID: String(streamId),
+      subtitles: 'auto',
+      'X-Plex-Subtitle-Stream': String(streamId)
+    };
+    if (offsetMs) {
+      remux['X-Plex-Subtitle-Offset'] = String(offsetMs);
+    }
+    return remux;
+  }
+  return {};
 }
 
 export {
@@ -511,6 +542,9 @@ export {
   classifySubtitleDelivery,
   isSidecarSubtitleTrack,
   buildSubtitleTranscodeParams,
+  hasTextSubtitleStream,
+  preferRemuxForTextSubtitles,
+  upgradeStrategyForTextSubtitles,
   findSubtitleTrack,
   resolveStreamKeyPath,
   resolveStreamKeyPathWithExt,

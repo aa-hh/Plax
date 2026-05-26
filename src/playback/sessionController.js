@@ -9,7 +9,8 @@ import {
   buildSubtitleTranscodeParams,
   resolveSessionPartPath,
   offsetSecondsForPlex,
-  getActiveTranscodeSession
+  getActiveTranscodeSession,
+  upgradeStrategyForTextSubtitles
 } from './tracks/subtitleTracks.js';
 import {
   applyWebOsHlsTranscodeParams,
@@ -26,7 +27,7 @@ function resolvePlaybackStrategy(session) {
   if (session.forceTranscode || prefs.directPlay === false) {
     return session.transcodeProtocol === 'http' ? 'http-transcode' : 'transcode';
   }
-  return 'direct';
+  return upgradeStrategyForTextSubtitles('direct', session);
 }
 
 function buildTranscodeParams(server, partKey, session, protocol) {
@@ -56,7 +57,10 @@ function buildTranscodeParams(server, partKey, session, protocol) {
   Object.assign(params, buildSubtitleTranscodeParams(
     session.subtitleStreamId,
     session.subtitleOffset,
-    { burnIn: session.subtitleBurnIn === true }
+    {
+      burnIn: session.subtitleBurnIn === true,
+      remux: directStream && session.subtitleStreamId != null && session.subtitleBurnIn !== true
+    }
   ));
 
   if (protocol === 'http') {
