@@ -21,6 +21,11 @@ import { isDirectPlayOnlyQuality } from '../../playback/qualityProfiles.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
 import { formatDuration } from '../format.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import {
+  watchlistBookmarkButtonHtml,
+  supportsWatchlistBookmark,
+  wireWatchlistBookmark
+} from '../components/watchlistBookmark.js';
 import { loadUltraBlurBackground } from '../../plex/ultrablur.js';
 import {
   startNetworkProbeIfNeeded,
@@ -117,6 +122,19 @@ function detailScreen(root, params, navigate) {
     if (!score || isNaN(score)) return '';
     var text = score % 1 === 0 ? String(score) : score.toFixed(1);
     return label + ' ' + text;
+  }
+
+  function watchlistBookmarkMarkup(item) {
+    return supportsWatchlistBookmark(item) ? watchlistBookmarkButtonHtml(false) : '';
+  }
+
+  function buildDetailTopBar(innerLeftHtml, item) {
+    var bookmark = watchlistBookmarkMarkup(item);
+    if (!innerLeftHtml && !bookmark) return '';
+    return '<div class="detail-top-bar detail-top-bar--with-bookmark">' +
+      (innerLeftHtml || '') +
+      bookmark +
+      '</div>';
   }
 
   function breadcrumbLabel() {
@@ -779,12 +797,13 @@ function detailScreen(root, params, navigate) {
     screen.innerHTML =
       '<div class="detail-layout detail-layout--episode">' +
       '<div class="detail-episode-panel">' +
-      '<div class="detail-top-bar" data-cols="2">' +
-      '<button type="button" class="detail-breadcrumb btn" id="detail-breadcrumb" tabindex="0">← ' +
-      escapeHtml(breadcrumbLabel()) + '</button>' +
-      '<button type="button" class="detail-episode-picker btn" id="btn-episode-picker" tabindex="0">' +
-      escapeHtml(epCode || 'Episode') + ' · All episodes</button>' +
-      '</div>' +
+      buildDetailTopBar(
+        '<button type="button" class="detail-breadcrumb btn" id="detail-breadcrumb" tabindex="0">← ' +
+        escapeHtml(breadcrumbLabel()) + '</button>' +
+        '<button type="button" class="detail-episode-picker btn" id="btn-episode-picker" tabindex="0">' +
+        escapeHtml(epCode || 'Episode') + ' · All episodes</button>',
+        item
+      ) +
       '<div class="detail-episode-main">' +
       '<div class="detail-episode-art-wrap">' +
       '<img class="detail-episode-art" id="detail-episode-art" alt="" />' +
@@ -908,6 +927,7 @@ function detailScreen(root, params, navigate) {
     var modalCancel = screen.querySelector('#detail-modal-cancel');
     if (modalCancel) modalCancel.addEventListener('click', closeDetailModal);
 
+    wireWatchlistBookmark(screen, item);
     focusFirst(screen);
   }
 
@@ -918,13 +938,13 @@ function detailScreen(root, params, navigate) {
     selectedVersion = pickBestVersion(versions, getState().playbackPrefs);
     currentProbe = probePlayback(item, selectedVersion, null, deviceInfo);
 
-    var topBar = '';
+    var topBarInner = '';
     if (params.parentDetail && params.parentDetail.ratingKey) {
-      topBar =
-        '<div class="detail-top-bar detail-top-bar--solo">' +
+      topBarInner =
         '<button type="button" class="detail-breadcrumb btn" id="detail-breadcrumb" tabindex="0">← ' +
-        escapeHtml(breadcrumbLabel()) + '</button></div>';
+        escapeHtml(breadcrumbLabel()) + '</button>';
     }
+    var topBar = buildDetailTopBar(topBarInner, item);
 
     screen.innerHTML =
       '<div class="detail-layout">' +
@@ -1052,6 +1072,7 @@ function detailScreen(root, params, navigate) {
       refreshWatchButtons(item);
     }
 
+    wireWatchlistBookmark(screen, item);
     focusFirst(screen);
   }
 

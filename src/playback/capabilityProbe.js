@@ -31,24 +31,31 @@ function checkHdrSupport(version, deviceInfo, warnings) {
   warnings.push('HDR content may look dim or incorrect on this TV (no HDR10/Dolby Vision reported)');
 }
 
+function codecReported(cap) {
+  return !!(cap && cap !== '');
+}
+
 function probePlayback(item, version, capabilities, deviceInfo) {
-  capabilities = capabilities || getCodecCapabilities();
+  capabilities = capabilities || getCodecCapabilities(deviceInfo);
   var warnings = [];
-  var codecsOk = true;
+  var videoOk = true;
+  var audioDirectOk = true;
   var videoCodec = (version && version.videoCodec) || '';
   var audioCodec = (version && version.audioCodec) || '';
   var container = (version && version.container) || '';
 
   if (videoCodec.indexOf('hevc') >= 0 || videoCodec.indexOf('h265') >= 0) {
-    if (!capabilities.hevc || capabilities.hevc === '') {
-      codecsOk = false;
+    if (!codecReported(capabilities.hevc)) {
+      videoOk = false;
       warnings.push('HEVC may require transcode on this TV');
     }
   }
   if (audioCodec.indexOf('dca') >= 0 || audioCodec.indexOf('dts') >= 0) {
-    if (!capabilities.dts || capabilities.dts === '') {
-      codecsOk = false;
+    if (!codecReported(capabilities.dts)) {
+      audioDirectOk = false;
       warnings.push('DTS audio may require server transcode');
+    } else if (capabilities.dtsInferred) {
+      warnings.push('DTS: TV hardware profile (browser probe inconclusive)');
     }
   }
   if (audioCodec.indexOf('ac3') >= 0 || audioCodec.indexOf('eac3') >= 0) {
@@ -59,18 +66,19 @@ function probePlayback(item, version, capabilities, deviceInfo) {
   checkHdrSupport(version, deviceInfo, warnings);
 
   var bitrateCheck = checkBitrate(version, deviceInfo);
-  if (bitrateCheck.exceeds) {
-    codecsOk = false;
-    warnings.push(bitrateCheck.message);
-  }
+  var bitrateBlocks = bitrateCheck.exceeds;
 
   var progressiveOk = isNativeProgressiveContainer(container);
-  var canDirectStream = codecsOk;
-  var canDirectPlay = codecsOk && progressiveOk;
-  if (codecsOk && !progressiveOk) {
+  var canDirectPlay = videoOk && audioDirectOk && progressiveOk && !bitrateBlocks;
+  var canDirectStream = videoOk && !bitrateBlocks;
+
+  if (videoOk && !bitrateBlocks && !progressiveOk) {
     warnings.push('Container will use direct stream (HLS remux) on this TV');
-  } else if (codecsOk && String(container).toLowerCase() === 'mkv') {
+  } else if (videoOk && !bitrateBlocks && String(container).toLowerCase() === 'mkv') {
     warnings.push('MKV may direct play on this TV; Auto will try remux if playback fails');
+  }
+  if (!audioDirectOk && canDirectStream && !bitrateBlocks) {
+    warnings.push('Auto can use HLS remux or transcode when DTS is not direct-playable');
   }
 
   return {

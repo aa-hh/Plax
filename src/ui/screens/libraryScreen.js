@@ -4,6 +4,10 @@ import { filterLibrariesForUser } from '../../security/libraryAccess.js';
 import { createMediaCard } from '../components/mediaCard.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 import {
+  mountBrowsingHubNav,
+  libraryHubId
+} from '../components/browsingHubNav.js';
+import {
   hydrateFocusedNeighborhood,
   hydrateGridViewport,
   primeVisiblePosters
@@ -18,22 +22,25 @@ function libraryScreen(root, params, navigate) {
   var server = state.activeServer;
   var libraries = filterLibrariesForUser(state.libraries || [], state.activeHomeUser);
   var activeLib = state.activeLibrary || libraries[0];
+  if (params.libraryId) {
+    var picked = libraries.filter(function (lib) {
+      return String(lib.id) === String(params.libraryId);
+    })[0];
+    if (picked) activeLib = picked;
+  }
   var isScanning = false;
   var scanReloadTimer = null;
 
   var screen = document.createElement('div');
   screen.className = 'screen library-screen';
   screen.innerHTML =
-    '<div class="top-nav">' +
-    '<button class="nav-item" data-nav="home" tabindex="0">Home</button>' +
-    '<button class="nav-item active" data-nav="library" tabindex="0">Library</button>' +
-    '<button class="nav-item" data-nav="search" tabindex="0">Search</button>' +
-    '<button class="nav-item" data-nav="settings" tabindex="0">Settings</button>' +
-    '</div>' +
-    '<h1 class="screen-title screen-title-compact" id="lib-title">Library</h1>' +
     '<div class="library-layout">' +
-    '<div class="library-sidebar" id="lib-sidebar"></div>' +
+    '<div class="library-sidebar">' +
+    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+    '<button class="library-item library-action" id="btn-scan-library" tabindex="0">Scan for new media</button>' +
+    '</div>' +
     '<div class="library-main" id="lib-main">' +
+    '<h1 class="screen-title screen-title-compact" id="lib-title">Library</h1>' +
     '<p class="watch-status-msg" id="lib-scan-status"></p>' +
     '<div class="media-grid" id="media-grid" data-cols="6"></div>' +
     '</div>' +
@@ -42,15 +49,19 @@ function libraryScreen(root, params, navigate) {
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
 
-  screen.querySelector('[data-nav="home"]').addEventListener('click', function () { navigate('home', {}); });
-  screen.querySelector('[data-nav="search"]').addEventListener('click', function () {
-    navigate('search', { _from: 'library' });
+  var hubNavHost = document.getElementById('browsing-hub-nav-host');
+  var hubNav = mountBrowsingHubNav(hubNavHost, {
+    navigate: navigate,
+    fromRoute: 'library',
+    activeLibrary: activeLib,
+    onLibrarySelect: function (lib) {
+      setState({ activeLibrary: lib });
+      activeLib = lib;
+      hubNav.setActiveId(libraryHubId(lib));
+      loadGrid(lib);
+    }
   });
-  screen.querySelector('[data-nav="settings"]').addEventListener('click', function () {
-    navigate('settings', { _from: 'library' });
-  });
-
-  var sidebar = document.getElementById('lib-sidebar');
+  var scanBtn = document.getElementById('btn-scan-library');
   // Full grid virtualization is deferred (see code review #5); initial poster batch is capped.
   var grid = document.getElementById('media-grid');
   var scanStatus = document.getElementById('lib-scan-status');
@@ -162,28 +173,7 @@ function libraryScreen(root, params, navigate) {
     focusFirst(grid);
   }
 
-  libraries.forEach(function (lib) {
-    var btn = document.createElement('button');
-    btn.className = 'library-item' + (activeLib && activeLib.id === lib.id ? ' active' : '');
-    btn.textContent = lib.title;
-    btn.tabIndex = 0;
-    btn.addEventListener('click', function () {
-      setState({ activeLibrary: lib });
-      activeLib = lib;
-      loadGrid(lib);
-      sidebar.querySelectorAll('.library-item').forEach(function (el) { el.classList.remove('active'); });
-      btn.classList.add('active');
-    });
-    sidebar.appendChild(btn);
-  });
-
-  var scanBtn = document.createElement('button');
-  scanBtn.className = 'library-item library-action';
-  scanBtn.id = 'btn-scan-library';
-  scanBtn.textContent = 'Scan for new media';
-  scanBtn.tabIndex = 0;
   scanBtn.addEventListener('click', startSectionScan);
-  sidebar.appendChild(scanBtn);
 
   function loadGrid(lib) {
     var token = ++gridLoadToken;
@@ -259,7 +249,7 @@ function libraryScreen(root, params, navigate) {
   if (activeLib) loadGrid(activeLib);
   else grid.innerHTML = '<p class="status-msg">No libraries available</p>';
 
-  focusFirst(screen);
+  if (!hubNav.focusSidebar()) focusFirst(screen);
 
   return {
     destroy: function () {

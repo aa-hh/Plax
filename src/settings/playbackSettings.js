@@ -48,7 +48,7 @@ function renderPlaybackSettings(container) {
     var id = qsel.value || 'auto';
     if (id === 'auto') {
       qualityHint.textContent =
-        'Tries direct play, then HLS remux (stream copy), then server transcode.';
+        'Recommended on LG B8 and most TVs — tries direct play, then HLS remux (stream copy), then server transcode.';
     } else if (id === 'original' || id === 'directOnly') {
       qualityHint.textContent =
         'Plays the original Plex file only — no automatic remux or transcode fallback.';

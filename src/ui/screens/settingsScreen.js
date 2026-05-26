@@ -4,9 +4,17 @@ import { renderNetworkSettings } from '../../settings/networkSettings.js';
 import { renderPlaybackSettings } from '../../settings/playbackSettings.js';
 import { fetchHomeUsers } from '../../plex/users/homeUsers.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { VERSION } from '../../plex/client.js';
 import { isPerfEnabled } from '../../perf/resourceMonitor.js';
 import * as cache from '../../core/cache.js';
+import { canUseWatchlists } from '../../watchlists/access.js';
+import {
+  listWatchlists,
+  createWatchlist,
+  renameWatchlist,
+  deleteWatchlist
+} from '../../watchlists/store.js';
 
 function truncateId(id) {
   if (!id) return '—';
@@ -25,13 +33,9 @@ function settingsScreen(root, params, navigate) {
   var screen = document.createElement('div');
   screen.className = 'screen settings-screen';
   screen.innerHTML =
-    '<div class="top-nav">' +
-    '<button class="nav-item" data-nav="home" tabindex="0">Home</button>' +
-    '<button class="nav-item" data-nav="library" tabindex="0">Library</button>' +
-    '<button class="nav-item" data-nav="search" tabindex="0">Search</button>' +
-    '<button class="nav-item active" data-nav="settings" tabindex="0">Settings</button>' +
-    '<button class="nav-item" data-nav="design-review" tabindex="0">Design Review</button>' +
-    '</div>' +
+    '<div class="home-layout settings-layout">' +
+    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+    '<div class="home-main settings-main">' +
     '<h1 class="screen-title screen-title-compact">Settings</h1>' +
     '<div class="settings-content">' +
     '<p class="status-msg settings-status" id="settings-status"></p>' +
@@ -39,6 +43,8 @@ function settingsScreen(root, params, navigate) {
     '<div id="account-section" class="settings-info-block"></div>' +
     '<h2 class="settings-section-title">Plex Home</h2>' +
     '<div id="plex-home-section"></div>' +
+    '<h2 class="settings-section-title settings-watchlists-title hidden" id="watchlists-section-title">Watchlists</h2>' +
+    '<div id="watchlists-section" class="hidden"></div>' +
     '<h2 class="settings-section-title">Playback</h2>' +
     '<div id="playback-section"></div>' +
     '<h2 class="settings-section-title">Network</h2>' +
@@ -49,22 +55,14 @@ function settingsScreen(root, params, navigate) {
     '<button class="btn" id="btn-back" tabindex="0">Back</button>' +
     '<button class="btn" id="btn-signout" tabindex="0">Sign out</button>' +
     '</div>' +
-    '</div>';
+    '</div></div></div>';
 
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
-
-  screen.querySelector('[data-nav="home"]').addEventListener('click', function () {
-    navigate('home', {});
-  });
-  screen.querySelector('[data-nav="library"]').addEventListener('click', function () {
-    navigate('library', {});
-  });
-  screen.querySelector('[data-nav="search"]').addEventListener('click', function () {
-    navigate('search', { _from: 'settings' });
-  });
-  screen.querySelector('[data-nav="design-review"]').addEventListener('click', function () {
-    navigate('design-review', { _from: 'settings' });
+  var hubNav = mountBrowsingHubNav(document.getElementById('browsing-hub-nav-host'), {
+    navigate: navigate,
+    activeRoute: 'settings',
+    fromRoute: 'settings'
   });
 
   var statusEl = document.getElementById('settings-status');
@@ -99,6 +97,16 @@ function settingsScreen(root, params, navigate) {
 
   renderPlaybackSettings(document.getElementById('playback-section'));
   renderNetworkSettings(document.getElementById('network-section'));
+
+  if (canUseWatchlists(activeUser)) {
+    var wlTitle = document.getElementById('watchlists-section-title');
+    var wlSection = document.getElementById('watchlists-section');
+    if (wlTitle) wlTitle.classList.remove('hidden');
+    if (wlSection) {
+      wlSection.classList.remove('hidden');
+      renderWatchlistsSettings(wlSection, activeUser, navigate);
+    }
+  }
 
   var plexHomeSection = document.getElementById('plex-home-section');
   plexHomeSection.innerHTML =
@@ -181,8 +189,70 @@ function settingsScreen(root, params, navigate) {
     navigate('pairing', {});
   });
 
-  focusFirst(screen);
+  if (!hubNav.focusSidebar()) focusFirst(screen);
   return { destroy: function () { detachFocus(); } };
+}
+
+function renderWatchlistsSettings(container, user, navigate) {
+  container.innerHTML =
+    '<p class="settings-muted">Create lists and add titles with the bookmark on movie, season, and episode screens.</p>' +
+    '<div class="settings-row"><label>New list</label>' +
+    '<button class="btn" id="btn-create-watchlist" tabindex="0">Create watchlist</button></div>' +
+    '<div id="watchlists-settings-list" class="settings-watchlists-list"></div>';
+
+  function refreshList() {
+    var listEl = document.getElementById('watchlists-settings-list');
+    if (!listEl) return;
+    var lists = listWatchlists(user);
+    listEl.innerHTML = '';
+    if (!lists.length) {
+      listEl.innerHTML = '<p class="settings-muted">No watchlists yet.</p>';
+      return;
+    }
+    lists.forEach(function (wl) {
+      var row = document.createElement('div');
+      row.className = 'settings-watchlist-row';
+      row.innerHTML =
+        '<span class="settings-watchlist-name">' + escapeHtml(wl.name) + '</span>' +
+        '<button type="button" class="btn settings-watchlist-open" data-id="' + escapeHtml(wl.id) + '" tabindex="0">Open</button>' +
+        '<button type="button" class="btn settings-watchlist-rename" data-id="' + escapeHtml(wl.id) + '" tabindex="0">Rename</button>' +
+        '<button type="button" class="btn settings-watchlist-delete" data-id="' + escapeHtml(wl.id) + '" tabindex="0">Delete</button>';
+      listEl.appendChild(row);
+    });
+    Array.prototype.slice.call(listEl.querySelectorAll('.settings-watchlist-open')).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        navigate('watchlist', { watchlistId: btn.getAttribute('data-id') });
+      });
+    });
+    Array.prototype.slice.call(listEl.querySelectorAll('.settings-watchlist-rename')).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-id');
+        var current = listWatchlists(user).filter(function (w) { return w.id === id; })[0];
+        var next = prompt('Watchlist name', current ? current.name : '');
+        if (!next) return;
+        renameWatchlist(user, id, next);
+        refreshList();
+      });
+    });
+    Array.prototype.slice.call(listEl.querySelectorAll('.settings-watchlist-delete')).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-id');
+        var current = listWatchlists(user).filter(function (w) { return w.id === id; })[0];
+        if (!current || !confirm('Delete "' + current.name + '"?')) return;
+        deleteWatchlist(user, id);
+        refreshList();
+      });
+    });
+  }
+
+  document.getElementById('btn-create-watchlist').addEventListener('click', function () {
+    var name = prompt('Watchlist name', 'Watchlist');
+    if (!name) return;
+    createWatchlist(user, name);
+    refreshList();
+  });
+
+  refreshList();
 }
 
 export { settingsScreen };

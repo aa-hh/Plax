@@ -151,6 +151,7 @@ function mapLibraryItem(item, server) {
     viewCount: parseInt(item.viewCount, 10) || 0,
     leafCount: parseInt(item.leafCount, 10) || 0,
     viewedLeafCount: parseInt(item.viewedLeafCount, 10) || 0,
+    librarySectionID: item.librarySectionID != null ? String(item.librarySectionID) : '',
     parentRatingKey: item.parentRatingKey,
     grandparentRatingKey: item.grandparentRatingKey,
     grandparentTitle: item.grandparentTitle,
@@ -559,7 +560,32 @@ function prefetchHomeHubs(server, opts) {
 }
 
 function getContinueWatching(server) {
-  return getHubItems(server, '/hubs/continueWatching', 24);
+  function dedupe(items) {
+    var seen = {};
+    return (items || []).filter(function (item) {
+      if (!item) return false;
+      var key = String(item.ratingKey || item.key || '').trim();
+      if (!key) return true;
+      if (seen[key]) return false;
+      seen[key] = 1;
+      return true;
+    });
+  }
+
+  return getHubItems(server, '/hubs/continueWatching', 24).then(function (items) {
+    if (items && items.length) return dedupe(items);
+    return getHubItems(server, '/hubs/home/continueWatching', 24).then(function (altItems) {
+      if (altItems && altItems.length) return dedupe(altItems);
+      return Promise.all([
+        getOnDeck(server, 'show'),
+        getOnDeck(server, 'movie')
+      ]).then(function (parts) {
+        return dedupe((parts[0] || []).concat(parts[1] || []));
+      });
+    });
+  }).catch(function () {
+    return [];
+  });
 }
 
 function getRecentlyAdded(server, mediaType) {

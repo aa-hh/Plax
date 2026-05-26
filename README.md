@@ -1,12 +1,13 @@
 # XPlay Lite
 
-Ultra-lightweight Plex client for **LG webOS TV 5.0+** Smart TVs. Playback-first design aligned with [LG platform specifications](https://webostv.developer.lge.com/develop/specifications).
+Ultra-lightweight Plex client for **LG webOS TV 4.0+** Smart TVs (including 2018 OLED B8). Playback-first design aligned with [LG platform specifications](https://webostv.developer.lge.com/develop/specifications).
 
 ## Platform requirements
 
-- **Minimum: webOS TV 5.0** (2020, Chromium 68)
+- **Minimum: webOS TV 4.0** (2018 LG OLED B8 and newer)
+- **Primary test target: webOS TV 5.0+** (2020, Chromium 68)
 - webOS TV 6.0+ and current models fully supported
-- webOS TV 4.x and earlier are **not** supported (blocked at launch)
+- webOS TV 3.x and earlier are **not** supported (blocked at launch)
 
 ## Features
 
@@ -144,6 +145,6 @@ For browser dev, serve `dist/` over HTTP (version gate skipped outside TV runtim
 ## Known limitations
 
 - No automated unit/integration test harness yet; quality checks are currently static validation plus simulator/device smoke testing.
-- Older LG webOS TV versions below 5.0 are intentionally unsupported.
+- webOS 4 TVs (e.g. B8) use an older Chromium than webOS 5; prefer **Auto** quality for DTS or borderline codecs (see [compatibility matrix](docs/compatibility-matrix.md)).
 - Some subtitle formats and playback edge cases depend on LG media engine constraints.
 - Full details: [docs/compatibility-matrix.md](docs/compatibility-matrix.md).

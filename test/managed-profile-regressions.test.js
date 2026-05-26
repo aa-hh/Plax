@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mapFallbackOwnerToHomeUser } from '../src/plex/users/homeUsers.js';
 import { shouldRejectManagedSwitchToken } from '../src/ui/screens/profilePickerScreen.js';
 import { shouldBlockIncompleteRestrictedSession } from '../src/ui/screens/bootstrapScreen.js';
+import { hasIncompleteRestrictedSession, resolveStartupRoute } from '../src/core/startupRouting.js';
 
 test('home user fallback preserves non-admin state', function () {
   var mapped = mapFallbackOwnerToHomeUser({
@@ -36,10 +37,18 @@ test('managed profile switch rejects missing switched token', function () {
   );
 });
 
-test('managed profile switch rejects unchanged owner token', function () {
+test('managed profile switch allows unchanged owner token', function () {
   assert.equal(
     shouldRejectManagedSwitchToken({ admin: false }, 'owner-token', 'owner-token'),
-    true
+    false
+  );
+});
+
+test('managed profile switch keeps accepting token when it matches owner', function () {
+  var switchedToken = 'shared-valid-token';
+  assert.equal(
+    shouldRejectManagedSwitchToken({ admin: false }, switchedToken, switchedToken),
+    false
   );
 });
 
@@ -87,5 +96,61 @@ test('bootstrap guard allows non-restricted sessions without owner token', funct
       ownerAuthToken: ''
     }),
     false
+  );
+});
+
+test('startup route uses pairing without auth token', function () {
+  assert.deepEqual(
+    resolveStartupRoute({ authToken: '' }, ''),
+    { route: 'pairing', params: {}, mark: 'boot:navigate-pairing' }
+  );
+});
+
+test('startup route shows profile picker for signed-in owner', function () {
+  assert.deepEqual(
+    resolveStartupRoute({ authToken: 'owner-token', activeHomeUser: null }, 'owner-token'),
+    {
+      route: 'profile-picker',
+      params: { _from: 'launch', _alwaysChoose: true },
+      mark: 'boot:navigate-profile-picker'
+    }
+  );
+});
+
+test('startup route shows profile picker even with persisted profile', function () {
+  assert.deepEqual(
+    resolveStartupRoute({
+      authToken: 'owner-token',
+      activeHomeUser: { admin: true, restricted: false }
+    }, 'owner-token'),
+    {
+      route: 'profile-picker',
+      params: { _from: 'launch', _alwaysChoose: true },
+      mark: 'boot:navigate-profile-picker'
+    }
+  );
+});
+
+test('startup routing detects incomplete restricted sessions', function () {
+  assert.equal(
+    hasIncompleteRestrictedSession({
+      authToken: 'managed-token',
+      activeHomeUser: { admin: false, restricted: true }
+    }, ''),
+    true
+  );
+});
+
+test('startup route keeps recovery flags for incomplete restricted sessions', function () {
+  assert.deepEqual(
+    resolveStartupRoute({
+      authToken: 'managed-token',
+      activeHomeUser: { admin: false, restricted: true }
+    }, ''),
+    {
+      route: 'profile-picker',
+      params: { _retry: true, _from: 'launch', _alwaysChoose: true },
+      mark: 'boot:navigate-profile-picker'
+    }
   );
 });

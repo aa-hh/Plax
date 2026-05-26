@@ -1,6 +1,7 @@
 import { getState } from '../../core/store.js';
 import { searchHubs } from '../../plex/search.js';
 import { renderHubRow } from '../components/hubRow.js';
+import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 import {
   hydrateFocusedNeighborhood,
@@ -40,12 +41,9 @@ function searchScreen(root, params, navigate) {
   var screen = document.createElement('div');
   screen.className = 'screen search-screen';
   screen.innerHTML =
-    '<div class="top-nav">' +
-    '<button class="nav-item" data-nav="home" tabindex="0">Home</button>' +
-    '<button class="nav-item" data-nav="library" tabindex="0">Library</button>' +
-    '<button class="nav-item active" data-nav="search" tabindex="0">Search</button>' +
-    '<button class="nav-item" data-nav="settings" tabindex="0">Settings</button>' +
-    '</div>' +
+    '<div class="home-layout search-layout">' +
+    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+    '<div class="home-main search-main">' +
     '<h1 class="screen-title screen-title-compact">Search</h1>' +
     '<div class="search-input-row">' +
     '<input id="search-input" class="search-input" type="search" tabindex="0" ' +
@@ -54,19 +52,15 @@ function searchScreen(root, params, navigate) {
     '</div>' +
     '<div id="search-results" class="search-results">' +
     '<p class="status-msg">Type to search your Plex libraries.</p>' +
-    '</div>';
+    '</div></div></div>';
 
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
 
-  screen.querySelector('[data-nav="home"]').addEventListener('click', function () {
-    navigate('home', {});
-  });
-  screen.querySelector('[data-nav="library"]').addEventListener('click', function () {
-    navigate('library', {});
-  });
-  screen.querySelector('[data-nav="settings"]').addEventListener('click', function () {
-    navigate('settings', { _from: 'search' });
+  mountBrowsingHubNav(document.getElementById('browsing-hub-nav-host'), {
+    navigate: navigate,
+    activeRoute: 'search',
+    fromRoute: 'search'
   });
 
   var input = screen.querySelector('#search-input');
@@ -174,9 +168,6 @@ function searchScreen(root, params, navigate) {
 
   input.addEventListener('input', scheduleSearch);
 
-  // Per-input key handling so arrow keys behave sensibly around the
-  // virtual keyboard and the screen-level d-pad navigation does not
-  // jump focus while the user is editing the query.
   input.addEventListener('keydown', function (e) {
     var code = e.keyCode;
     if (code === 13) {
@@ -197,12 +188,20 @@ function searchScreen(root, params, navigate) {
     if (code === 38) {
       e.preventDefault();
       e.stopPropagation();
-      var firstNav = screen.querySelector('.nav-item');
-      if (firstNav) firstNav.focus();
+      var host = screen.querySelector('.browsing-hub-nav-host');
+      var searchBtn = host && host.querySelector('.browsing-hub-item[data-hub-id="search"]');
+      if (searchBtn) searchBtn.focus();
       return;
     }
-    if (code === 37 || code === 39) {
-      // Let the input handle horizontal text cursor; do not move focus.
+    if (code === 37) {
+      e.preventDefault();
+      e.stopPropagation();
+      var sidebar = screen.querySelector('.browsing-hub-nav-host');
+      var active = sidebar && sidebar.querySelector('.browsing-hub-item.active');
+      if (active) active.focus();
+      return;
+    }
+    if (code === 39) {
       e.stopPropagation();
     }
   });
@@ -213,8 +212,6 @@ function searchScreen(root, params, navigate) {
     runSearch(lastQuery);
   }
 
-  // Focus input on entry — on webOS TV this also triggers the
-  // platform-provided virtual keyboard.
   setTimeout(function () {
     try { input.focus(); } catch (e) { focusFirst(screen); }
   }, 0);

@@ -1,8 +1,8 @@
 /**
- * Enforce minimum webOS TV 5.0 per platform support policy.
+ * Enforce minimum webOS TV 4.0 (2018 LG OLED B8 and newer).
  * Uses webOSTV.js deviceInfo (versionMajor) when available.
  */
-var MIN_WEBOS_TV_MAJOR = 5;
+var MIN_WEBOS_TV_MAJOR = 4;
 
 function isTvRuntime() {
   return !!(window.PalmSystem && window.PalmSystem.identifier);

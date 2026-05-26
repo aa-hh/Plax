@@ -1,6 +1,10 @@
 import { getState } from '../../core/store.js';
 import { loadHomeFeedPhased } from '../../plex/recommendations/homeFeed.js';
+import { canUseWatchlists } from '../../watchlists/access.js';
+import { listWatchlists } from '../../watchlists/store.js';
+import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resolve.js';
 import { renderHubRow } from '../components/hubRow.js';
+import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 import {
   hydrateFocusedNeighborhood,
@@ -9,25 +13,17 @@ import {
 
 function homeScreen(root, params, navigate) {
   var state = getState();
+  var user = state.activeHomeUser || state.user;
   var screen = document.createElement('div');
   screen.className = 'screen screen-home';
   screen.innerHTML =
-    '<div class="top-nav">' +
-    '<button class="nav-item active" data-nav="home" tabindex="0">Home</button>' +
-    '<button class="nav-item" data-nav="library" tabindex="0">Library</button>' +
-    '<button class="nav-item" data-nav="search" tabindex="0">Search</button>' +
-    '<button class="nav-item" data-nav="settings" tabindex="0">Settings</button>' +
-    '</div>' +
-    '<h1 class="screen-title screen-title-compact">Home</h1>' +
-    '<div class="home-pivots" data-cols="4">' +
-    '<button class="nav-item home-pivot active" data-pivot="all" tabindex="0">All</button>' +
-    '<button class="nav-item home-pivot" data-pivot="tv" tabindex="0">TV</button>' +
-    '<button class="nav-item home-pivot" data-pivot="films" tabindex="0">Films</button>' +
-    '<button class="nav-item home-pivot home-pivot-search" data-pivot="search" tabindex="0">Search</button>' +
-    '</div>' +
+    '<div class="home-layout">' +
+    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+    '<div class="home-main">' +
+    '<h1 class="screen-title screen-title-compact" id="home-hub-title">Home</h1>' +
     '<div class="home-feed-host" id="home-feed-host">' +
     '<div id="home-feed" class="home-feed"><p class="status-msg">Loading…</p></div>' +
-    '</div>';
+    '</div></div></div>';
 
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
@@ -35,94 +31,39 @@ function homeScreen(root, params, navigate) {
   var posterFocusTimer = null;
   var destroyed = false;
   var renderToken = 0;
-  var activePivot = 'all';
-  var pivotScrollTop = { all: 0, tv: 0, films: 0 };
-  var pivotVisibleCount = 0;
+  var activeHubId = (params && params.hub) || 'home';
+  var hubNavHost = document.getElementById('browsing-hub-nav-host');
+  var hubTitleEl = document.getElementById('home-hub-title');
+  var hubNav = mountBrowsingHubNav(hubNavHost, {
+    navigate: navigate,
+    activeHubId: activeHubId,
+    fromRoute: 'home',
+    onSelect: function (item) {
+      if (item.id === 'settings' || item.id === 'search' || item.id.indexOf('library:') === 0) return;
+      selectHub(item);
+    }
+  });
+  activeHubId = hubNav.activeId;
 
-  screen.querySelector('[data-nav="library"]').addEventListener('click', function () { navigate('library', {}); });
-  screen.querySelector('[data-nav="search"]').addEventListener('click', function () {
-    navigate('search', { _from: 'home' });
-  });
-  screen.querySelector('[data-nav="settings"]').addEventListener('click', function () {
-    navigate('settings', { _from: 'home' });
-  });
-  Array.prototype.slice.call(screen.querySelectorAll('.home-pivot')).forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var pivot = btn.getAttribute('data-pivot');
-      if (pivot === 'search') {
-        navigate('search', { _from: 'home' });
-        return;
-      }
-      setActivePivot(pivot);
-    });
-  });
-
-  function classifyRowKinds(row) {
-    var kinds = { tv: 0, films: 0 };
-    if (row.hubIdentifier) {
-      var hub = String(row.hubIdentifier).toLowerCase();
-      if (hub.indexOf('movie') >= 0) kinds.films = 1;
-      if (hub.indexOf('television') >= 0 || hub.indexOf('show') >= 0 || hub.indexOf('ondeck') >= 0) {
-        kinds.tv = 1;
-      }
-    }
-    if (row.type) {
-      var t = String(row.type).toLowerCase();
-      if (t === 'movie') kinds.films = 1;
-      if (t === 'show' || t === 'episode' || t === 'season') kinds.tv = 1;
-    }
-    (row.items || []).forEach(function (item) {
-      if (!item || !item.type) return;
-      if (item.type === 'movie') kinds.films = 1;
-      else if (item.type === 'show' || item.type === 'episode' || item.type === 'season') kinds.tv = 1;
-    });
-    if (!kinds.tv && !kinds.films) {
-      kinds.tv = 1;
-      kinds.films = 1;
-    }
-    return kinds;
+  function setHubTitle(label) {
+    if (hubTitleEl) hubTitleEl.textContent = label || 'Home';
   }
 
-  function applyPivotVisibility() {
-    var feedEl = document.getElementById('home-feed');
-    if (!feedEl) return;
-    var rows = Array.prototype.slice.call(feedEl.querySelectorAll('.row-section'));
-    var visibleCount = 0;
-    rows.forEach(function (section) {
-      var tags = (section.getAttribute('data-pivot-tags') || 'tv films').split(' ');
-      var matches = activePivot === 'all' || tags.indexOf(activePivot) >= 0;
-      section.hidden = !matches;
-      if (matches) visibleCount += 1;
-    });
-    pivotVisibleCount = visibleCount;
-    var empty = feedEl.querySelector('.home-pivot-empty');
-    if (!empty) {
-      empty = document.createElement('p');
-      empty.className = 'status-msg home-pivot-empty';
-      feedEl.appendChild(empty);
+  function selectHub(item) {
+    if (!item) return;
+    if (item.id.indexOf('library:') === 0 && item.library) {
+      navigate('library', { libraryId: item.library.id });
+      return;
     }
-    empty.hidden = visibleCount > 0;
-    if (!empty.hidden) {
-      empty.textContent = activePivot === 'tv'
-        ? 'No TV rows right now.'
-        : 'No film rows right now.';
+    activeHubId = item.id;
+    hubNav.setActiveId(activeHubId);
+    setHubTitle(item.label);
+    if (item.id === 'home') {
+      loadHomeHub();
+      return;
     }
-  }
-
-  function setActivePivot(nextPivot) {
-    if (nextPivot !== 'all' && nextPivot !== 'tv' && nextPivot !== 'films') return;
-    var feedEl = document.getElementById('home-feed');
-    if (!feedEl) return;
-    pivotScrollTop[activePivot] = feedEl.scrollTop;
-    activePivot = nextPivot;
-    Array.prototype.slice.call(screen.querySelectorAll('.home-pivot')).forEach(function (btn) {
-      btn.classList.toggle('active', btn.getAttribute('data-pivot') === nextPivot);
-    });
-    applyPivotVisibility();
-    feedEl.scrollTop = pivotScrollTop[nextPivot] || 0;
-    if (pivotVisibleCount === 0) {
-      var fallback = screen.querySelector('.home-pivot.active');
-      if (fallback) fallback.focus();
+    if (item.id === 'watchlist') {
+      loadWatchlistHub();
     }
   }
 
@@ -141,7 +82,8 @@ function homeScreen(root, params, navigate) {
     }
   }
 
-  function schedulePosterNeighborhood(card) {
+  screen.addEventListener('focusin', function (e) {
+    var card = e.target && e.target.closest ? e.target.closest('.media-card') : null;
     if (!card || destroyed) return;
     var token = ++posterFocusToken;
     if (posterFocusTimer) clearTimeout(posterFocusTimer);
@@ -150,61 +92,122 @@ function homeScreen(root, params, navigate) {
       if (destroyed || token !== posterFocusToken) return;
       hydrateFocusedNeighborhood(card, { before: 2, after: 4 });
     }, 80);
+  });
+
+  function renderRowsIntoFeed(rows, append) {
+    var token = renderToken;
+    var el = document.getElementById('home-feed');
+    if (!el || destroyed || token !== renderToken) return;
+    if (!rows || !rows.length) return;
+    if (!append) el.innerHTML = '';
+    rows.forEach(function (row) {
+      renderHubRow(el, row, navigate, { cols: 12, visibleCount: 20 });
+    });
+    primeVisiblePosters(el);
   }
 
-  screen.addEventListener('focusin', function (e) {
-    var card = e.target && e.target.closest ? e.target.closest('.media-card') : null;
-    if (card) schedulePosterNeighborhood(card);
-  });
-
-  var feedEl = document.getElementById('home-feed');
-  if (feedEl) renderRowSkeletons(feedEl, 3);
-
-  loadHomeFeedPhased(state.activeServer).then(function (feed) {
+  function loadHomeHub() {
+    var feedEl = document.getElementById('home-feed');
+    if (feedEl) renderRowSkeletons(feedEl, 3);
     var token = ++renderToken;
-    var el = document.getElementById('home-feed');
-    if (!el || destroyed) return;
 
-    function renderRows(rows, append) {
+    loadHomeFeedPhased(state.activeServer, {
+      libraries: state.libraries || [],
+      activeHomeUser: state.activeHomeUser || null
+    }).then(function (feed) {
       if (destroyed || token !== renderToken) return;
-      if (!rows || !rows.length) return;
-      if (!append) el.innerHTML = '';
-      rows.forEach(function (row) {
-        var section = renderHubRow(el, row, navigate, { cols: 12, visibleCount: 20 });
-        if (!section) return;
-        var kinds = classifyRowKinds(row);
-        var tags = [];
-        if (kinds.tv) tags.push('tv');
-        if (kinds.films) tags.push('films');
-        section.setAttribute('data-pivot-tags', tags.join(' '));
-      });
-      applyPivotVisibility();
-      primeVisiblePosters(el);
+      var el = document.getElementById('home-feed');
+      if (!el) return;
+
+      renderRowsIntoFeed(feed.initialRows, false);
+
+      (feed.deferredRowsPromise || Promise.resolve([])).then(function (rows) {
+        if (destroyed || token !== renderToken || !rows || !rows.length) return;
+        renderRowsIntoFeed(rows, true);
+      }).catch(function () {});
+
+      var hasInitial = feed.initialRows && feed.initialRows.length;
+      (feed.deferredRowsPromise || Promise.resolve([])).then(function (rows) {
+        if (destroyed || token !== renderToken) return;
+        if (!hasInitial && (!rows || !rows.length)) {
+          el.innerHTML = '<p class="status-msg">No recommendations yet. Browse a library from the sidebar.</p>';
+        }
+      }).catch(function () {});
+    }).catch(function (err) {
+      if (destroyed || token !== renderToken) return;
+      var el = document.getElementById('home-feed');
+      if (el) el.innerHTML = '<p class="status-msg">Could not load home: ' + err.message + '</p>';
+    });
+  }
+
+  function loadWatchlistHub() {
+    if (!canUseWatchlists(user)) {
+      var denied = document.getElementById('home-feed');
+      if (denied) denied.innerHTML = '<p class="status-msg">Watchlists are not available for this profile.</p>';
+      return;
+    }
+    var token = ++renderToken;
+    var feedEl = document.getElementById('home-feed');
+    if (feedEl) feedEl.innerHTML = '<p class="status-msg">Loading watchlists…</p>';
+
+    var lists = listWatchlists(user);
+    if (!lists.length) {
+      feedEl.innerHTML =
+        '<p class="status-msg">No watchlists yet. Bookmark a movie or episode, or create a list in Settings.</p>';
+      return;
     }
 
-    renderRows(feed.initialRows, false);
-
-    (feed.deferredRowsPromise || Promise.resolve([])).then(function (rows) {
-      if (destroyed || token !== renderToken || !rows || !rows.length) return;
-      renderRows(rows, true);
-    }).catch(function () {});
-
-    var hasInitial = feed.initialRows && feed.initialRows.length;
-    (feed.deferredRowsPromise || Promise.resolve([])).then(function (rows) {
+    Promise.all(lists.map(function (wl) {
+      return resolveWatchlistItems(state.activeServer, wl.items || []).then(function (items) {
+        return watchlistToHubRow(wl, items);
+      });
+    })).then(function (rows) {
       if (destroyed || token !== renderToken) return;
-      if (!hasInitial && (!rows || !rows.length)) {
-        el.innerHTML = '<p class="status-msg">No recommendations yet. Browse Library.</p>';
+      var el = document.getElementById('home-feed');
+      if (!el) return;
+      el.innerHTML = '';
+      var hasRows = false;
+      rows.forEach(function (row) {
+        if (!row.items || !row.items.length) return;
+        hasRows = true;
+        renderHubRow(el, row, navigate, { cols: 12, visibleCount: 20 });
+        var wlId = String(row.hubIdentifier || '').replace('watchlist.', '');
+        var sections = el.querySelectorAll('.row-section');
+        var section = sections[sections.length - 1];
+        if (section) {
+          var label = section.querySelector('.row-label');
+          if (label && wlId) {
+            var link = document.createElement('button');
+            link.type = 'button';
+            link.className = 'watchlist-row-link';
+            link.setAttribute('data-watchlist-id', wlId);
+            link.tabIndex = 0;
+            link.textContent = row.title + ' →';
+            label.innerHTML = '';
+            label.appendChild(link);
+            link.addEventListener('click', function () {
+              navigate('watchlist', { watchlistId: wlId });
+            });
+          }
+        }
+      });
+      if (!hasRows) {
+        el.innerHTML = '<p class="status-msg">Your watchlists are empty. Bookmark titles from detail screens.</p>';
+      } else {
+        primeVisiblePosters(el);
       }
-    }).catch(function () {});
+    });
+  }
 
-    var nav = screen.querySelector('.top-nav .nav-item');
-    if (nav) nav.focus();
-    else focusFirst(screen);
-  }).catch(function (err) {
-    if (destroyed) return;
-    var el = document.getElementById('home-feed');
-    if (el) el.innerHTML = '<p class="status-msg">Could not load home: ' + err.message + '</p>';
-  });
+  if (activeHubId === 'watchlist') {
+    setHubTitle('Watchlist');
+    loadWatchlistHub();
+  } else {
+    setHubTitle('Home');
+    loadHomeHub();
+  }
+
+  if (!hubNav.focusSidebar()) focusFirst(screen);
 
   return {
     destroy: function () {

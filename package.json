@@ -1,7 +1,7 @@
 {
   "name": "xplay-lite",
   "version": "0.1.0",
-  "description": "Lightweight Plex client for LG webOS TV 5.0+",
+  "description": "Lightweight Plex client for LG webOS TV 4.0+ (B8 / 2018 and newer)",
   "private": true,
   "type": "module",
   "scripts": {

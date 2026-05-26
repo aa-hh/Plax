@@ -72,14 +72,65 @@ function probeCodec(mime) {
   return v.canPlayType(mime) || '';
 }
 
-function getCodecCapabilities() {
-  return {
+function isSimulatorRuntime() {
+  if (getWebOSVersion() === 'simulator') return true;
+  if (getWebOSVersion() !== 'tv') return false;
+  try {
+    var id = window.PalmSystem && window.PalmSystem.identifier;
+    if (id && /simulator|emulator/i.test(String(id))) return true;
+  } catch (e) { /* ignore */ }
+  return false;
+}
+
+function parseWebOsMajor(deviceInfo) {
+  if (!deviceInfo) return 0;
+  if (deviceInfo.versionMajor != null) {
+    var n = parseInt(deviceInfo.versionMajor, 10);
+    if (!isNaN(n)) return n;
+  }
+  if (deviceInfo.version) {
+    var parts = String(deviceInfo.version).split('.');
+    var major = parseInt(parts[0], 10);
+    if (!isNaN(major)) return major;
+  }
+  return 0;
+}
+
+/**
+ * Device-only heuristic (no runtime / window). Used on real LG TVs when canPlayType omits DTS.
+ */
+function tvLikelySupportsDtsFromDevice(deviceInfo) {
+  var major = parseWebOsMajor(deviceInfo);
+  if (major >= 4) return true;
+  var model = String((deviceInfo && (deviceInfo.modelName || deviceInfo.model)) || '');
+  if (/OLED\d{2}[BCEW]8/i.test(model)) return true;
+  if (/OLED\d{2}[BCEW][789]\d/i.test(model)) return true;
+  return false;
+}
+
+/**
+ * HTML5 canPlayType often omits DTS even when the TV media pipeline decodes it
+ * (common on 2018 LG OLED / webOS 4.x). Simulator and desktop browsers stay conservative.
+ */
+function tvLikelySupportsDts(deviceInfo) {
+  if (isSimulatorRuntime()) return false;
+  if (getWebOSVersion() === 'browser') return false;
+  return tvLikelySupportsDtsFromDevice(deviceInfo);
+}
+
+function getCodecCapabilities(deviceInfo) {
+  var caps = {
     h264: probeCodec('video/mp4; codecs="avc1.640028"'),
     hevc: probeCodec('video/mp4; codecs="hvc1.1.6.L153.B0"'),
     ac3: probeCodec('audio/mp4; codecs="ac-3"'),
     eac3: probeCodec('audio/mp4; codecs="ec-3"'),
     dts: probeCodec('audio/vnd.dts')
   };
+  if ((!caps.dts || caps.dts === '') && tvLikelySupportsDts(deviceInfo)) {
+    caps.dts = 'probably';
+    caps.dtsInferred = true;
+  }
+  return caps;
 }
 
 function keepScreenOn(enable) {
@@ -93,4 +144,15 @@ function keepScreenOn(enable) {
   }
 }
 
-export { getWebOSVersion, getDeviceInfo, initPlatform, probeCodec, getCodecCapabilities, keepScreenOn };
+export {
+  getWebOSVersion,
+  getDeviceInfo,
+  initPlatform,
+  probeCodec,
+  getCodecCapabilities,
+  keepScreenOn,
+  isSimulatorRuntime,
+  tvLikelySupportsDts,
+  tvLikelySupportsDtsFromDevice,
+  parseWebOsMajor
+};

@@ -305,7 +305,7 @@ function codecSupportLabel(supported) {
 
 function buildDeviceSummary(deviceInfo, capabilities) {
   deviceInfo = deviceInfo || {};
-  capabilities = capabilities || getCodecCapabilities();
+  capabilities = capabilities || getCodecCapabilities(deviceInfo);
   var bullets = [];
   var model = deviceInfo.modelName || deviceInfo.model;
   if (model) bullets.push('TV: ' + model + (deviceInfo.version ? ' (webOS ' + deviceInfo.version + ')' : ''));
@@ -419,7 +419,7 @@ function runSessionNetworkProbe(options) {
   options = options || {};
   var server = options.server;
   var deviceInfo = options.deviceInfo || {};
-  var capabilities = options.capabilities || getCodecCapabilities();
+  var capabilities = options.capabilities || getCodecCapabilities(deviceInfo);
   var controller = options.controller || createNetworkProbeController();
   var deviceSummary = buildDeviceSummary(deviceInfo, capabilities);
   var scope = serverScopeKey(server);
@@ -477,7 +477,7 @@ function runNetworkProbe(options) {
   var controller = options.controller || createNetworkProbeController();
   var ratingKey = item && item.ratingKey;
   var versionId = version && version.id;
-  var capabilities = options.capabilities || getCodecCapabilities();
+  var capabilities = options.capabilities || getCodecCapabilities(deviceInfo);
   var deviceSummary = buildDeviceSummary(deviceInfo, capabilities);
 
   var cached = getCachedProbeResult(server, ratingKey, versionId);

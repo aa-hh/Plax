@@ -1,6 +1,6 @@
 import { getState, setState } from '../../core/store.js';
 import { persistAuth, getOwnerAuthToken } from '../../core/storage.js';
-import { fetchHomeUsers, switchToHomeUser, canSkipHomeSwitch } from '../../plex/users/homeUsers.js';
+import { fetchHomeUsers, switchToHomeUser } from '../../plex/users/homeUsers.js';
 import { createPinEntry, isNumericKeyCode } from '../pinEntry.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 import * as cache from '../../core/cache.js';
@@ -37,7 +37,7 @@ function appendProfileAvatar(parent, user) {
 
 function shouldRejectManagedSwitchToken(user, switchedToken, ownerToken) {
   var isManagedUser = !(user && user.admin);
-  return isManagedUser && (!switchedToken || switchedToken === ownerToken);
+  return isManagedUser && !switchedToken;
 }
 
 function profilePickerScreen(root, params, navigate) {
@@ -250,11 +250,6 @@ function profilePickerScreen(root, params, navigate) {
   function renderProfiles(homeUsers) {
     users = homeUsers;
     rowEl.innerHTML = '';
-    if (!params._from && homeUsers.length === 1 && canSkipHomeSwitch(homeUsers[0])) {
-      setStatus('Signing in…', false);
-      completeSwitch(homeUsers[0], '');
-      return;
-    }
     homeUsers.forEach(function (u) {
       var card = document.createElement('button');
       card.type = 'button';

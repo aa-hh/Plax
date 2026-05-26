@@ -1,5 +1,5 @@
 /**
- * Static validation against webOS TV 5+ and LG platform specifications.
+ * Static validation against webOS TV 4+ and LG platform specifications.
  */
 var fs = require('fs');
 var path = require('path');
@@ -33,7 +33,7 @@ check('appinfo_resolution', appinfo.resolution === '1920x1080', 'appinfo.json re
 check('appinfo_required_fields', !!(appinfo.id && appinfo.version && appinfo.vendor && appinfo.type && appinfo.main && appinfo.title && appinfo.icon),
   'appinfo.json missing required fields');
 check('appinfo_back_key', appinfo.disableBackHistoryAPI === true, 'disableBackHistoryAPI should be true for TV apps');
-check('min_webos_gate', code.indexOf('MIN_WEBOS_TV_MAJOR') >= 0 || code.indexOf('versionMajor') >= 0, 'missing webOS 5+ version gate');
+check('min_webos_gate', code.indexOf('MIN_WEBOS_TV_MAJOR') >= 0 || code.indexOf('versionMajor') >= 0, 'missing webOS 4+ version gate');
 check('has_plex_pin', code.indexOf('/api/v2/pins') >= 0, 'missing Plex PIN auth');
 check('has_player', code.indexOf('native-player') >= 0, 'missing native player hook');
 check('has_hls_transcode', code.indexOf('.m3u8') >= 0 || code.indexOf('transcode/universal') >= 0, 'missing HLS transcode path');
@@ -68,7 +68,7 @@ check('icon_large_size', largeDims && largeDims.w >= 130 && largeDims.h >= 130,
   'largeIcon should be at least 130x130 (got ' + (largeDims ? largeDims.w + 'x' + largeDims.h : 'unknown') + ')');
 
 var matrix = [
-  { platform: 'webOS TV', min: '5.0', engine: 'Chromium 68+', status: 'required' },
+  { platform: 'webOS TV', min: '4.0', engine: 'Chromium (4.x–6.x+)', status: 'required' },
   { spec: 'App Resolution', graphics: '1920x1080', status: 'appinfo.json' },
   { spec: 'Streaming', primary: 'HLS (Plex transcode)', status: 'implemented' },
   { spec: 'Streaming', direct: 'HTTP progressive', status: 'implemented' },
@@ -87,4 +87,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('\nAll webOS TV 5+ specification checks passed.');
+console.log('\nAll webOS TV 4+ specification checks passed.');

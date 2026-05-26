@@ -98,28 +98,16 @@ function bootstrapScreen(root, params, navigate) {
       titles: libs.map(function (lib) { return lib.title; })
     });
     if (!libs.length) {
-      var apiCount = rawSections.length;
-      console.warn('[bootstrap] libraries empty', {
+      console.warn('[bootstrap] no accessible libraries; opening Home anyway', {
         apiItems: apiItems,
-        apiSections: apiCount,
+        apiSections: rawSections.length,
         restricted: isRestrictedProfile(homeUser),
         profile: homeUser && (homeUser.title || homeUser.username)
       });
-      var detail = apiCount
-        ? ' (Plex server returned ' + apiCount + ' section' + (apiCount === 1 ? '' : 's') +
-          (isRestrictedProfile(homeUser) ? ', none available for this profile' : '') + ')'
-        : '';
-      throw new Error(
-        isRestrictedProfile(homeUser)
-          ? 'No libraries are available for this profile. Ask your Plex admin to share a library.' + detail
-          : 'No libraries found on this Plex server.' + detail
-      );
+      setState({ libraries: [], activeLibrary: null });
+    } else {
+      setState({ libraries: libs, activeLibrary: pickDefaultLibrary(libs) || libs[0] || null });
     }
-    var activeLibrary = pickDefaultLibrary(libs);
-    if (!activeLibrary) {
-      throw new Error('No libraries found on this Plex server.');
-    }
-    setState({ libraries: libs, activeLibrary: activeLibrary });
     document.getElementById('boot-status').textContent = 'Opening Home…';
     navigate('home', {});
   }).catch(function (err) {

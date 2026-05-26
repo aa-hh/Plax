@@ -1,6 +1,6 @@
 # webOS TV Platform Specification Compliance
 
-Minimum supported platform: **webOS TV 5.0** (2020).  
+Minimum supported platform: **webOS TV 4.0** (2018 LG OLED B8). Primary engineering target: **webOS TV 5.0** (2020).  
 Official references: [Platform specifications](https://webostv.developer.lge.com/develop/specifications)
 
 This document maps LG requirements to XPlay Lite implementation.
@@ -29,7 +29,7 @@ Source: [Web API and Web Engine](https://webostv.developer.lge.com/develop/speci
 
 - Bundle targets Chromium 68+ (not legacy WebKit / Chrome 38).
 - Include [webOSTV.js](https://webostv.developer.lge.com/develop/references/webostvjs-introduction) for Luna Service, back key, and `deviceInfo`.
-- Enforce `versionMajor >= 5` on device before app start (`src/platform/versionGate.js`).
+- Enforce `versionMajor >= 4` on device before app start (`src/platform/versionGate.js`).
 
 ## 3. TLS and Root Certificates
 
