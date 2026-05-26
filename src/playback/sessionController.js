@@ -6,6 +6,7 @@ import {
   isDirectPlayOnlyQuality
 } from './qualityProfiles.js';
 import { buildAudioTranscodeParam } from './tracks/audioTracks.js';
+import { normalizePlexPath } from './plexPaths.js';
 import {
   buildSubtitleTranscodeParams,
   resolveSessionPartPath,
@@ -35,7 +36,7 @@ function resolvePlaybackStrategy(session) {
 
 function buildTranscodeParams(server, partKey, session, protocol) {
   var prefs = getState().playbackPrefs || {};
-  var path = partKey.indexOf('/') === 0 ? partKey : '/' + partKey;
+  var path = normalizePlexPath(partKey);
   var strategy = resolvePlaybackStrategy(session);
   var fullTranscode = strategy === 'transcode' || strategy === 'http-transcode';
   var directStream = strategy === 'direct-stream';
@@ -84,7 +85,7 @@ function buildPlaybackUrl(server, partKey, session, protocol) {
 }
 
 function buildDirectPlayUrl(server, partKey) {
-  var path = partKey.indexOf('/') === 0 ? partKey : '/' + partKey;
+  var path = normalizePlexPath(partKey);
   return serverUrl(server.connectionUri, path, {}, server);
 }
 

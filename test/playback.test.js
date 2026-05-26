@@ -293,6 +293,14 @@ test('resolveSessionPartPath prefers version partKey over metadata key', functio
   assert.equal(path, '/library/parts/abc/video.mkv');
 });
 
+test('resolveSessionPartPath strips query string from Plex Part keys', function () {
+  var dirty = '/library/parts/231208/1779142932/file.mkv?checkFiles=1&includeBandwidths=1&offset=454&X-Plex-Incomplete-Segments=1&X-Plex-Session-Identifier=xplay-test';
+  assert.equal(
+    resolveSessionPartPath({ version: { partKey: dirty } }),
+    '/library/parts/231208/1779142932/file.mkv'
+  );
+});
+
 test('resolveSessionMetadataPath uses item key or ratingKey', function () {
   assert.equal(
     resolveSessionMetadataPath({ item: { key: '/library/metadata/999' } }),

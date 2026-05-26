@@ -3,6 +3,7 @@ import { serverUrl, plexHeaders } from '../../plex/client.js';
 import { fetchText } from '../../utils/fetch.js';
 import { buildAudioTranscodeParam } from './audioTracks.js';
 import { collectStreamsFromMedia } from './streamUtils.js';
+import { normalizePlexPath } from '../plexPaths.js';
 
 /** @typedef {'graphical'|'embedded'|'sidecar'|'onDemand'} SubtitleDelivery */
 
@@ -114,11 +115,6 @@ function findSubtitleTrack(tracks, streamId) {
     if (String(tracks[i].id) === want) return tracks[i];
   }
   return null;
-}
-
-function normalizePlexPath(path) {
-  if (!path) return null;
-  return path.indexOf('/') === 0 ? path : '/' + path;
 }
 
 /** Metadata path for transcode/subtitle APIs (/library/metadata/{id}). */

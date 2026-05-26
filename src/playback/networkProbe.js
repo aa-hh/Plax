@@ -7,6 +7,7 @@ import { checkBitrate, kbpsToMbps } from './lgBitrateLimits.js';
 import { extractVersions, pickBestVersion } from './versionSelector.js';
 import { probePlayback } from './capabilityProbe.js';
 import { loadDeviceDisplay } from '../platform/deviceDisplay.js';
+import { normalizePlexPath } from './plexPaths.js';
 
 var DEFAULT_TIMEOUT_MS = 7000;
 var PROBE_BYTES = 512 * 1024;
@@ -108,8 +109,7 @@ function requiredMbpsForVersion(version) {
 }
 
 function normalizePartPath(partKey) {
-  if (!partKey) return '';
-  return partKey.indexOf('/') === 0 ? partKey : '/' + partKey;
+  return normalizePlexPath(partKey) || '';
 }
 
 function mergeByteChunks(chunks, totalLength) {
