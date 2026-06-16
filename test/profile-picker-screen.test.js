@@ -146,9 +146,12 @@ test('profile picker: hides chrome until column width is known', function () {
   assert.match(screenSrc, /if \(!sizeReady\) return/);
 });
 
-test('profile picker: CSS grid uses dynamic column count for max-width', function () {
+test('profile picker: CSS uses flex with margin-based gutters (webOS 4 safe)', function () {
+  // CSS grid+repeat(var()) was replaced with flex to support webOS 4 (Chromium ~53).
+  // Verify the new flex layout and that the column count variable is still used for max-width.
   assert.match(cssSrc, /--profile-picker-cols:\s*1/);
-  assert.match(cssSrc, /grid-template-columns:\s*repeat\(var\(--profile-picker-cols\)/);
+  assert.doesNotMatch(cssSrc, /grid-template-columns:\s*repeat\(var\(--profile-picker-cols\)/);
+  assert.match(cssSrc, /\.profile-picker-row[\s\S]*display:\s*flex/);
   assert.match(cssSrc, /--profile-picker-max-w:\s*calc\(/);
   assert.match(cssSrc, /var\(--profile-picker-cols\) \* var\(--profile-card-min\)/);
 });
