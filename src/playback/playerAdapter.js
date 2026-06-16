@@ -15,6 +15,8 @@ import { parseSubtitleTextToCues } from './tracks/srtParser.js';
 import { shouldRetrySubtitleFetch } from './tracks/subtitleTracks.js';
 import { createRebufferWatchdog } from './rebufferWatchdog.js';
 import { summarizeTranscodeUrl } from './plexPaths.js';
+import { addOnceEventListener } from '../utils/domUtils.js';
+import { getState } from '../core/store.js';
 
 var videoEl = null;
 var progressTimer = null;
@@ -27,6 +29,7 @@ var onFirstFrameCb = null;
 var onTimelineSyncFailureCb = null;
 var firstFrameFired = false;
 var pendingSeekListener = null;
+var pendingSeekWrapper = null;
 var bufferingShown = false;
 var scrobbled = false;
 var lastTimelineMs = -1;
@@ -35,6 +38,14 @@ var lastKnownPositionMs = 0;
 var streamBaseOffsetMs = 0;
 /** @see docs/caching-and-buffering.md */
 var REBUFFER_TIMEOUT_MS = 12000;
+var REBUFFER_TIMEOUT_MS_WEBOS4 = 20000;
+
+function getRebufferTimeoutMs() {
+  var state = typeof getState === 'function' ? getState() : null;
+  var major = state && state.platformMajor != null ? state.platformMajor : 0;
+  return (major > 0 && major <= 4) ? REBUFFER_TIMEOUT_MS_WEBOS4 : REBUFFER_TIMEOUT_MS;
+}
+
 var HlsPlayer = Hls;
 var activeHls = null;
 
@@ -46,7 +57,7 @@ function fireRebufferTimeout() {
 
 function createAdapterRebufferWatchdog(timerFns) {
   var opts = {
-    timeoutMs: REBUFFER_TIMEOUT_MS,
+    timeoutMs: getRebufferTimeoutMs(),
     onTimeout: fireRebufferTimeout
   };
   if (timerFns) {
@@ -721,8 +732,8 @@ function play(url, session, options) {
     videoEl.src = url;
   }
   keepScreenOn(true);
-  videoEl.addEventListener('canplay', notifyFirstFrame, { once: true });
-  videoEl.addEventListener('playing', notifyFirstFrame, { once: true });
+  addOnceEventListener(videoEl, 'canplay', notifyFirstFrame);
+  addOnceEventListener(videoEl, 'playing', notifyFirstFrame);
   if (offsetMs > 0 && !shouldSkipClientPlaybackOffset(url, mode, offsetMs)) {
     applyPlaybackOffset(offsetMs);
   }
@@ -838,8 +849,9 @@ function clampSeekSeconds(seconds) {
 }
 
 function cancelPendingSeek() {
-  if (pendingSeekListener && videoEl) {
-    videoEl.removeEventListener('loadedmetadata', pendingSeekListener);
+  if (pendingSeekWrapper && videoEl) {
+    videoEl.removeEventListener('loadedmetadata', pendingSeekWrapper);
+    pendingSeekWrapper = null;
     pendingSeekListener = null;
   }
 }
@@ -862,9 +874,10 @@ function seek(seconds) {
   }
   pendingSeekListener = function seekWhenReady() {
     pendingSeekListener = null;
+    pendingSeekWrapper = null;
     apply();
   };
-  videoEl.addEventListener('loadedmetadata', pendingSeekListener, { once: true });
+  pendingSeekWrapper = addOnceEventListener(videoEl, 'loadedmetadata', pendingSeekListener);
 }
 
 function seekMs(ms) {

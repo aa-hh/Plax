@@ -1,3 +1,5 @@
+import { addOnceEventListener } from '../utils/domUtils.js';
+
 /** Poster sizing aligned with CSS (--row-poster-*, --grid-poster-*) plus modest overscan. */
 var POSTER_WIDTH_ROW = 220;
 var POSTER_WIDTH_GRID = 220;
@@ -66,13 +68,7 @@ function watchPosterReveal(img) {
     revealPosterImage(img);
     return;
   }
-  img.addEventListener(
-    'load',
-    function () {
-      revealPosterImage(img);
-    },
-    { once: true }
-  );
+  addOnceEventListener(img, 'load', function () { revealPosterImage(img); });
 }
 
 function markPosterLoaded(url) {
