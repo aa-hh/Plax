@@ -1,5 +1,6 @@
 import { isPerfEnabled, mark } from '../perf/resourceMonitor.js';
 import { clearPosterUrlMaps } from '../ui/posterImages.js';
+import { invalidateFocusableCache } from '../ui/focus.js';
 
 var routes = {};
 var currentRoute = null;
@@ -91,6 +92,7 @@ function render() {
   }
   screenInstance = null;
   clearPosterUrlMaps();
+  invalidateFocusableCache();
   rootEl.innerHTML = '';
   screenInstance = routes[currentRoute](rootEl, currentParams, navigate);
   if (isPerfEnabled()) {
