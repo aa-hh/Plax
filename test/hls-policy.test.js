@@ -3,10 +3,16 @@ import assert from 'node:assert/strict';
 
 import {
   applyWebOsHlsTranscodeParams,
+  applyDecisionRequestHlsParams,
   buildHttpTranscodeFallbackParams,
+  extractHlsManifestDiagnostics,
   usesWebOsTvPmsProfile,
   shouldUseWebOsHlsProfileExtra,
-  WEBOS_HLS_PROFILE_EXTRA
+  isWebOs4Tv,
+  isHlsSourceRejectedError,
+  WEBOS_HLS_MPEGTS_PROFILE_EXTRA,
+  WEBOS_HLS_FMP4_PROFILE_EXTRA,
+  WEBOS_HLS_TRANSCODE_FMP4_PROFILE_EXTRA
 } from '../src/playback/hlsPolicy.js';
 import {
   setPlexDeviceInfo,
@@ -48,12 +54,34 @@ test.afterEach(function () {
   }
 });
 
-test('WEBOS_HLS_PROFILE_EXTRA uses videoCodec and audioCodec with protocol=hls', function () {
-  assert.match(WEBOS_HLS_PROFILE_EXTRA, /videoCodec=h264/);
-  assert.match(WEBOS_HLS_PROFILE_EXTRA, /audioCodec=aac/);
-  assert.match(WEBOS_HLS_PROFILE_EXTRA, /protocol=hls/);
-  assert.ok(WEBOS_HLS_PROFILE_EXTRA.indexOf('codec=h264') < 0);
-  assert.ok(WEBOS_HLS_PROFILE_EXTRA.indexOf('type=audioProfile') < 0);
+test('webOS 4 TV uses fMP4 profile extra instead of mpegts', function () {
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  assert.equal(isWebOs4Tv(), true);
+
+  var remux = applyWebOsHlsTranscodeParams({}, { strategy: 'direct-stream' });
+  assert.equal(remux['X-Plex-Client-Profile-Extra'], WEBOS_HLS_FMP4_PROFILE_EXTRA);
+  assert.ok(remux['X-Plex-Client-Profile-Extra'].indexOf('container=mp4') >= 0);
+
+  var transcode = applyWebOsHlsTranscodeParams({}, { strategy: 'transcode' });
+  assert.equal(transcode['X-Plex-Client-Profile-Extra'], WEBOS_HLS_TRANSCODE_FMP4_PROFILE_EXTRA);
+});
+
+test('webOS 5+ TV keeps mpegts profile extra', function () {
+  setPlexDeviceInfo({ modelName: 'OLED65C1PUA', version: '6.2.1' });
+  assert.equal(isWebOs4Tv(), false);
+
+  var params = applyWebOsHlsTranscodeParams({}, { strategy: 'direct-stream' });
+  assert.equal(params['X-Plex-Client-Profile-Extra'], WEBOS_HLS_MPEGTS_PROFILE_EXTRA);
+});
+
+test('applyDecisionRequestHlsParams omits incomplete-segments and profile extra', function () {
+  var params = applyDecisionRequestHlsParams({
+    'X-Plex-Incomplete-Segments': '1',
+    'X-Plex-Client-Profile-Extra': WEBOS_HLS_FMP4_PROFILE_EXTRA
+  });
+  assert.equal(params.protocol, 'hls');
+  assert.equal(params['X-Plex-Incomplete-Segments'], undefined);
+  assert.equal(params['X-Plex-Client-Profile-Extra'], undefined);
 });
 
 test('applyWebOsHlsTranscodeParams includes profile extra for webOS simulator HLS', function () {
@@ -64,22 +92,21 @@ test('applyWebOsHlsTranscodeParams includes profile extra for webOS simulator HL
   assert.equal(usesWebOsTvPmsProfile(), false);
   assert.equal(shouldUseWebOsHlsProfileExtra(), true);
 
-  var params = applyWebOsHlsTranscodeParams({});
+  var params = applyWebOsHlsTranscodeParams({}, { strategy: 'direct-stream' });
   assert.equal(params.protocol, 'hls');
-  assert.equal(params['X-Plex-Client-Profile-Extra'], WEBOS_HLS_PROFILE_EXTRA);
+  assert.equal(params['X-Plex-Client-Profile-Extra'], WEBOS_HLS_MPEGTS_PROFILE_EXTRA);
 });
 
-test('applyWebOsHlsTranscodeParams sets profile extra for Plex for LG', function () {
-  setPlexDeviceInfo({ modelName: 'OLED55B9PUA', version: '4.9.0' });
-  assert.equal(usesWebOsTvPmsProfile(), true);
-
-  var params = applyWebOsHlsTranscodeParams({});
-  assert.equal(params['X-Plex-Client-Profile-Extra'], WEBOS_HLS_PROFILE_EXTRA);
+test('isHlsSourceRejectedError matches play() rejection text', function () {
+  assert.equal(isHlsSourceRejectedError({
+    message: 'Failed to load because no supported source was found.'
+  }), true);
+  assert.equal(isHlsSourceRejectedError({ message: 'Network error' }), false);
 });
 
 test('buildHttpTranscodeFallbackParams strips profile extra', function () {
-  setPlexDeviceInfo({ modelName: 'OLED55B9PUA', version: '4.9.0' });
-  var hls = applyWebOsHlsTranscodeParams({ offset: '10' });
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  var hls = applyWebOsHlsTranscodeParams({ offset: '10' }, { strategy: 'transcode' });
   var http = buildHttpTranscodeFallbackParams(hls);
   assert.equal(http.protocol, 'http');
   assert.equal(http['X-Plex-Client-Profile-Extra'], undefined);
@@ -96,4 +123,19 @@ test('usesWebOsTvPmsProfile is true for real LG TV device', function () {
   setPlexDeviceInfo({ modelName: 'OLED65C1PUA', version: '6.2.1' });
   assert.equal(usesWebOsTvPmsProfile(), true);
   assert.equal(PMS_PRODUCT, 'Plex for LG');
+});
+
+test('extractHlsManifestDiagnostics pulls STREAM-INF and CODECS', function () {
+  var body = [
+    '#EXTM3U',
+    '#EXT-X-STREAM-INF:BANDWIDTH=4200000,CODECS="avc1.640028,mp4a.40.2",RESOLUTION=1920x1080',
+    'session/video.m3u8',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",CODECS="mp4a.40.2",URI="audio.m3u8"'
+  ].join('\n');
+  var diag = extractHlsManifestDiagnostics(body);
+  assert.equal(diag.isM3u8, true);
+  assert.equal(diag.streamInfs.length, 1);
+  assert.ok(diag.streamInfs[0].indexOf('CODECS=') >= 0);
+  assert.equal(diag.mediaTags.length, 1);
+  assert.ok(diag.snippet.indexOf('CODECS=avc1.640028,mp4a.40.2') >= 0);
 });

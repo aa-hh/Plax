@@ -280,6 +280,15 @@ function tryRowHorizontalMove(list, idx, cols, key) {
   return -1;
 }
 
+function isPinPadRowElement(el) {
+  return !!(el && el.classList && el.classList.contains('pin-pad-row'));
+}
+
+function pinPadUsesRows(grid) {
+  var first = grid && grid.children && grid.children[0];
+  return isPinPadRowElement(first);
+}
+
 function layoutGridChildIndex(grid, active) {
   var children = grid.children;
   var i;
@@ -290,6 +299,28 @@ function layoutGridChildIndex(grid, active) {
   return -1;
 }
 
+function layoutGridCellPosition(grid, active) {
+  if (pinPadUsesRows(grid)) {
+    var rows = grid.children;
+    var r;
+    for (r = 0; r < rows.length; r++) {
+      var rowEl = rows[r];
+      var c;
+      for (c = 0; c < rowEl.children.length; c++) {
+        var cell = rowEl.children[c];
+        if (cell === active || (cell.contains && cell.contains(active))) {
+          return { row: r, col: c };
+        }
+      }
+    }
+    return null;
+  }
+  var childIdx = layoutGridChildIndex(grid, active);
+  if (childIdx < 0) return null;
+  var cols = zoneColumnCount(grid);
+  return { row: Math.floor(childIdx / cols), col: childIdx % cols };
+}
+
 function layoutGridFocusableAt(grid, childIdx) {
   var child = grid.children[childIdx];
   if (!child) return null;
@@ -297,14 +328,27 @@ function layoutGridFocusableAt(grid, childIdx) {
   return getFocusables(child)[0] || null;
 }
 
+function layoutGridFocusableAtCell(grid, row, col) {
+  if (pinPadUsesRows(grid)) {
+    var rowEl = grid.children[row];
+    if (!rowEl) return null;
+    var cell = rowEl.children[col];
+    if (!cell) return null;
+    if (isNavFocusable(cell)) return cell;
+    return getFocusables(cell)[0] || null;
+  }
+  var cols = zoneColumnCount(grid);
+  return layoutGridFocusableAt(grid, row * cols + col);
+}
+
 function tryLayoutGridMove(grid, active, key) {
   if (!usesLayoutGridCells(grid)) return null;
   var cols = zoneColumnCount(grid);
   if (!cols) return null;
-  var childIdx = layoutGridChildIndex(grid, active);
-  if (childIdx < 0) return null;
-  var row = Math.floor(childIdx / cols);
-  var col = childIdx % cols;
+  var pos = layoutGridCellPosition(grid, active);
+  if (!pos) return null;
+  var row = pos.row;
+  var col = pos.col;
   var targetRow = row;
   var targetCol = col;
   if (key === ARROW_DOWN) targetRow = row + 1;
@@ -315,22 +359,22 @@ function tryLayoutGridMove(grid, active, key) {
 
   if (targetCol < 0 || targetCol >= cols || targetRow < 0) return null;
 
-  var children = grid.children;
-  var maxRow = Math.floor((children.length - 1) / cols);
+  var maxRow = pinPadUsesRows(grid)
+    ? grid.children.length - 1
+    : Math.floor((grid.children.length - 1) / cols);
   if (targetRow > maxRow) return null;
 
-  var targetIdx = targetRow * cols + targetCol;
-  var target = layoutGridFocusableAt(grid, targetIdx);
+  var target = layoutGridFocusableAtCell(grid, targetRow, targetCol);
   if (target) return target;
 
   var c;
   if (key === ARROW_DOWN || key === ARROW_UP) {
     for (c = targetCol - 1; c >= 0; c--) {
-      target = layoutGridFocusableAt(grid, targetRow * cols + c);
+      target = layoutGridFocusableAtCell(grid, targetRow, c);
       if (target) return target;
     }
     for (c = targetCol + 1; c < cols; c++) {
-      target = layoutGridFocusableAt(grid, targetRow * cols + c);
+      target = layoutGridFocusableAtCell(grid, targetRow, c);
       if (target) return target;
     }
   }

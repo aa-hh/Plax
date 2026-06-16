@@ -12,8 +12,13 @@ import { createPinEntry, isNumericKeyCode } from '../pinEntry.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 import { createSpinner } from '../components/spinner.js';
 import * as cache from '../../core/cache.js';
+import { tvLog } from '../../utils/tvDebug.js';
 
 var BACK_KEYCODE = 461;
+var ENTER_KEYCODE = 13;
+var SWITCH_TIMEOUT_MS = 25000;
+var BOOTSTRAP_TIMEOUT_MS = 120000;
+var PIN_FLOW_TIMEOUT_MS = 120000;
 var PROFILE_PICKER_MAX_COLS = 4;
 
 function clampProfilePickerCols(count) {
@@ -168,7 +173,7 @@ function profilePickerScreen(root, params, navigate) {
   var pinEntry = createPinEntry({
     onChange: function () {
       pinDisplay.textContent = pinEntry.getDisplayMask();
-      pinError.hidden = true;
+      if (!switching) showPinFlowMessage('', false);
     },
     onComplete: function (pin) {
       submitPin(pin);
@@ -184,10 +189,79 @@ function profilePickerScreen(root, params, navigate) {
   }
 
   function setPinError(msg) {
-    pinError.textContent = msg || '';
-    pinError.hidden = !msg;
-    if (msg && bodyEl) bodyEl.classList.add('profile-picker--pin-error');
+    if (msg) showPinFlowMessage(msg, true);
+    else showPinFlowMessage('', false);
+  }
+
+  var switchGeneration = 0;
+  var pinFlowTimer = null;
+  var switchApiTimer = null;
+  var bootstrapTimer = null;
+
+  function clearPinFlowTimers() {
+    if (pinFlowTimer) {
+      clearTimeout(pinFlowTimer);
+      pinFlowTimer = null;
+    }
+    if (switchApiTimer) {
+      clearTimeout(switchApiTimer);
+      switchApiTimer = null;
+    }
+    if (bootstrapTimer) {
+      clearTimeout(bootstrapTimer);
+      bootstrapTimer = null;
+    }
+  }
+
+  function pinFlowLog(step, detail) {
+    tvLog('profile-picker', step, detail);
+  }
+
+  function showPinFlowMessage(msg, isError) {
+    var text = msg || '';
+    if (statusEl) {
+      statusEl.textContent = text;
+      statusEl.hidden = !text;
+      statusEl.className = 'status-msg profile-picker-status' +
+        (isError ? ' watch-status-error' : '');
+    }
+    if (pinError) {
+      pinError.textContent = isError ? text : '';
+      if (isError && text) {
+        pinError.hidden = false;
+        pinError.removeAttribute('hidden');
+        pinError.classList.add('pin-error--visible');
+      } else {
+        pinError.hidden = true;
+        pinError.setAttribute('hidden', '');
+        pinError.classList.remove('pin-error--visible');
+      }
+    }
+    if (isError && text && bodyEl) bodyEl.classList.add('profile-picker--pin-error');
     else if (bodyEl) bodyEl.classList.remove('profile-picker--pin-error');
+  }
+
+  function reportPinFlowProgress(msg) {
+    showPinFlowMessage(msg, false);
+    pinFlowLog('progress: ' + msg);
+  }
+
+  function reportPinFlowFailure(msg, err, phase) {
+    clearPinFlowTimers();
+    switchGeneration += 1;
+    switching = false;
+    syncHeaderSpinner();
+    var message = msg || (err && err.message) || 'Could not sign in. Try again.';
+    pinFlowLog('failed' + (phase ? ' (' + phase + ')' : ''), err || message);
+    showPinFlowMessage(message, true);
+    if (mode === 'pinEntry') {
+      pinEntry.clear();
+      if (pinDisplay) pinDisplay.textContent = '';
+    }
+  }
+
+  function isActiveSwitch(op) {
+    return op === switchGeneration;
   }
 
   function getOwnerToken() {
@@ -204,9 +278,16 @@ function profilePickerScreen(root, params, navigate) {
     btn.dataset.key = key;
     if (key === 'Delete') btn.classList.add('pin-pad-btn--delete');
     if (key === '0') btn.classList.add('pin-pad-btn--zero');
-    btn.addEventListener('click', function () {
+    function activatePinKey() {
       if (key === 'Delete') pinEntry.deleteDigit();
       else pinEntry.appendDigit(key);
+    }
+    btn.addEventListener('click', activatePinKey);
+    btn.addEventListener('keydown', function (e) {
+      if (e.keyCode === ENTER_KEYCODE || e.key === 'Enter') {
+        e.preventDefault();
+        activatePinKey();
+      }
     });
     parent.appendChild(btn);
     return btn;
@@ -217,14 +298,25 @@ function profilePickerScreen(root, params, navigate) {
     var grid = document.createElement('div');
     grid.className = 'pin-pad-grid';
     grid.setAttribute('data-cols', '3');
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach(function (key) {
-      addPinKeyButton(grid, key);
-    });
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    var row;
+    for (row = 0; row < 3; row++) {
+      var rowEl = document.createElement('div');
+      rowEl.className = 'pin-pad-row';
+      var col;
+      for (col = 0; col < 3; col++) {
+        addPinKeyButton(rowEl, keys[row * 3 + col]);
+      }
+      grid.appendChild(rowEl);
+    }
+    var bottomRow = document.createElement('div');
+    bottomRow.className = 'pin-pad-row pin-pad-row-bottom';
     var spacer = document.createElement('span');
     spacer.className = 'pin-pad-spacer';
-    grid.appendChild(spacer);
-    addPinKeyButton(grid, '0');
-    addPinKeyButton(grid, 'Delete');
+    bottomRow.appendChild(spacer);
+    addPinKeyButton(bottomRow, '0');
+    addPinKeyButton(bottomRow, 'Delete');
+    grid.appendChild(bottomRow);
     pinPad.appendChild(grid);
   }
 
@@ -281,32 +373,88 @@ function profilePickerScreen(root, params, navigate) {
     }
   }
 
-  function openHomeAfterBootstrap() {
+  function runBootstrapWithTimeout(op) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      bootstrapTimer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error(
+          'Connecting to Plex timed out. Check network and server, then try again.'
+        ));
+      }, BOOTSTRAP_TIMEOUT_MS);
+      pinFlowLog('bootstrap start');
+      runAppBootstrap({
+        onStatus: function (statusMsg) {
+          if (!isActiveSwitch(op)) return;
+          reportPinFlowProgress(statusMsg);
+        }
+      }).then(function () {
+        if (settled) return;
+        if (!isActiveSwitch(op)) return;
+        settled = true;
+        clearTimeout(bootstrapTimer);
+        bootstrapTimer = null;
+        pinFlowLog('bootstrap complete');
+        resolve();
+      }).catch(function (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(bootstrapTimer);
+        bootstrapTimer = null;
+        pinFlowLog('bootstrap error', err);
+        reject(err);
+      });
+    });
+  }
+
+  function openHomeAfterBootstrap(op) {
     switching = true;
     syncHeaderSpinner();
-    return runAppBootstrap().then(function () {
+    reportPinFlowProgress('Connecting to Plex…');
+    return runBootstrapWithTimeout(op).then(function () {
+      if (!isActiveSwitch(op)) return;
       switching = false;
       syncHeaderSpinner();
+      pinFlowLog('navigate home');
       navigate('home', {});
     });
   }
 
   function completeSwitch(user, pin) {
     if (switching) return;
+    var op = ++switchGeneration;
+    clearPinFlowTimers();
     switching = true;
     syncHeaderSpinner();
     var ownerToken = getOwnerToken();
-    var switchTimeout = setTimeout(function () {
-      if (!switching) return;
-      switching = false;
-      syncHeaderSpinner();
-      var msg = 'Profile switch timed out. Try again.';
-      if (mode === 'pinEntry') setPinError(msg);
-      else setStatus(msg, true);
-    }, 20000);
+    pinFlowLog('switch start', {
+      profile: user && (user.title || user.username),
+      hasPin: !!(user && (user.hasPin || user.protected))
+    });
+    reportPinFlowProgress(mode === 'pinEntry' ? 'Verifying PIN…' : 'Signing in…');
+
+    pinFlowTimer = setTimeout(function () {
+      if (!isActiveSwitch(op)) return;
+      reportPinFlowFailure(
+        'Sign-in timed out. Check network, Plex server, and PIN, then try again.',
+        null,
+        'flow'
+      );
+    }, PIN_FLOW_TIMEOUT_MS);
+
+    switchApiTimer = setTimeout(function () {
+      if (!isActiveSwitch(op)) return;
+      reportPinFlowFailure('Profile switch timed out. Try again.', null, 'switch-api');
+    }, SWITCH_TIMEOUT_MS);
 
     switchToHomeUser(user, pin, ownerToken).then(function (result) {
-      clearTimeout(switchTimeout);
+      if (!isActiveSwitch(op)) return;
+      if (switchApiTimer) {
+        clearTimeout(switchApiTimer);
+        switchApiTimer = null;
+      }
+      pinFlowLog('switch ok');
       var nextUser = result.user || user;
       var switchedToken = result.authToken || '';
       if (shouldRejectManagedSwitchToken(nextUser, switchedToken, ownerToken)) {
@@ -328,23 +476,23 @@ function profilePickerScreen(root, params, navigate) {
         authToken: token,
         ownerAuthToken: ownerToken
       });
-      return openHomeAfterBootstrap();
+      return openHomeAfterBootstrap(op);
+    }).then(function () {
+      if (!isActiveSwitch(op)) return;
+      clearPinFlowTimers();
     }).catch(function (err) {
-      clearTimeout(switchTimeout);
-      switching = false;
-      syncHeaderSpinner();
-      if (mode === 'pinEntry') {
-        setPinError(err.message || 'Incorrect PIN. Try again.');
-        pinEntry.clear();
-        pinDisplay.textContent = '';
-      } else {
-        setStatus(err.message || 'Could not switch profile.', true);
+      if (!isActiveSwitch(op)) return;
+      var msg = (err && err.message) || 'Could not switch profile.';
+      if (mode === 'pinEntry' && err && !err.message) {
+        msg = 'Incorrect PIN. Try again.';
       }
+      reportPinFlowFailure(msg, err, 'switch-or-bootstrap');
     });
   }
 
   function submitPin(pin) {
     if (!selectedUser || switching) return;
+    pinFlowLog('pin complete (4 digits)');
     completeSwitch(selectedUser, pin);
   }
 
@@ -415,15 +563,23 @@ function profilePickerScreen(root, params, navigate) {
   }
 
   function bootstrapWithoutProfiles() {
+    var op = ++switchGeneration;
+    clearPinFlowTimers();
     switching = true;
     syncHeaderSpinner();
-    openHomeAfterBootstrap().catch(function (err) {
+    openHomeAfterBootstrap(op).then(function () {
+      if (!isActiveSwitch(op)) return;
+      clearPinFlowTimers();
+    }).catch(function (err) {
+      if (!isActiveSwitch(op)) return;
       switching = false;
       syncHeaderSpinner();
+      pinFlowLog('bootstrap without profiles failed', err);
+      var msg = err.message || 'Could not connect.';
       if (params._from) {
-        showLoadError(err.message || 'Could not connect.');
+        showLoadError(msg);
       } else {
-        setStatus(err.message || 'Could not connect.', true);
+        showPinFlowMessage(msg, true);
       }
     });
   }
@@ -476,6 +632,8 @@ function profilePickerScreen(root, params, navigate) {
 
   return {
     destroy: function () {
+      switchGeneration += 1;
+      clearPinFlowTimers();
       document.removeEventListener('keydown', onKeyDown, true);
       detachFocus();
     }

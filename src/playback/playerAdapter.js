@@ -6,7 +6,11 @@ import { getPlexClientIdentity, PMS_PRODUCT } from '../plex/clientIdentity.js';
 import { connectionSchemeLabel } from '../plex/servers/connectionPolicy.js';
 import { fetchText } from '../utils/fetch.js';
 import { isSimulatorRuntime } from '../platform/webosRuntime.js';
-import { describeHlsError, isHlsUrl } from './hlsPolicy.js';
+import {
+  describeHlsError,
+  fetchHlsManifestProbe,
+  isHlsUrl
+} from './hlsPolicy.js';
 import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
 import { shouldScrobble, shouldResetScrobble } from './scrobblePolicy.js';
 import { timelineStateForPlayback } from './timelineSyncState.js';
@@ -17,6 +21,7 @@ import { createRebufferWatchdog } from './rebufferWatchdog.js';
 import { summarizeTranscodeUrl } from './plexPaths.js';
 import { addOnceEventListener } from '../utils/domUtils.js';
 import { getState } from '../core/store.js';
+import { tvLog, tvError } from '../utils/tvDebug.js';
 
 var videoEl = null;
 var progressTimer = null;
@@ -84,6 +89,7 @@ var initialTimelineTimeupdateListener = null;
 var activeTextTrack = null;
 var lastPlaybackUrl = null;
 var playbackModeRef = 'unknown';
+var runtimeBuildLogged = false;
 
 var TIMELINE_INTERVAL_MS = 10000;
 
@@ -129,12 +135,15 @@ function compactPlaybackUrl(url) {
 }
 
 function logPlaybackStreamType(mode, url) {
+  var label = streamTypeLabel(mode);
+  var compact = compactPlaybackUrl(url);
   console.info(
     '[playback] stream type: ' +
-      streamTypeLabel(mode) +
+      label +
       ' (mode=' + (mode || 'unknown') +
-      ', url=' + compactPlaybackUrl(url) + ')'
+      ', url=' + compact + ')'
   );
+  tvLog('playback', 'stream ' + label, { mode: mode || 'unknown', url: compact });
 }
 
 /* Decoded `path=` + transcode decision params, on their own line, so the
@@ -143,6 +152,7 @@ function logPlaybackTranscodeParams(url) {
   var params = summarizeTranscodeUrl(url);
   if (!params || !Object.keys(params).length) return;
   console.info('[playback] params:', params);
+  tvLog('playback', 'transcode params', params);
 }
 
 function resolvePlaybackConnectionScheme(url, session) {
@@ -158,7 +168,20 @@ function resolvePlaybackConnectionScheme(url, session) {
 }
 
 function logPlaybackConnection(url, session) {
-  console.info('[playback] connection: ' + resolvePlaybackConnectionScheme(url, session));
+  var scheme = resolvePlaybackConnectionScheme(url, session);
+  console.info('[playback] connection: ' + scheme);
+  tvLog('playback', 'connection ' + scheme);
+}
+
+function logRuntimeBuildStampOnce() {
+  if (runtimeBuildLogged) return;
+  runtimeBuildLogged = true;
+  if (typeof window !== 'undefined' && window.__XPLAY_BUILD__) {
+    var b = window.__XPLAY_BUILD__;
+    console.info('[XPlay Lite] runtime-build', b.builtAt, b.gitCommit || 'no-git', b.summary || '');
+    return;
+  }
+  console.warn('[XPlay Lite] runtime-build missing');
 }
 
 function shouldUseMseHls(url) {
@@ -226,6 +249,7 @@ function attachMseHls(url, requestHeaders) {
   activeHls.on(events.ERROR, function (_event, data) {
     if (!data || !data.fatal) return;
     console.warn('[playback] hls.js fatal error', data.type, data.details);
+    tvLog('playback', 'hls.js fatal', { type: data.type, details: data.details });
     if (data.type === errorTypes.NETWORK_ERROR && activeHls.startLoad) {
       activeHls.startLoad();
       return;
@@ -242,6 +266,7 @@ function attachMseHls(url, requestHeaders) {
   });
   activeHls.attachMedia(videoEl);
   console.info('[playback] using hls.js for HLS compatibility');
+  tvLog('playback', 'using hls.js');
 }
 
 function notifyBuffering(show) {
@@ -342,6 +367,25 @@ function syncTimeline(state, force) {
   });
 }
 
+function logHlsErrorDiagnostics(src, mediaErr) {
+  if (!isHlsUrl(src)) return;
+  var headers = hlsAuthHeaders(src, sessionRef);
+  fetchHlsManifestProbe(src, headers).then(function (probe) {
+    tvError('playback', 'HLS manifest probe', {
+      mediaErrorCode: mediaErr && mediaErr.code,
+      mediaErrorMessage: describeHlsError(mediaErr),
+      nativeHls: !activeHls,
+      httpStatus: probe.status,
+      isM3u8: probe.isM3u8,
+      streamInfCount: probe.streamInfs && probe.streamInfs.length,
+      streamInfs: probe.streamInfs,
+      mediaTags: probe.mediaTags,
+      snippet: probe.snippet || probe.bodyPreview,
+      probeError: probe.error
+    });
+  });
+}
+
 function attachPlaybackEvents() {
   if (!videoEl || videoEl.getAttribute('data-events') === '1') return;
   videoEl.setAttribute('data-events', '1');
@@ -371,6 +415,12 @@ function attachPlaybackEvents() {
     var err = videoEl.error;
     var msg = describeHlsError(err);
     console.error('Playback error', msg, err, redactPlexUrl(videoEl.src));
+    tvError('playback', 'video error', {
+      message: msg,
+      code: err && err.code,
+      url: redactPlexUrl(videoEl.src)
+    });
+    logHlsErrorDiagnostics(videoEl.src, err);
     if (onErrorCb) {
       onErrorCb({
         message: msg,
@@ -381,11 +431,18 @@ function attachPlaybackEvents() {
     }
   });
 
-  videoEl.addEventListener('waiting', function () { notifyBuffering(true); });
-  videoEl.addEventListener('stalled', function () { notifyBuffering(true); });
+  videoEl.addEventListener('waiting', function () {
+    notifyBuffering(true);
+    tvLog('playback', 'video waiting');
+  });
+  videoEl.addEventListener('stalled', function () {
+    notifyBuffering(true);
+    tvLog('playback', 'video stalled');
+  });
   videoEl.addEventListener('playing', function () {
     notifyBuffering(false);
     syncInitialPlayingTimeline();
+    tvLog('playback', 'video playing');
   });
   videoEl.addEventListener('canplay', function () { notifyBuffering(false); });
   videoEl.addEventListener('canplaythrough', function () { notifyBuffering(false); });
@@ -719,9 +776,16 @@ function play(url, session, options) {
   firstFrameFired = false;
   lastPlaybackUrl = url;
   playbackModeRef = mode;
+  logRuntimeBuildStampOnce();
   logPlaybackStreamType(mode, url);
   logPlaybackTranscodeParams(url);
   logPlaybackConnection(url, session);
+  tvLog('playback', 'play attempt', {
+    mode: mode,
+    offsetMs: offsetMs,
+    mseHls: shouldUseMseHls(url),
+    url: compactPlaybackUrl(url)
+  });
   rebufferWatchdog.resetEpisode();
   notifyBuffering(true);
   videoEl.classList.remove('hidden');
@@ -741,6 +805,7 @@ function play(url, session, options) {
   if (p && p.catch) {
     p.catch(function (err) {
       console.error(err);
+      tvError('playback', 'play() rejected', err && err.message ? err.message : err);
       notifyBuffering(false);
       if (onErrorCb) onErrorCb(normalizePlaybackError(err, url));
     });

@@ -133,7 +133,8 @@ TV-recommended: `largeIcon`, `resolution`, `bgColor`, `splashBackground`, `disab
 |-------------|----------------|
 | Single `<video>` element | One `#native-player`; stop before reuse |
 | Magic Remote + D-pad | `src/ui/focus.js` focus rings and grid navigation |
-| Back key (461) | `webOS.platformBack` + router `back()` |
+| Back key (461) | `webOS.platformBack.onBackKey` → router `back()`; entry routes call `exitToLauncher()` (`platformBack`) |
+| App relaunch | `handlesRelaunch: true` + `webOSRelaunch` → `webOSSystem.activate()` / `PalmSystem.activate()` |
 | Screen keep-alive during playback | `luna://com.webos.service.tvpower` keepAlive |
 | Do not rely on setting `Accept-Language` | Not used (webOS 5 limitation) |
 | Splash while app loads | `#splash-screen` + `src/ui/splash.js` |

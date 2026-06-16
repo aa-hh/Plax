@@ -15,8 +15,9 @@ Reference for how XPlay talks to PMS for text subtitles vs official Plex client 
 
 ## XPlay flow
 
-1. **Remux (direct-stream) + text subs:** `PUT` part selection → `start.m3u8` with `skipSubtitles=1` → client loads via `/library/streams/{id}.srt` then `/subtitles` with `protocol=hls` and the active `transcodeSessionId`. Do **not** call `/decision` again during remux (stalls the next HLS segment). Failed soft subs do not restart with burn-in on remux.
-2. **Direct play + text subs:** progressive file URL → `PUT` + `decision` prime → universal subtitle fetch plan.
+1. **Every play / restart:** `PUT` part when a subtitle is selected → `GET /decision` with `subtitles=auto`, `X-Plex-Incomplete-Segments=1`, and `protocol=hls` on the active server URL (**HTTPS** when ranked first) → follow `Part@decision` and `Part@protocol` for the `start.m3u8` URL or progressive part URL. When PMS chooses HLS, the player **does not** fall back to progressive HTTP `/universal/start` (broken on many `plex.direct` proxies).
+2. **Remux (direct-stream) + text subs:** `start.m3u8` with `skipSubtitles=1` after the server chose remux → client loads via `/library/streams/{id}.srt` then `/subtitles` over HTTP isolated from the live HLS session. Do **not** call `/decision` again during an active remux (stalls the next HLS segment). Failed soft subs do not restart with burn-in on remux.
+3. **Direct play + text subs:** progressive file URL when decision says `directplay` → `PUT` + subtitle `decision` prime → universal subtitle fetch plan.
 3. **PGS/VOBSUB:** full transcode with `subtitles=burn`.
 
 ## Out of scope (proxy / host)

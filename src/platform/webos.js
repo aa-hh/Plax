@@ -63,7 +63,48 @@ function initPlatform() {
     document.dispatchEvent(backEv);
   });
 
+  initRelaunchHandling();
   initMotionCursor();
+}
+
+/**
+ * Bring app to foreground after webOSRelaunch when handlesRelaunch is true in appinfo.json.
+ * https://webostv.developer.lge.com/develop/guides/app-lifecycle-management
+ */
+function activateAppForeground() {
+  var root = typeof globalThis !== 'undefined' ? globalThis
+    : (typeof window !== 'undefined' ? window : null);
+  if (!root) return false;
+  try {
+    if (root.webOSSystem && typeof root.webOSSystem.activate === 'function') {
+      root.webOSSystem.activate();
+      return true;
+    }
+    if (root.PalmSystem && typeof root.PalmSystem.activate === 'function') {
+      root.PalmSystem.activate();
+      return true;
+    }
+  } catch (e) { /* ignore */ }
+  return false;
+}
+
+function initRelaunchHandling() {
+  if (typeof document === 'undefined') return;
+  document.addEventListener('webOSRelaunch', function () {
+    activateAppForeground();
+  }, true);
+}
+
+/**
+ * Leave the app (Home / exit prompt per webOS version). Use on entry routes when Back
+ * cannot go further in-app. https://webostv.developer.lge.com/develop/guides/back-button
+ */
+function exitToLauncher() {
+  if (typeof webOS !== 'undefined' && typeof webOS.platformBack === 'function') {
+    try {
+      webOS.platformBack();
+    } catch (e) { /* ignore */ }
+  }
 }
 
 function probeCodec(mime) {
@@ -167,6 +208,8 @@ export {
   getWebOSVersion,
   getDeviceInfo,
   initPlatform,
+  activateAppForeground,
+  exitToLauncher,
   probeCodec,
   getCodecCapabilities,
   keepScreenOn,

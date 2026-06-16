@@ -9,12 +9,18 @@ import {
 import { applyPlexClientFields } from '../plex/clientIdentity.js';
 import {
   applyProfileToParams,
-  isDirectPlayOnlyQuality
+  getProfile,
+  isDirectPlayOnlyQuality,
+  requiresServerTranscode
 } from './qualityProfiles.js';
 import {
   buildMinimalDecisionParams,
   buildUniversalDecisionUrl
 } from './transcodeDecision.js';
+import {
+  parseTranscodeDecision,
+  strategyFromPartDecision
+} from './parseTranscodeDecision.js';
 import { buildAudioTranscodeParam } from './tracks/audioTracks.js';
 import { normalizePlexPath } from './plexPaths.js';
 import {
@@ -23,15 +29,23 @@ import {
   resolveSessionMetadataPath,
   offsetSecondsForPlex,
   getActiveTranscodeSession,
-  upgradeStrategyForTextSubtitles,
   plexLocationForServer,
   selectPartSubtitleStream
 } from './tracks/subtitleTracks.js';
 import {
   applyWebOsHlsTranscodeParams,
-  buildHttpTranscodeFallbackParams
+  buildHttpTranscodeFallbackParams,
+  isSegmentedDeliveryProtocol,
+  isWebOs4Tv,
+  isHlsUrl,
+  extractHlsManifestDiagnostics
 } from './hlsPolicy.js';
+import { tvLog, tvError } from '../utils/tvDebug.js';
 
+/**
+ * Client-side strategy hint when `/decision` is unavailable. Playback URLs
+ * normally follow the server decision instead of this helper.
+ */
 function resolvePlaybackStrategy(session) {
   var prefs = getState().playbackPrefs || {};
   var quality = session.quality || prefs.quality || 'auto';
@@ -39,27 +53,65 @@ function resolvePlaybackStrategy(session) {
   if (isDirectPlayOnlyQuality(quality) && !session.forceTranscode) {
     return 'direct';
   }
+  if (requiresServerTranscode(quality)) {
+    return session.transcodeProtocol === 'http' ? 'http-transcode' : 'transcode';
+  }
   if (session.forceTranscode || prefs.directPlay === false) {
     return session.transcodeProtocol === 'http' ? 'http-transcode' : 'transcode';
   }
-  return upgradeStrategyForTextSubtitles('direct', session);
+  return 'direct';
 }
 
-function buildTranscodeParams(server, partKey, session, protocol) {
+/** Plex Web-style client playback id (distinct from PMS transcode session query param). */
+function generateClientPlaybackSessionId() {
+  var alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  var out = '';
+  for (var i = 0; i < 24; i++) {
+    out += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+  return out;
+}
+
+function sessionQualityKey(session) {
   var prefs = getState().playbackPrefs || {};
-  var strategy = resolvePlaybackStrategy(session);
+  return session.quality || prefs.quality || 'auto';
+}
+
+function applyPlexTranscodeLevelParams(params, session, usesTranscoder) {
+  if (!usesTranscoder && !requiresServerTranscode(sessionQualityKey(session))) return;
+  params.subtitleSize = '75';
+  params.audioBoost = '100';
+}
+
+function buildDecisionRequestFlags(session) {
+  var prefs = getState().playbackPrefs || {};
+  var quality = sessionQualityKey(session);
+  var strategy = session.playbackStrategy;
+
+  if (requiresServerTranscode(quality)) {
+    return { directPlay: '0', directStream: '0', directStreamAudio: '0' };
+  }
+  if (session.forceTranscode || prefs.directPlay === false) {
+    return { directPlay: '0', directStream: '0', directStreamAudio: '0' };
+  }
+  if (strategy === 'direct-stream') {
+    return { directPlay: '0', directStream: '1', directStreamAudio: '1' };
+  }
+  if (strategy === 'transcode' || strategy === 'http-transcode') {
+    return { directPlay: '0', directStream: '0', directStreamAudio: '0' };
+  }
+  if (strategy === 'direct' || isDirectPlayOnlyQuality(quality)) {
+    return { directPlay: '1', directStream: '1', directStreamAudio: '1' };
+  }
+  return { directPlay: '1', directStream: '1', directStreamAudio: '1' };
+}
+
+function buildTranscodeParams(server, partKey, session, protocol, strategyOverride) {
+  var prefs = getState().playbackPrefs || {};
+  var strategy = strategyOverride || resolvePlaybackStrategy(session);
   var path = resolveSessionMetadataPath(session) || normalizePlexPath(partKey);
   var fullTranscode = strategy === 'transcode' || strategy === 'http-transcode';
   var directStream = strategy === 'direct-stream';
-  var transcodeSession = getActiveTranscodeSession(session) ||
-    session.sessionId || 'xplay-' + Date.now();
-  /* Plex transcoder API (https://developer.plex.tv/pms/#tag/Transcoder/operation/transcodeStart):
-   *   - directStreamAudio=1 lets PMS keep the audio track unchanged when remuxing
-   *   - hasMDE=1 lets PMS skip its built-in profile gating; required pair with directPlay
-   *   - mediaBufferSize advertises the client buffer so PMS doesn't assume bandwidth-constrained
-   *   - autoAdjustQuality=0 disables server-driven ABR; we control quality from the menu
-   *   - X-Plex-Session-Identifier identifies the playback session (separate from `session=` UUID
-   *     which is the transcode session ID). Real Plex Web sends both. */
   var params = applyPlexClientFields({
     path: path,
     mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
@@ -71,16 +123,15 @@ function buildTranscodeParams(server, partKey, session, protocol) {
     directStreamAudio: fullTranscode ? '0' : '1',
     autoAdjustQuality: '0',
     mediaBufferSize: '102400',
-    session: transcodeSession,
-    transcodeSessionId: transcodeSession,
-    'X-Plex-Session-Identifier': transcodeSession,
     location: plexLocationForServer(server)
   });
+  assignStartUrlSessionParams(params, session);
   var offsetSec = offsetSecondsForPlex(session);
   if (offsetSec > 0) params.offset = String(offsetSec);
   applyProfileToParams(params, session.quality || prefs.quality, prefs);
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
   var usesTranscoder = directStream || fullTranscode;
+  applyPlexTranscodeLevelParams(params, session, usesTranscoder);
   var softTextSubs = usesTranscoder && session.subtitleStreamId != null &&
     session.subtitleBurnIn !== true;
   Object.assign(params, buildSubtitleTranscodeParams(
@@ -98,15 +149,94 @@ function buildTranscodeParams(server, partKey, session, protocol) {
   if (protocol === 'http') {
     buildHttpTranscodeFallbackParams(params);
   } else {
-    applyWebOsHlsTranscodeParams(params);
+    applyWebOsHlsTranscodeParams(params, { strategy: strategy });
   }
 
   return params;
 }
 
-function buildPlaybackUrl(server, partKey, session, protocol) {
+/** Params sent to `/decision` — ask PMS with subtitles=auto when soft subs are on. */
+function assignDecisionSessionParams(params, session) {
+  var clientSession = session.playbackSessionId || session.sessionId;
+  if (!clientSession) {
+    clientSession = generateClientPlaybackSessionId();
+    session.playbackSessionId = clientSession;
+  }
+  params.session = clientSession;
+  delete params.transcodeSessionId;
+  delete params['X-Plex-Session-Identifier'];
+  return params;
+}
+
+function requirePmsTranscodeSession(session) {
+  var resourceSession = getActiveTranscodeSession(session);
+  if (!resourceSession) {
+    var err = new Error(
+      'Plex did not return a transcode session from /decision. Cannot start universal transcode.'
+    );
+    err.code = 'PMS_SESSION_MISSING';
+    throw err;
+  }
+  return resourceSession;
+}
+
+function assignStartUrlSessionParams(params, session) {
+  var resourceSession = requirePmsTranscodeSession(session);
+  var clientSession = session.playbackSessionId || session.sessionId;
+  params.session = resourceSession;
+  params.transcodeSessionId = resourceSession;
+  tvLog('session', 'play session alignment', {
+    decisionResourceSession: resourceSession,
+    clientPlaybackSessionId: clientSession,
+    matchesClientSession: resourceSession === clientSession,
+    playSession: params.session,
+    playTranscodeSessionId: params.transcodeSessionId
+  });
+  return params;
+}
+
+function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrides) {
+  var prefs = getState().playbackPrefs || {};
+  var path = resolveSessionMetadataPath(session) || normalizePlexPath(partKey);
+  var params = applyPlexClientFields(Object.assign({
+    path: path,
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    hasMDE: '1',
+    directPlay: '1',
+    directStream: '1',
+    directStreamAudio: '1',
+    location: plexLocationForServer(server)
+  }, flagOverrides || {}));
+  assignDecisionSessionParams(params, session);
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  applyProfileToParams(params, session.quality || prefs.quality, prefs);
+  Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
+  if (session.subtitleStreamId != null && session.subtitleBurnIn !== true) {
+    params.subtitles = 'auto';
+  } else if (session.subtitleStreamId != null && session.subtitleBurnIn === true) {
+    Object.assign(params, buildSubtitleTranscodeParams(
+      session.subtitleStreamId,
+      session.subtitleOffset,
+      {
+        burnIn: true,
+        clientSubtitles: false,
+        advancedSubtitles: session.subtitleAdvancedBurn ? 'burn' : undefined
+      }
+    ));
+  }
+  return buildMinimalDecisionParams(params, path);
+}
+
+function buildDecisionRequestParams(server, partKey, session, protocol) {
+  var flags = buildDecisionRequestFlags(session);
+  return buildMinimalDecisionRequestParams(server, partKey, session, flags);
+}
+
+function buildPlaybackUrl(server, partKey, session, protocol, strategyOverride) {
   protocol = protocol || (session && session.transcodeProtocol) || 'hls';
-  var params = buildTranscodeParams(server, partKey, session, protocol);
+  var params = buildTranscodeParams(server, partKey, session, protocol, strategyOverride);
   if (protocol === 'http') {
     return serverUrl(server.connectionUri, '/video/:/transcode/universal/start', params, server);
   }
@@ -114,17 +244,16 @@ function buildPlaybackUrl(server, partKey, session, protocol) {
 }
 
 function buildDecisionParams(server, partKey, session, protocol) {
-  var full = buildTranscodeParams(server, partKey, session, protocol);
-  return buildMinimalDecisionParams(full, resolveSessionMetadataPath(session) || full.path);
+  return buildDecisionRequestParams(server, partKey, session, protocol);
 }
 
 function buildDecisionHeaders(server, session) {
-  var transcodeSession = getActiveTranscodeSession(session) ||
-    session.sessionId || null;
+  var clientSessionId = session &&
+    (session.playbackSessionId || session.sessionId) || null;
   var headers = plexHeaders({ Accept: 'application/xml' });
   var token = getServerToken(server);
   if (token) headers['X-Plex-Token'] = token;
-  if (transcodeSession) headers['X-Plex-Session-Identifier'] = transcodeSession;
+  if (clientSessionId) headers['X-Plex-Session-Identifier'] = clientSessionId;
   return headers;
 }
 
@@ -137,43 +266,161 @@ function decisionErrorDetails(err) {
   return detail;
 }
 
-function extractDecisionResourceSession(xmlText) {
-  if (!xmlText) return null;
-  var match = String(xmlText).match(/\bresourceSession=(["'])(.*?)\1/);
-  return match && match[2] ? match[2] : null;
-}
-
-/**
- * Prime the playback session with PMS by calling `/decision` before requesting
- * the actual stream. Plex Web and PMP do this on every play and the transcoder
- * relies on the session being registered first; skipping it can cause PMS to
- * fail when it tries to materialise the session during the start request
- * (the proxy then surfaces this as an HTTP 400 on `start.m3u8`).
- */
 function buildDecisionUrl(server, partKey, session, protocol) {
   protocol = protocol || (session && session.transcodeProtocol) || 'hls';
   var params = buildDecisionParams(server, partKey, session, protocol);
   return buildUniversalDecisionUrl(server.connectionUri, params);
 }
 
-function primePlaybackSession(server, partKey, session, protocol) {
-  var url = buildDecisionUrl(server, partKey, session, protocol);
-  if (!url) return Promise.resolve();
-  return fetchText(url, {
-    headers: buildDecisionHeaders(server, session),
-    timeout: 15000
-  }).then(function (body) {
-    var resourceSession = extractDecisionResourceSession(body);
-    if (resourceSession && session) session.transcodeSessionId = resourceSession;
-    /* PMS uses 200 OK with a MediaContainer describing the chosen
-     * delivery; we don't need the body, only the side effect of
-     * registering the session. */
-  }).catch(function (err) {
+function applyPmsDeliveryFromDecision(session, partProtocol) {
+  if (!session) return;
+  var protocol = partProtocol || null;
+  session.pmsDeliveryProtocol = protocol;
+  session.commitToHlsDelivery = isSegmentedDeliveryProtocol(protocol);
+}
+
+function resolveStrategyFromDecision(parsed, session, requestProtocol) {
+  if (parsed && parsed.part && parsed.part.decision) {
+    var strategy = strategyFromPartDecision(parsed.part.decision);
+    var partDecision = parsed.part.decision;
+    var partProtocol = parsed.part.protocol;
+    var quality = sessionQualityKey(session);
+    if (requiresServerTranscode(quality) &&
+        (partDecision === 'copy' || partDecision === 'directplay')) {
+      console.info(
+        '[playback] quality override: PMS said ' + partDecision +
+          ', forcing transcode for ' + quality
+      );
+      strategy = 'transcode';
+    }
+    if (isWebOs4Tv() && strategy === 'direct-stream') {
+      tvLog('session', 'webOS4 override remux → transcode');
+      strategy = 'transcode';
+    }
+    applyPmsDeliveryFromDecision(session, partProtocol);
+    /* Honor explicit HTTP fallback from the screen; otherwise follow PMS protocol. */
+    if (session.playbackStrategy === 'http-transcode') {
+      if (strategy === 'transcode') {
+        return { strategy: 'http-transcode', protocol: 'http' };
+      }
+    } else if (partProtocol === 'http' && strategy !== 'direct') {
+      return { strategy: 'http-transcode', protocol: 'http' };
+    } else if (isSegmentedDeliveryProtocol(partProtocol)) {
+      return {
+        strategy: strategy,
+        protocol: partProtocol
+      };
+    }
+    return {
+      strategy: strategy,
+      protocol: partProtocol || requestProtocol
+    };
+  }
+  applyPmsDeliveryFromDecision(session, requestProtocol);
+  session.commitToHlsDelivery = isSegmentedDeliveryProtocol(requestProtocol);
+  return {
+    strategy: resolvePlaybackStrategy(session),
+    protocol: requestProtocol
+  };
+}
+
+function decisionFailureError(err) {
+  var status = err && err.status ? err.status : 0;
+  var failErr = new Error(
+    'Plex /decision failed' + (status ? ' (HTTP ' + status + ')' : '') +
+    '. Check remote access or try 720p quality.'
+  );
+  failErr.status = status || undefined;
+  return failErr;
+}
+
+function buildDecisionRetryUrl(server, partKey, session, flagOverrides) {
+  return buildUniversalDecisionUrl(
+    server.connectionUri,
+    buildMinimalDecisionRequestParams(server, partKey, session, flagOverrides)
+  );
+}
+
+function buildFirstDecisionUrl(server, partKey, session, protocol) {
+  return buildDecisionRetryUrl(server, partKey, session, {
+    directPlay: '1',
+    directStream: '1',
+    directStreamAudio: '1'
+  });
+}
+
+/**
+ * Ask PMS how to deliver this item; adopt resourceSession + Part@decision.
+ */
+function requestPlaybackDecision(server, partKey, session, protocol) {
+  var url = buildFirstDecisionUrl(server, partKey, session, protocol);
+  if (!url) {
+    return Promise.resolve(resolveStrategyFromDecision(null, session, protocol));
+  }
+  var headers = buildDecisionHeaders(server, session);
+
+  function fetchDecision(decisionUrl) {
+    return fetchText(decisionUrl, {
+      headers: headers,
+      timeout: 15000
+    });
+  }
+
+  function handleDecisionBody(body) {
+    var parsed = parseTranscodeDecision(body, session);
+    if (session) {
+      if (parsed.resourceSession) {
+        session.transcodeSessionId = parsed.resourceSession;
+        tvLog('session', 'decision resourceSession', {
+          resourceSession: parsed.resourceSession
+        });
+      } else {
+        session.transcodeSessionId = session.playbackSessionId || session.sessionId;
+        tvLog('session', 'decision resourceSession missing, using client session', {
+          resourceSession: session.transcodeSessionId
+        });
+      }
+    }
+    var resolved = resolveStrategyFromDecision(parsed, session, protocol);
+    if (parsed.part && parsed.part.decision) {
+      session.pmsPlaybackDecision = parsed.part.decision;
+    }
+    session.playbackStrategy = resolved.strategy;
+    logPlaybackDecisionOutcome(session, parsed, resolved);
+    return resolved;
+  }
+
+  function tryDecision400Retries() {
+    var transcodeUrl = buildDecisionRetryUrl(server, partKey, session, {
+      directPlay: '0',
+      directStream: '0',
+      directStreamAudio: '0'
+    });
+    tvLog('session', 'decision retry transcode flags', { url: redactPlexUrl(transcodeUrl) });
+    return fetchDecision(transcodeUrl).then(handleDecisionBody);
+  }
+
+  function logDecisionFailure(err, decisionUrl) {
     console.warn(
-      '[playback] decision prime failed for ' + redactPlexUrl(url) +
+      '[playback] decision failed for ' + redactPlexUrl(decisionUrl) +
         decisionErrorDetails(err) + ': ' +
         (err && err.message ? err.message : String(err))
     );
+    tvLog('session', 'decision failed', {
+      url: redactPlexUrl(decisionUrl),
+      error: err && err.message ? err.message : String(err)
+    });
+  }
+
+  return fetchDecision(url).then(handleDecisionBody).catch(function (err) {
+    if (err && err.status === 400) {
+      return tryDecision400Retries().catch(function (retryErr) {
+        logDecisionFailure(retryErr || err, url);
+        throw decisionFailureError(retryErr || err);
+      });
+    }
+    logDecisionFailure(err, url);
+    throw decisionFailureError(err);
   });
 }
 
@@ -182,17 +429,36 @@ function buildDirectPlayUrl(server, partKey) {
   return serverUrl(server.connectionUri, path, {}, server);
 }
 
+function logPlaybackDecisionOutcome(session, parsed, resolved) {
+  var quality = sessionQualityKey(session);
+  var profile = getProfile(quality);
+  var parts = [
+    'quality=' + quality,
+    'strategy=' + resolved.strategy
+  ];
+  if (profile.maxVideoBitrate) parts.push('maxVideoBitrate=' + profile.maxVideoBitrate);
+  if (profile.videoResolution) parts.push('videoResolution=' + profile.videoResolution);
+  if (parsed && parsed.part) {
+    parts.push('decision=' + (parsed.part.decision || 'unknown'));
+    if (parsed.part.protocol) parts.push('protocol=' + parsed.part.protocol);
+  }
+  if (session.commitToHlsDelivery) parts.push('delivery=hls-committed');
+  console.info('[playback] ' + parts.join(' '));
+  tvLog('session', 'decision ' + parts.join(' '));
+}
+
 function createSession(item, version, options) {
   options = options || {};
   var server = getState().activeServer;
   var partKey = (version && version.partKey) || item.key;
   var offset = options.offset != null ? options.offset : (item.viewOffset || 0);
-  return {
+  var session = {
     item: item,
     version: version,
     server: server,
     offset: offset,
     sessionId: 'xplay-' + Date.now(),
+    playbackSessionId: options.playbackSessionId || generateClientPlaybackSessionId(),
     mediaIndex: options.mediaIndex != null ? options.mediaIndex : 0,
     partIndex: options.partIndex != null ? options.partIndex : 0,
     audioStreamId: options.audioStreamId,
@@ -205,6 +471,14 @@ function createSession(item, version, options) {
     playbackStrategy: options.playbackStrategy,
     transcodeProtocol: options.transcodeProtocol || 'hls'
   };
+  tvLog('session', 'created', {
+    ratingKey: item && item.ratingKey,
+    offsetMs: offset,
+    quality: session.quality,
+    strategy: session.playbackStrategy,
+    protocol: session.transcodeProtocol
+  });
+  return session;
 }
 
 function resolveStreamMode(strategy, protocol) {
@@ -214,50 +488,126 @@ function resolveStreamMode(strategy, protocol) {
   return 'transcode-hls';
 }
 
-function shouldSelectPartSubtitleBeforePlay(session, strategy) {
-  if (session.subtitleStreamId == null) return false;
-  if (session.subtitleBurnIn === true) return true;
-  return strategy === 'direct' || strategy === 'direct-stream';
+function shouldSelectPartSubtitleBeforePlay(session) {
+  return session.subtitleStreamId != null;
+}
+
+function probeHlsPlaylistOrReject(server, url, session) {
+  if (!isHlsUrl(url)) return Promise.resolve();
+  var headers = plexHeaders({});
+  var token = getServerToken(server);
+  if (token) headers['X-Plex-Token'] = token;
+  if (session && (session.playbackSessionId || session.sessionId)) {
+    headers['X-Plex-Session-Identifier'] = session.playbackSessionId || session.sessionId;
+  }
+  return fetchText(url, { headers: headers, timeout: 10000 }).then(function (body) {
+    var diag = extractHlsManifestDiagnostics(body);
+    if (!diag.isM3u8) {
+      var invalid = new Error('Plex start.m3u8 did not return a valid HLS playlist.');
+      invalid.status = 502;
+      throw invalid;
+    }
+    tvLog('session', 'start.m3u8 probe ok', {
+      status: 200,
+      isM3u8: true,
+      streamInfs: diag.streamInfs.slice(0, 2),
+      snippet: diag.snippet.slice(0, 240),
+      url: redactPlexUrl(url)
+    });
+  }).catch(function (err) {
+    var status = err && err.status;
+    var message = status === 400
+      ? 'Plex rejected start.m3u8 (HTTP 400). Transcode session may not match /decision.'
+      : 'Plex start.m3u8 probe failed' + (status ? ' (HTTP ' + status + ')' : '');
+    tvError('session', 'start.m3u8 probe failed', {
+      status: status,
+      error: err && err.message ? err.message : String(err),
+      url: redactPlexUrl(url)
+    });
+    var out = new Error(message);
+    out.status = status;
+    throw out;
+  });
 }
 
 function resolveStreamUrl(session) {
+  if (!session || !session.server) {
+    var noServerErr = new Error('No Plex server connected. Return to library and try again.');
+    tvError('session', 'resolveStreamUrl failed', noServerErr.message);
+    return Promise.reject(noServerErr);
+  }
+  if (!session.server.connectionUri) {
+    var noUriErr = new Error('Plex server has no connection URL. Check network in Settings.');
+    tvError('session', 'resolveStreamUrl failed', noUriErr.message);
+    return Promise.reject(noUriErr);
+  }
   var server = session.server;
   var partKey = resolveSessionPartPath(session);
-
-  var strategy = resolvePlaybackStrategy(session);
-  var transcodeProtocol = strategy === 'http-transcode'
+  if (!partKey) {
+    var noPartErr = new Error('Could not resolve media file path for playback.');
+    tvError('session', 'resolveStreamUrl failed', noPartErr.message);
+    return Promise.reject(noPartErr);
+  }
+  /* Ask /decision for HLS unless the user explicitly requested HTTP fallback. */
+  var requestProtocol = session.playbackStrategy === 'http-transcode'
     ? 'http'
-    : (session.transcodeProtocol || 'hls');
+    : 'hls';
 
-  function buildResult() {
-    if (strategy === 'direct') {
-      return {
-        url: buildDirectPlayUrl(server, partKey),
-        mode: 'direct'
-      };
-    }
-    return {
-      url: buildPlaybackUrl(server, partKey, session, transcodeProtocol),
-      mode: resolveStreamMode(strategy, transcodeProtocol)
-    };
-  }
-  function primeIfTranscode() {
-    /* Direct play hits the raw part URL — PMS doesn't need a session
-     * registered. Direct-stream and transcode go through the universal
-     * transcoder and must be primed via `/decision` first. */
-    if (strategy === 'direct') return Promise.resolve();
-    return primePlaybackSession(server, partKey, session, transcodeProtocol);
-  }
-  var pre = shouldSelectPartSubtitleBeforePlay(session, strategy)
+  var pre = shouldSelectPartSubtitleBeforePlay(session)
     ? selectPartSubtitleStream(server, session)
     : Promise.resolve();
-  return pre.then(primeIfTranscode).then(buildResult);
+
+  return pre.then(function () {
+    return requestPlaybackDecision(server, partKey, session, requestProtocol);
+  }).then(function (resolved) {
+    try {
+      var strategy = resolved.strategy;
+      var protocol = resolved.protocol || requestProtocol;
+      if (strategy === 'direct') {
+        var directUrl = buildDirectPlayUrl(server, partKey);
+        tvLog('session', 'url direct play', { url: redactPlexUrl(directUrl) });
+        return {
+          url: directUrl,
+          mode: 'direct'
+        };
+      }
+      var startProtocol = strategy === 'http-transcode' ? 'http' : protocol;
+      var playbackUrl = buildPlaybackUrl(server, partKey, session, startProtocol, strategy);
+      var mode = resolveStreamMode(strategy, startProtocol);
+      tvLog('session', 'url ' + mode, {
+        strategy: strategy,
+        protocol: startProtocol,
+        url: redactPlexUrl(playbackUrl)
+      });
+      if (startProtocol === 'http') {
+        return {
+          url: playbackUrl,
+          mode: mode
+        };
+      }
+      return probeHlsPlaylistOrReject(server, playbackUrl, session).then(function () {
+        return {
+          url: playbackUrl,
+          mode: mode
+        };
+      });
+    } catch (buildErr) {
+      tvError('session', 'build playback URL failed', buildErr && buildErr.message ? buildErr.message : buildErr);
+      throw buildErr;
+    }
+  });
 }
 
 export {
   buildPlaybackUrl,
   buildDirectPlayUrl,
+  buildDecisionRequestParams,
+  applyPmsDeliveryFromDecision,
   createSession,
   resolveStreamUrl,
-  resolvePlaybackStrategy
+  resolvePlaybackStrategy,
+  requestPlaybackDecision,
+  buildFirstDecisionUrl,
+  assignStartUrlSessionParams,
+  requirePmsTranscodeSession
 };

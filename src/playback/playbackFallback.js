@@ -3,6 +3,9 @@
  * Pure logic; screen layer applies messages and restarts playback.
  */
 
+import { tvLog } from '../utils/tvDebug.js';
+import { isWebOs4Tv } from './hlsPolicy.js';
+
 function createPlaybackFallbackState() {
   return {
     directStreamFallbackTried: false,
@@ -35,6 +38,19 @@ function resetPlaybackFallbackFlags(state) {
 /** Allow another quality downshift on the next rebuffer episode. */
 function resetRebufferDownshiftForEpisode(state) {
   state.rebufferDownshiftTried = false;
+}
+
+/** PMS /decision chose HLS (or DASH) — do not fall back to progressive HTTP transcode. */
+function isPmsCommittedToHlsDelivery(context) {
+  context = context || {};
+  if (context.playbackMode === 'transcode-hls') return false;
+  if (context.codecUnsupported &&
+      (context.playbackMode === 'transcode-hls' || context.playbackMode === 'direct-stream')) {
+    return false;
+  }
+  if (context.commitToHlsDelivery === true) return true;
+  var protocol = String(context.pmsDeliveryProtocol || '').toLowerCase();
+  return protocol === 'hls' || protocol === 'dash';
 }
 
 function isLadderFallbackStreamChange(streamChange) {
@@ -80,6 +96,15 @@ function decideErrorFallback(state, context) {
 
   if (playbackMode === 'direct' && !state.directStreamFallbackTried) {
     state.directStreamFallbackTried = true;
+    if (isWebOs4Tv()) {
+      state.fullTranscodeFallbackTried = true;
+      tvLog('fallback', 'error → full-transcode (webOS4 skip remux)');
+      return {
+        action: 'full-transcode',
+        codecUnsupported: codecUnsupported
+      };
+    }
+    tvLog('fallback', 'error → direct-stream');
     return { action: 'direct-stream' };
   }
   /* Remux was started only for subtitles and the server rejected it
@@ -93,20 +118,38 @@ function decideErrorFallback(state, context) {
   ) {
     state.directNoSubsFallbackTried = true;
     state.enteredRemuxForSubtitlesOnly = false;
+    tvLog('fallback', 'error → direct-no-subs');
     return { action: 'direct-no-subs' };
   }
   if (playbackMode === 'direct-stream' && !state.fullTranscodeFallbackTried) {
     state.fullTranscodeFallbackTried = true;
+    tvLog('fallback', 'error → full-transcode');
     return {
       action: 'full-transcode',
       codecUnsupported: codecUnsupported
     };
   }
-  if (isHls && !state.hlsFallbackTried && playbackMode !== 'transcode-http') {
+  if (
+    playbackMode === 'transcode-hls' &&
+    isHls &&
+    !state.httpFallbackTried
+  ) {
+    state.httpFallbackTried = true;
+    tvLog('fallback', 'error → http-transcode (HLS transcode failed)');
+    return { action: 'http-transcode' };
+  }
+  if (
+    isHls &&
+    !state.hlsFallbackTried &&
+    playbackMode !== 'transcode-http' &&
+    !isPmsCommittedToHlsDelivery(context)
+  ) {
     state.hlsFallbackTried = true;
+    tvLog('fallback', 'error → http-transcode');
     return { action: 'http-transcode' };
   }
   if (!state.httpFallbackTried) state.httpFallbackTried = true;
+  tvLog('fallback', 'error → terminal');
   return { action: 'terminal' };
 }
 
@@ -121,6 +164,7 @@ function decideRebufferFallback(state, context) {
     !state.rebufferDownshiftTried
   ) {
     state.rebufferDownshiftTried = true;
+    tvLog('fallback', 'rebuffer → quality-downshift', context.nextLowerQuality);
     return { action: 'quality-downshift', nextQuality: context.nextLowerQuality };
   }
   /* HLS remux with soft subs: try full HLS transcode before HTTP progressive
@@ -131,10 +175,16 @@ function decideRebufferFallback(state, context) {
     !state.fullTranscodeFallbackTried
   ) {
     state.fullTranscodeFallbackTried = true;
+    tvLog('fallback', 'rebuffer → full-transcode');
     return { action: 'full-transcode' };
   }
-  if (context.transcodeProtocol !== 'http' && !state.httpFallbackTried) {
+  if (
+    context.transcodeProtocol !== 'http' &&
+    !state.httpFallbackTried &&
+    !isPmsCommittedToHlsDelivery(context)
+  ) {
     state.httpFallbackTried = true;
+    tvLog('fallback', 'rebuffer → http-transcode');
     return { action: 'http-transcode' };
   }
   return { action: 'none' };
@@ -151,6 +201,7 @@ export {
   createPlaybackFallbackState,
   resetPlaybackFallbackFlags,
   resetRebufferDownshiftForEpisode,
+  isPmsCommittedToHlsDelivery,
   isLadderFallbackStreamChange,
   applyRestartPlaybackFallbackFlags,
   decideErrorFallback,

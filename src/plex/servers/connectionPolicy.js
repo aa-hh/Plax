@@ -1,10 +1,12 @@
 /**
- * Connection ranking: HTTPS always wins over HTTP. Plex publishes a signed
- * *.plex.direct cert for every PMS (LAN and remote), so the HTTPS candidate
- * is normally reachable. HTTP stays in the candidate list as a fallback
- * (heavily penalized when "Allow insecure HTTP" is off, neutral when it
- * is on) so a network where plex.direct DNS or TLS fails can still probe
- * through to HTTP. Within the same scheme tier the order preference is
+ * Connection ranking: HTTPS wins over HTTP for remote/direct paths when secure
+ * connections are allowed. Plex publishes a signed *.plex.direct cert for
+ * every PMS (LAN and remote), so HTTPS is normally reachable on webOS 5+.
+ *
+ * With "Allow insecure connections" enabled, LAN HTTP is preferred over LAN
+ * HTTPS (webOS 4 TLS / plex.direct issues). HTTP stays in the candidate list
+ * as a fallback (heavily penalized when insecure is off) so discovery can
+ * probe through to HTTP after HTTPS fails. Order within a tier:
  * local -> remote direct -> relay.
  */
 
@@ -24,8 +26,9 @@ function scoreConnection(c, prefs) {
   var score = 0;
   var isHttps = isHttpsUri(c.uri);
   var isHttp = isHttpUri(c.uri);
-  if (isHttps && preferSecure) score += 500;
+  if (isHttps && preferSecure && !(allowInsecure && c.local)) score += 500;
   if (isHttp && !allowInsecure) score -= 1000;
+  if (isHttp && allowInsecure && c.local) score += 550;
   if (c.local) score += 100;
   if (c.relay) score -= 50;
   order.forEach(function (type, i) {

@@ -1,6 +1,9 @@
 node_modules/
 dist/
-build/
 .build-last-stamp.json
 *.ipk
 .DS_Store
+logs/
+# Track build config but ignore compiled output
+build/*.js.map
+build/rollup.cache/

@@ -7,6 +7,7 @@ import { focusFirst, attachFocusNav } from '../focus.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { VERSION } from '../../plex/client.js';
 import { isPerfEnabled } from '../../perf/resourceMonitor.js';
+import { isTvDebugEnabled, getLogSinkUrl, setLogSinkUrl } from '../../utils/tvDebug.js';
 import * as cache from '../../core/cache.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
 import {
@@ -214,7 +215,11 @@ function settingsScreen(root, params, navigate) {
   }
 
   renderPlaybackSettings(document.getElementById('playback-section'));
-  renderNetworkSettings(document.getElementById('network-section'));
+  renderNetworkSettings(document.getElementById('network-section'), {
+    onChanged: function (message) {
+      setStatus(message, false);
+    }
+  });
 
   if (canUseWatchlists(activeUser)) {
     var wlTitle = document.getElementById('watchlists-section-title');
@@ -273,7 +278,16 @@ function settingsScreen(root, params, navigate) {
     '<div class="settings-row"><label>Design Review</label>' +
     '<button class="btn" id="btn-design-review" tabindex="0">Open</button></div>' +
     '<div class="settings-row"><label>Performance HUD</label>' +
-    '<select id="perf-hud-select"><option value="0">Off</option><option value="1">On</option></select></div>';
+    '<select id="perf-hud-select"><option value="0">Off</option><option value="1">On</option></select></div>' +
+    '<div class="settings-row"><label>Debug log overlay</label>' +
+    '<select id="debug-log-select"><option value="0">Off</option><option value="1">On</option></select></div>' +
+    '<div class="settings-row settings-row--stacked">' +
+    '<label for="log-sink-url">Log sink URL</label>' +
+    '<input id="log-sink-url" class="search-input settings-log-sink-input" type="text" tabindex="0" ' +
+    'placeholder="http://192.168.4.1:8765/log" autocomplete="off" />' +
+    '<p class="settings-hint">On your Mac run <code>npm run log:receive</code>, then use your Mac\'s LAN IP ' +
+    '(System Settings → Network). Requires debug overlay on. Logs append to <code>logs/tv.log</code>.</p>' +
+    '</div>';
 
   document.getElementById('btn-design-review').addEventListener('click', function () {
     navigate('design-review', { _from: 'settings' });
@@ -281,6 +295,30 @@ function settingsScreen(root, params, navigate) {
 
   var perfSel = document.getElementById('perf-hud-select');
   perfSel.value = isPerfEnabled() ? '1' : '0';
+  var debugSel = document.getElementById('debug-log-select');
+  debugSel.value = isTvDebugEnabled() ? '1' : '0';
+  debugSel.addEventListener('change', function () {
+    if (window.__xplayDebug) {
+      if (debugSel.value === '1') window.__xplayDebug.enable();
+      else window.__xplayDebug.disable();
+    }
+    setStatus('Debug log overlay ' + (debugSel.value === '1' ? 'enabled' : 'disabled') +
+      ' — relaunch recommended.', false);
+  });
+
+  var logSinkInput = document.getElementById('log-sink-url');
+  if (logSinkInput) {
+    logSinkInput.value = getLogSinkUrl() || '';
+    logSinkInput.addEventListener('change', function () {
+      var next = logSinkInput.value.trim();
+      setLogSinkUrl(next);
+      if (window.__xplayDebug && window.__xplayDebug.setLogSinkUrl) {
+        window.__xplayDebug.setLogSinkUrl(next);
+      }
+      setStatus(next ? 'Log sink saved — debug overlay must be on.' : 'Log sink cleared.', false);
+    });
+  }
+
   perfSel.addEventListener('change', function () {
     if (window.__xplayPerf) {
       if (perfSel.value === '1') window.__xplayPerf.enable();

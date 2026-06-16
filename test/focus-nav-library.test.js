@@ -62,6 +62,10 @@ function buildLibraryFixture(cardCount) {
   var main = createElement('div');
   main.className = 'library-main';
 
+  var gridHost = createElement('div');
+  gridHost.className = 'library-grid-host';
+  gridHost.id = 'library-grid-host';
+
   var grid = createElement('div');
   grid.className = 'media-grid';
   grid.id = 'media-grid';
@@ -70,7 +74,8 @@ function buildLibraryFixture(cardCount) {
   for (i = 0; i < cardCount; i++) {
     grid.appendChild(gridCard('card-' + i, i));
   }
-  main.appendChild(grid);
+  gridHost.appendChild(grid);
+  main.appendChild(gridHost);
 
   layout.appendChild(sidebar);
   layout.appendChild(main);

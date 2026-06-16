@@ -58,13 +58,20 @@
   --grid-poster-w: 176px;
   --grid-poster-h: 264px;
   --sidebar-w: 240px;
+  --library-sidebar-w: 280px;
+  /* sidebar width + space-7 gutter (280 + 28) — precomputed for webOS 4 */
+  --library-main-offset: 308px;
   --detail-top-gap: var(--space-6);
   --detail-margin-x: var(--space-8);
   --detail-margin-y: var(--space-4);
   --focus-w: 3px;
   /* Space for outline + box-shadow outside poster (≥ prior 10px row padding) */
-  /* Static 10px — CSS max-function is Chrome 79+, not available on webOS 4 (Chromium ~53) */
   --focus-ring-pad: 10px;
+  /* Precomputed gutter halves — avoid calc() division on webOS 4 Chromium */
+  --profile-picker-gap-half: 12px;
+  --media-grid-gap-y-half: 12px;
+  --media-grid-gap-x-half: 10px;
+  --row-card-gap-half: 8px;
   --z-player: 1000;
   --z-player-overlay: 1002;
   --z-loading: 1005;
@@ -204,6 +211,10 @@ html { min-width: 1280px; min-height: 720px; }
   padding-bottom: 32px;
 }
 
+.library-screen {
+  overflow: hidden;
+}
+
 .home-layout {
   display: flex;
   flex: 1;
@@ -292,16 +303,16 @@ html { min-width: 1280px; min-height: 720px; }
   font-size: var(--font-meta);
 }
 
-.browsing-hub-item__icon + .browsing-hub-item__label {
-  margin-left: var(--space-4);
-}
-
 .browsing-hub-item__icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   flex-shrink: 0;
+}
+
+.browsing-hub-item__icon + .browsing-hub-item__label {
+  margin-left: var(--space-4);
 }
 
 .browsing-hub-item__label {
@@ -354,6 +365,15 @@ html { min-width: 1280px; min-height: 720px; }
 
 .watchlist-row-link:focus {
   color: var(--accent);
+}
+
+.watchlist-manage-actions {
+  display: flex;
+  margin-bottom: var(--space-4);
+}
+
+.watchlist-manage-actions > * + * {
+  margin-left: var(--space-3);
 }
 
 .screen-home .screen-title {
@@ -437,6 +457,7 @@ html { min-width: 1280px; min-height: 720px; }
   margin-left: auto;
 }
 
+.nav-item--search .nav-item__icon + .nav-item__label,
 .nav-item--search .nav-item__icon + * {
   margin-left: var(--space-3);
 }
@@ -532,23 +553,25 @@ html { min-width: 1280px; min-height: 720px; }
 
 /* ── Library ── */
 .library-layout {
-  display: flex;
-  flex: 1;
+  position: relative;
+  flex: 1 1 0;
+  height: 0;
   min-height: 0;
-}
-
-.library-layout > * + * {
-  margin-left: var(--space-7);
+  overflow: hidden;
 }
 
 .library-sidebar {
-  width: 280px;
-  flex-shrink: 0;
-  overflow-y: auto;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--library-sidebar-w);
+  overflow: hidden;
   padding-right: 8px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 2;
 }
 
 .library-sidebar > * + * {
@@ -556,7 +579,9 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .library-sidebar .browsing-hub-nav-host {
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   border-right: none;
 }
 
@@ -579,10 +604,6 @@ html { min-width: 1280px; min-height: 720px; }
   border-left: 4px solid transparent;
 }
 
-.library-item__icon + .library-item__label {
-  margin-left: var(--space-3);
-}
-
 .library-item__icon {
   display: flex;
   align-items: center;
@@ -595,6 +616,10 @@ html { min-width: 1280px; min-height: 720px; }
   width: 24px;
   height: 24px;
   color: var(--text-muted);
+}
+
+.library-item__icon + .library-item__label {
+  margin-left: var(--space-3);
 }
 
 .library-item__label {
@@ -634,7 +659,8 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .library-main {
-  flex: 1;
+  margin-left: var(--library-main-offset);
+  height: 100%;
   min-width: 0;
   overflow: hidden;
   display: flex;
@@ -681,17 +707,11 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 /* ── Media grid (library) ── */
-/* Margin-based gutters — flex gap is Chrome 84+, not available on webOS 4 (Chromium ~53).
-   scroll-padding-inline is also Chrome 69+; use left/right forms instead. */
 .media-grid {
   display: flex;
   flex-wrap: wrap;
   margin: -12px -10px;
-  overflow-y: auto;
-  flex: 1;
   padding: var(--focus-ring-pad) var(--focus-ring-pad) 16px;
-  scroll-padding-left: var(--focus-ring-pad);
-  scroll-padding-right: var(--focus-ring-pad);
   align-content: flex-start;
 }
 
@@ -955,8 +975,7 @@ html { min-width: 1280px; min-height: 720px; }
   margin-left: 10px;
 }
 
-/* CSS clamp-function is Chrome 79+ — not available on webOS 4 (Chromium ~53). Use fixed width. */
-.row-section--compact .row-item,
+.row-section--compact .row-scroll .row-item,
 .row-section--compact .row-scroll .media-card {
   width: calc(var(--row-poster-w) - 22px);
 }
@@ -971,13 +990,12 @@ html { min-width: 1280px; min-height: 720px; }
    the available width instead of leaving a large empty right gutter. */
 .row-scroll--sparse .row-item,
 .row-scroll--sparse .media-card {
-  /* Fixed rail width — webOS 4 safe (no CSS clamp/dynamic width) */
+  /* Fixed rail width — webOS 4 safe (no dynamic width clamp or calc division) */
   width: var(--row-poster-w);
   max-width: 240px;
 }
 
-/* Portrait row posters: padding-bottom keeps 2:3 at any card width (webOS 4 safe).
-   aspect-ratio is Chrome 88+ — not available on webOS 4 (Chromium ~53). */
+/* Portrait row posters: padding-bottom keeps 2:3 at any card width (webOS 4 safe). */
 .row-scroll .row-item:not(.media-card--episode) .card-poster-wrap,
 .row-scroll .media-card:not(.media-card--episode) .card-poster-wrap {
   height: 0;
@@ -1003,7 +1021,6 @@ html { min-width: 1280px; min-height: 720px; }
   width: 300px;
 }
 
-/* aspect-ratio is Chrome 88+ — use explicit height instead (webOS 4 safe) */
 .row-scroll--episodes .media-card--episode .card-poster-wrap,
 .row-scroll--episodes .media-card--episode .poster {
   width: 300px;
@@ -1012,12 +1029,12 @@ html { min-width: 1280px; min-height: 720px; }
   object-fit: cover;
 }
 
-.row-item .card-poster-wrap,
+.row-scroll .row-item .card-poster-wrap,
 .row-scroll .media-card .card-poster-wrap {
   border-radius: var(--radius-md);
 }
 
-.row-item .card-text,
+.row-scroll .row-item .card-text,
 .row-scroll .media-card .card-text {
   width: 100%;
 }
@@ -1563,7 +1580,6 @@ html { min-width: 1280px; min-height: 720px; }
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.5);
 }
 
-/* aspect-ratio is Chrome 88+ — use explicit height instead (webOS 4 safe) */
 .detail-episode-art {
   display: block;
   width: 100%;
@@ -1833,7 +1849,6 @@ html { min-width: 1280px; min-height: 720px; }
   display: none !important;
 }
 
-/* CSS min-function is Chrome 79+ — use static values (webOS 4 safe) */
 .detail-modal-sheet {
   display: flex;
   flex-direction: column;
@@ -2071,7 +2086,6 @@ html { min-width: 1280px; min-height: 720px; }
   min-height: 76px;
 }
 
-/* CSS min-function is Chrome 79+ — use static max-width (webOS 4 safe) */
 .player-meta-col {
   position: absolute;
   left: 14px;
@@ -2123,6 +2137,44 @@ html { min-width: 1280px; min-height: 720px; }
   line-height: 1.3;
   margin: 0;
   color: var(--accent);
+}
+
+.player-status--error {
+  font-size: 24px;
+  font-weight: 600;
+  color: #ffb4b4;
+}
+
+.player-overlay--playback-error .player-meta-col,
+.player-overlay--playback-error .player-status,
+.player-overlay--playback-error .player-retry-btn {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.player-playback-error {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100001;
+  max-width: 88%;
+  margin: 0;
+  padding: 24px 32px;
+  border: 3px solid #ff6b6b;
+  border-radius: var(--radius-md);
+  background: rgba(90, 12, 12, 0.94);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+}
+
+.player-playback-error.hidden {
+  display: none !important;
 }
 
 .player-status[hidden] {
@@ -2327,9 +2379,6 @@ html { min-width: 1280px; min-height: 720px; }
   min-width: 0;
 }
 
-/* Flex layout for player transport — grid+1fr auto 1fr+justify-self+gap were converted
-   to flex for full webOS 4 (Chromium ~53) safety: justify-self and grid gap are
-   Chrome 57+/66+, unavailable on the B8. */
 .player-transport-col {
   position: absolute;
   left: 0;
@@ -2527,7 +2576,6 @@ html { min-width: 1280px; min-height: 720px; }
   display: none !important;
 }
 
-/* CSS min-function is Chrome 79+ — use static values (webOS 4 safe) */
 .player-track-modal-sheet {
   display: flex;
   flex-direction: column;
@@ -2618,8 +2666,6 @@ html { min-width: 1280px; min-height: 720px; }
 
 .player-info-panel { max-width: 720px; }
 
-/* CSS min-function is Chrome 79+, overscroll-behavior is Chrome 63+, flex gap is Chrome 84+ —
-   all unavailable on webOS 4 (Chromium ~53). Use static height and margin spacing. */
 .player-menu-list {
   display: flex;
   flex-direction: column;
@@ -2629,6 +2675,7 @@ html { min-width: 1280px; min-height: 720px; }
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding-right: 4px;
 }
 
@@ -2829,10 +2876,6 @@ html { min-width: 1280px; min-height: 720px; }
   overflow-x: auto;
 }
 
-.design-review-variants > * + * {
-  margin-left: var(--space-4);
-}
-
 .design-review-variant {
   width: var(--row-poster-w);
   flex-shrink: 0;
@@ -2996,13 +3039,13 @@ html { min-width: 1280px; min-height: 720px; }
   visibility: hidden;
 }
 
-/* Flex (not grid+repeat(var())) — webOS 4 Chromium rejects CSS vars in repeat() count.
-   Also: flex gap is Chrome 84+ — use margin on cards instead. */
 .profile-picker-row {
+  /* Flex (not grid+repeat(var())) — webOS 4 Chromium rejects CSS vars in repeat() count. */
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-start;
+  /* Margins on cards (not gap) — webOS 4 Chromium lacks flex gap; same pattern as .pin-pad-grid. */
   margin: -12px;
   padding: 0;
   transition: opacity 0.25s ease;
@@ -3108,6 +3151,9 @@ html { min-width: 1280px; min-height: 720px; }
   font-size: 36px;
   letter-spacing: 0.35em;
   min-height: 1.2em;
+  width: 100%;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
 }
 
@@ -3115,6 +3161,19 @@ html { min-width: 1280px; min-height: 720px; }
   color: var(--danger);
   font-size: var(--font-meta);
   margin: 0;
+  text-align: center;
+  width: 100%;
+  min-height: 1.4em;
+  display: block;
+}
+
+.pin-error[hidden] {
+  display: none !important;
+}
+
+.pin-error.pin-error--visible {
+  display: block !important;
+  visibility: visible;
 }
 
 .profile-picker--pin-error .pin-display {
@@ -3127,7 +3186,6 @@ html { min-width: 1280px; min-height: 720px; }
   75% { transform: translateX(8px); }
 }
 
-/* Pin pad: flex layout — grid and gap require Chrome 57+/84+, unavailable on webOS 4 (Chromium ~53) */
 .pin-pad {
   display: flex;
   flex-direction: column;
@@ -3136,7 +3194,7 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .pin-pad-grid {
-  /* Column of explicit rows — avoids flex-wrap miscount on webOS 4 */
+  /* Column of explicit rows — avoids flex-wrap miscount on webOS 4 (88px + 12px margin × 3 > 288px). */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3176,6 +3234,10 @@ html { min-width: 1280px; min-height: 720px; }
   padding: 0;
   font-size: var(--font-body);
   box-sizing: border-box;
+}
+
+.pin-pad-btn--delete {
+  font-size: var(--font-meta);
 }
 
 .settings-row--info span {
@@ -3495,4 +3557,36 @@ video.native-player.subtitle-no-bg ::cue {
   font-size: var(--font-meta);
   line-height: 1.45;
   color: var(--text-secondary);
+}
+
+
+/* On-TV debug log (Settings → Debug log overlay, or ares-launch -p '{"debug":1}') */
+.xplay-debug-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 38vh;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow: auto;
+  z-index: 100000;
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 18px;
+  line-height: 1.35;
+  color: #f5f5f5;
+  background: rgba(0, 0, 0, 0.82);
+  border-top: 2px solid var(--danger);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* During playback, pin log strip to top so player chrome cannot obscure it. */
+.xplay-debug-overlay--player {
+  top: 0;
+  bottom: auto;
+  max-height: 30vh;
+  border-top: none;
+  border-bottom: 2px solid var(--danger);
 }

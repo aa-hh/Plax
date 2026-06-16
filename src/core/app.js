@@ -1,4 +1,6 @@
 import './stringPolyfills.js';
+import './promiseFinallyPolyfill.js';
+import './abortControllerPolyfill.js';
 import '../styles/app.css';
 import { init as initRouter, register, navigate, getRoute } from './router.js';
 import { getState, setState } from './store.js';
@@ -7,10 +9,12 @@ import { isRestrictedProfile } from '../security/libraryAccess.js';
 import { resolveStartupRoute } from './startupRouting.js';
 import { initPlatform } from '../platform/webos.js';
 import { runVersionGate } from '../platform/versionGate.js';
+import { resolveNetworkPrefs } from '../settings/networkPrefs.js';
 import { initSplash, setSplashStatus, hideSplash } from '../ui/splash.js';
 import { initResourceMonitor, isPerfEnabled, mark, startSampling } from '../perf/resourceMonitor.js';
 import { initPerfHud } from '../perf/perfHud.js';
 import { tvLog, initTvDebug } from '../utils/tvDebug.js';
+import { logStartupBuild } from './startupBuildLog.js';
 import * as player from '../playback/playerAdapter.js';
 import { pairingScreen, generateClientId } from '../ui/screens/pairingScreen.js';
 import { homeScreen } from '../ui/screens/homeScreen.js';
@@ -67,19 +71,20 @@ function startApp(platformMajor) {
   if (!ownerToken && !restrictedChildSession && persisted.authToken) {
     ownerToken = persisted.authToken;
   }
+  var networkPrefs = resolveNetworkPrefs(persisted.networkPrefs, platformMajor);
   setState({
     clientId: clientId,
     authToken: persisted.authToken,
     ownerAuthToken: ownerToken,
     user: persisted.user,
     activeHomeUser: persisted.activeHomeUser,
-    networkPrefs: persisted.networkPrefs || getState().networkPrefs,
+    networkPrefs: networkPrefs,
     playbackPrefs: persisted.playbackPrefs || getState().playbackPrefs,
     platformMajor: platformMajor || 0
   });
   tvLog('boot', 'network-prefs', {
-    allowInsecure: persisted.networkPrefs ? persisted.networkPrefs.allowInsecure : false,
-    preferDirect: persisted.networkPrefs ? persisted.networkPrefs.preferDirect : false,
+    allowInsecure: networkPrefs.allowInsecure,
+    preferDirect: networkPrefs.preferDirect,
     major: platformMajor
   });
   persistAuth({ clientId: clientId });
@@ -104,12 +109,7 @@ function startApp(platformMajor) {
     hideSplash();
   });
 
-  if (typeof window !== 'undefined' && window.__XPLAY_BUILD__) {
-    var b = window.__XPLAY_BUILD__;
-    console.info('[XPlay Lite] build', b.builtAt, b.gitCommit || 'no-git', b.summary || '');
-  } else {
-    console.warn('[XPlay Lite] build-info missing — run npm run build (stale simulator bundle?)');
-  }
+  logStartupBuild(typeof window !== 'undefined' ? window : null);
   if (typeof performance !== 'undefined') {
     console.log('[XPlay Lite] boot ms:', Math.round(performance.now()));
   }
@@ -122,16 +122,16 @@ function boot() {
   if (isPerfEnabled()) mark('boot:init');
   initSplash();
   setSplashStatus('Checking device…');
-  runVersionGate().then(function (allowed) {
-    if (!allowed) {
+  runVersionGate().then(function (gate) {
+    if (!gate.allowed) {
       if (isPerfEnabled()) mark('boot:blocked-version-gate');
       tvLog('boot', 'version-gate', { major: 0, allowed: false });
       hideSplash();
       return;
     }
     if (isPerfEnabled()) mark('boot:version-gate-ok');
-    tvLog('boot', 'version-gate', { major: 0, allowed: true });
-    startApp();
+    tvLog('boot', 'version-gate', { major: gate.major, allowed: true });
+    startApp(gate.major);
   });
 }
 

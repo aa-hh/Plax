@@ -46,6 +46,7 @@ import {
 import {
   isHlsUrl,
   isSrcNotSupportedError,
+  isHlsSourceRejectedError,
   formatFinalPlaybackError,
   formatDirectPlayOnlyError
 } from '../../playback/hlsPolicy.js';
@@ -102,8 +103,18 @@ import {
   shouldTriggerAutoplayOnCreditPrompt,
   shouldTriggerAutoplayOnEnded
 } from '../../playback/autoplayCountdown.js';
+import { CLIENT_SUBTITLE_DEFER_MS } from '../../playback/subtitleTiming.js';
+import { formatPlaybackFailure } from '../../playback/playbackErrors.js';
+import {
+  tvLog,
+  tvError,
+  refreshDebugFromEnvironment,
+  ensureDebugOverlayOnTop,
+  setDebugOverlayPlayerMode
+} from '../../utils/tvDebug.js';
 
 var OVERLAY_HIDE_MS = 3000;
+/* Manual Phase 4: validate HTTPS plex.direct proxy on real webOS vs Plex Web HAR. */
 var SEEK_COMMIT_DEBOUNCE_MS = 300;
 var SCRUB_STEP_MS = 10000;
 var SCRUB_PREVIEW_APPLY_MS = 80;
@@ -291,6 +302,14 @@ function playerScreen(root, params, navigate) {
   root.appendChild(overlay);
   var detachFocus = attachFocusNav(overlay);
 
+  refreshDebugFromEnvironment('player');
+  ensureDebugOverlayOnTop();
+  setDebugOverlayPlayerMode(true);
+  tvLog('player', 'screen mounted', {
+    ratingKey: params.ratingKey,
+    offset: params.offset || 0
+  });
+
   var session = null;
   var currentItem = null;
   var currentVersion = null;
@@ -351,6 +370,7 @@ function playerScreen(root, params, navigate) {
   var overlayHideTimer = null;
   var overlayHideAfterFirstFrame = false;
   var firstFrameWaiters = [];
+  var clientSubtitleDeferTimer = null;
   var seekCommitTimer = null;
   var seekCommitPendingMs = null;
   var autoplayCountdown = createAutoplayCountdown({
@@ -374,6 +394,60 @@ function playerScreen(root, params, navigate) {
   var infoPanel = document.getElementById('player-info-panel');
   var autoplayPanel = document.getElementById('player-autoplay-panel');
   var exitConfirm = document.getElementById('player-exit-confirm');
+  var playbackErrorBanner = null;
+
+  function ensurePlaybackErrorBanner() {
+    if (playbackErrorBanner) return playbackErrorBanner;
+    playbackErrorBanner = document.getElementById('player-playback-error');
+    if (!playbackErrorBanner) {
+      playbackErrorBanner = document.createElement('div');
+      playbackErrorBanner.id = 'player-playback-error';
+      playbackErrorBanner.className = 'player-playback-error hidden';
+      playbackErrorBanner.setAttribute('role', 'alert');
+      document.body.appendChild(playbackErrorBanner);
+    }
+    return playbackErrorBanner;
+  }
+
+  function clearPlaybackFailureUi() {
+    overlay.classList.remove('player-overlay--playback-error');
+    if (playbackErrorBanner) playbackErrorBanner.classList.add('hidden');
+    var status = document.getElementById('player-status');
+    if (status) status.classList.remove('player-status--error');
+  }
+
+  function showPlaybackFailure(err, context) {
+    context = context || {};
+    var message = formatPlaybackFailure(err, context);
+    tvError('player', 'PLAYBACK FAILED', message);
+    refreshDebugFromEnvironment('playback-failure');
+    ensureDebugOverlayOnTop();
+
+    var banner = ensurePlaybackErrorBanner();
+    banner.textContent = message;
+    banner.classList.remove('hidden');
+
+    var status = document.getElementById('player-status');
+    if (status) {
+      status.textContent = message;
+      status.hidden = false;
+      status.classList.add('player-status--error');
+    }
+
+    overlay.classList.add('player-overlay--playback-error');
+    setOverlayVisible(true);
+    clearOverlayHideTimer();
+    showPlaybackRetry(true);
+    awaitingPrepareOverlay = false;
+    hideLoadingOverlay();
+    hideBuffering();
+
+    var retryBtn = document.getElementById('btn-playback-retry');
+    if (retryBtn && document.activeElement !== retryBtn) {
+      try { retryBtn.focus(); } catch (focusErr) { /* ignore */ }
+    }
+    return message;
+  }
 
   cancelNetworkProbe();
 
@@ -384,8 +458,35 @@ function playerScreen(root, params, navigate) {
 
   function bumpPlaybackGeneration() {
     playbackGeneration += 1;
+    clearDeferredClientSubtitle();
     resolveFirstFrameWaiters();
     return playbackGeneration;
+  }
+
+  function clearDeferredClientSubtitle() {
+    if (clientSubtitleDeferTimer) {
+      clearTimeout(clientSubtitleDeferTimer);
+      clientSubtitleDeferTimer = null;
+    }
+  }
+
+  function scheduleDeferredClientSubtitle(mode) {
+    clearDeferredClientSubtitle();
+    if (!shouldApplyClientSubtitleAfterPlay(mode)) return Promise.resolve();
+    var gen = playbackGeneration;
+    return waitForFirstFrame().then(function () {
+      if (destroyed || isStalePlayback(gen)) return;
+      return new Promise(function (resolve) {
+        clientSubtitleDeferTimer = setTimeout(function () {
+          clientSubtitleDeferTimer = null;
+          if (destroyed || isStalePlayback(gen)) {
+            resolve();
+            return;
+          }
+          applyClientSubtitle().then(resolve, resolve);
+        }, CLIENT_SUBTITLE_DEFER_MS);
+      });
+    });
   }
 
   function isStalePlayback(gen) {
@@ -462,6 +563,7 @@ function playerScreen(root, params, navigate) {
     if (!currentItem) return;
     return withPlaybackRestartLock(function () {
       showPlaybackRetry(false);
+      clearPlaybackFailureUi();
       resetPlaybackFallbackFlags(fallbackState);
       setPlayerMessage('');
       var offset = restartOffsetMs();
@@ -512,6 +614,13 @@ function playerScreen(root, params, navigate) {
 
   function canAutoFallback() {
     return allowsPlaybackFallback(selectedQuality);
+  }
+
+  function playbackFallbackContext(extra) {
+    return Object.assign({
+      pmsDeliveryProtocol: session && session.pmsDeliveryProtocol,
+      commitToHlsDelivery: session && session.commitToHlsDelivery
+    }, extra || {});
   }
 
   function seekToMs(ms) {
@@ -605,9 +714,11 @@ function playerScreen(root, params, navigate) {
     if (message) {
       status.textContent = message;
       status.hidden = false;
+      tvLog('player', 'status', message);
     } else {
       status.textContent = '';
       status.hidden = true;
+      status.classList.remove('player-status--error');
     }
     if (message && playbackRetryVisible) return;
     if (!message) showPlaybackRetry(false);
@@ -1227,8 +1338,10 @@ function playerScreen(root, params, navigate) {
   }
 
   player.onBuffering(function (show) {
-    if (show) showBuffering('Buffering…');
-    else {
+    if (show) {
+      tvLog('playback', 'buffering');
+      showBuffering('Buffering…');
+    } else {
       hideBuffering();
       resetRebufferDownshiftForEpisode(fallbackState);
     }
@@ -1236,6 +1349,7 @@ function playerScreen(root, params, navigate) {
 
   player.onRebufferTimeout(function () {
     if (destroyed || !session) return;
+    tvLog('player', 'rebuffer timeout');
     if (!canAutoFallback()) {
       setPlayerMessage(formatDirectPlayOnlyError(currentProbe) +
         ' Buffering with no transcode fallback.');
@@ -1247,12 +1361,12 @@ function playerScreen(root, params, navigate) {
       (playbackMode === 'transcode-hls' || playbackMode === 'direct-stream' ||
         session.playbackStrategy === 'transcode' ||
         session.playbackStrategy === 'direct-stream');
-    var rebufferStep = decideRebufferFallback(fallbackState, {
+    var rebufferStep = decideRebufferFallback(fallbackState, playbackFallbackContext({
       playbackMode: playbackMode,
       transcodeProtocol: session.transcodeProtocol,
       onHlsTranscode: onHlsTranscode,
       nextLowerQuality: nextLower
-    });
+    }));
     if (rebufferStep.action === 'quality-downshift' && rebufferStep.nextQuality) {
       applyTranscodeQualityDownshift(rebufferStep.nextQuality);
       var prof = getProfile(rebufferStep.nextQuality);
@@ -1542,6 +1656,13 @@ function playerScreen(root, params, navigate) {
   function playUrl(result, offset, playbackSession) {
     playbackSession = playbackSession || session;
     playbackMode = result.mode || 'unknown';
+    tvLog('player', 'playUrl', {
+      mode: playbackMode,
+      offsetMs: offset,
+      url: result.url && result.url.length > 120
+        ? result.url.slice(0, 117) + '...'
+        : result.url
+    });
     var transcodeSession = parseTranscodeSessionFromUrl(result.url);
     if (transcodeSession) {
       playbackSession.transcodeSessionId = transcodeSession;
@@ -1572,9 +1693,7 @@ function playerScreen(root, params, navigate) {
       return result;
     }).catch(function (err) {
       if (destroyed || isStalePlayback(gen)) return;
-      setPlayerMessage('Playback failed: ' + err.message);
-      awaitingPrepareOverlay = false;
-      hideLoadingOverlay();
+      showPlaybackFailure(err, { phase: 'Stream URL' });
     });
   }
 
@@ -1621,6 +1740,9 @@ function playerScreen(root, params, navigate) {
       forceTranscode: params.forceTranscode || (session && session.forceTranscode),
       transcodeProtocol: protocol || (session && session.transcodeProtocol) || 'hls'
     };
+    if (session && session.playbackSessionId) {
+      opts.playbackSessionId = session.playbackSessionId;
+    }
     if (streamChange === 'direct-stream-fallback' || streamChange === 'subtitle-remux') {
       opts.playbackStrategy = 'direct-stream';
       opts.forceTranscode = false;
@@ -1714,6 +1836,11 @@ function playerScreen(root, params, navigate) {
 
   function restartPlaybackAt(offset, protocol, streamChange) {
     if (!currentItem) return Promise.resolve();
+    tvLog('player', 'restart', {
+      offsetMs: offset,
+      protocol: protocol,
+      change: streamChange || null
+    });
     return withPlaybackRestartLock(function () {
       var gen = bumpPlaybackGeneration();
       var wasProtocol = session && session.transcodeProtocol;
@@ -1736,7 +1863,7 @@ function playerScreen(root, params, navigate) {
         hidePrepareOverlayIfReady();
         setOverlayVisible(true);
         if (shouldApplyClientSubtitleAfterPlay(result.mode)) {
-          applyClientSubtitle();
+          scheduleDeferredClientSubtitle(result.mode);
         } else {
           if (selectedSubtitleId == null) player.clearSubtitles();
           syncSubtitleDelayControls();
@@ -1753,21 +1880,28 @@ function playerScreen(root, params, navigate) {
 
   player.onError(function (info) {
     if (destroyed) return;
+    tvError('player', 'playback error', {
+      message: info && info.message,
+      isHls: info && info.isHls,
+      url: info && info.url
+    });
     var offset = restartOffsetMs((session && session.offset) || 0);
-    var codecUnsupported = isSrcNotSupportedError(info.mediaError);
+    var codecUnsupported = isSrcNotSupportedError(info.mediaError) ||
+      isHlsSourceRejectedError(info);
 
     if (!canAutoFallback()) {
-      awaitingPrepareOverlay = false;
-      hideLoadingOverlay();
-      setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
+      showPlaybackFailure(info, {
+        phase: 'Video',
+        fallback: formatDirectPlayOnlyError(currentProbe)
+      });
       return;
     }
 
-    var errorStep = decideErrorFallback(fallbackState, {
+    var errorStep = decideErrorFallback(fallbackState, playbackFallbackContext({
       playbackMode: playbackMode,
       codecUnsupported: codecUnsupported,
       isHls: info.isHls
-    });
+    }));
     if (errorStep.action === 'direct-stream') {
       setPlayerMessage('Direct play unavailable — trying stream copy…');
       restartPlaybackAt(offset, 'hls', 'direct-stream-fallback');
@@ -1799,13 +1933,9 @@ function playerScreen(root, params, navigate) {
     }
     awaitingPrepareOverlay = false;
     hideLoadingOverlay();
-    setPlayerMessage(formatFinalPlaybackError(info, fallbackState.httpFallbackTried, {
+    showPlaybackFailure(new Error(formatFinalPlaybackError(info, fallbackState.httpFallbackTried, {
       directPlayOnly: isStrictDirectPlay()
-    }));
-    showPlaybackRetry(true);
-    setOverlayVisible(true);
-    var retryBtn = document.getElementById('btn-playback-retry');
-    if (retryBtn) retryBtn.focus();
+    })), { phase: 'Video' });
   });
 
   function startPlayback(item, offset) {
@@ -1818,7 +1948,13 @@ function playerScreen(root, params, navigate) {
     var gen = bumpPlaybackGeneration();
     resetPlaybackFallbackFlags(fallbackState);
     showPlaybackRetry(false);
+    clearPlaybackFailureUi();
     currentItem = item;
+    tvLog('player', 'startPlayback', {
+      ratingKey: item && item.ratingKey,
+      title: item && item.title,
+      offsetMs: offset
+    });
     currentVersion = params.version || null;
     resetScrubPreviewSource();
     hideScrubPreview();
@@ -1845,6 +1981,12 @@ function playerScreen(root, params, navigate) {
       : '';
     setPlayerMessage(directPlayProbeWarning);
     beginPrepareOverlay();
+    if (!server) {
+      showPlaybackFailure(new Error('No Plex server connected. Return to library and try again.'), {
+        phase: 'Start'
+      });
+      return Promise.resolve();
+    }
     return ensureItemProbeForPlay(
       server,
       item,
@@ -1869,7 +2011,7 @@ function playerScreen(root, params, navigate) {
           setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
         }
         if (shouldApplyClientSubtitleAfterPlay(result.mode)) {
-          applyClientSubtitle();
+          scheduleDeferredClientSubtitle(result.mode);
         } else {
           if (selectedSubtitleId == null) player.clearSubtitles();
           syncSubtitleDelayControls();
@@ -1890,9 +2032,7 @@ function playerScreen(root, params, navigate) {
       session = createSession(item, currentVersion, buildSessionOptions(startOffsetMs));
       return chainPlaybackReady(tryPlayback(startOffsetMs, gen), gen).catch(function (playErr) {
         if (destroyed || isStalePlayback(gen)) return;
-        setPlayerMessage('Playback failed: ' + ((playErr && playErr.message) || String(err)));
-        awaitingPrepareOverlay = false;
-        hideLoadingOverlay();
+        showPlaybackFailure(playErr || err, { phase: 'Playback' });
       });
     });
   }
@@ -1908,7 +2048,7 @@ function playerScreen(root, params, navigate) {
       awaitingPrepareOverlay = false;
       hideLoadingOverlay();
       updateNowPlayingTitle(null);
-      setPlayerMessage('Error: ' + err.message);
+      showPlaybackFailure(err, { phase: 'Metadata' });
     });
   }
 
@@ -2192,6 +2332,7 @@ function playerScreen(root, params, navigate) {
 
   player.onFirstFrame(function () {
     hidePrepareOverlayIfReady();
+    tvLog('playback', 'first frame');
     var overlayGate = onPlaybackFirstFrame(overlayHideAfterFirstFrame);
     overlayHideAfterFirstFrame = overlayGate.hideAfterFirstFrame;
     if (overlayGate.scheduleHide) scheduleOverlayHide();
@@ -2271,7 +2412,7 @@ function playerScreen(root, params, navigate) {
         if (destroyed) return;
         awaitingPrepareOverlay = false;
         hideLoadingOverlay();
-        setPlayerMessage('Error: ' + err.message);
+        showPlaybackFailure(err, { phase: 'Queue' });
       });
       return;
     }
@@ -2284,7 +2425,7 @@ function playerScreen(root, params, navigate) {
       if (destroyed) return;
       awaitingPrepareOverlay = false;
       hideLoadingOverlay();
-      setPlayerMessage('Error: ' + err.message);
+      showPlaybackFailure(err, { phase: 'Queue' });
     });
   }
 
@@ -2295,10 +2436,17 @@ function playerScreen(root, params, navigate) {
   return {
     destroy: function () {
       destroyed = true;
+      setDebugOverlayPlayerMode(false);
+      clearPlaybackFailureUi();
+      if (playbackErrorBanner && playbackErrorBanner.parentNode) {
+        playbackErrorBanner.parentNode.removeChild(playbackErrorBanner);
+        playbackErrorBanner = null;
+      }
       setPlaybackActive(false);
       if (progressInterval) clearInterval(progressInterval);
       clearAutoplayCountdown();
       clearOverlayHideTimer();
+      clearDeferredClientSubtitle();
       if (seekCommitTimer) {
         clearTimeout(seekCommitTimer);
         seekCommitTimer = null;

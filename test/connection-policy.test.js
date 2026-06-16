@@ -51,12 +51,20 @@ test('rankConnections prefers HTTPS over HTTP on LAN (default prefs)', function 
   assert.equal(best.uri, LAN_HTTPS.uri);
 });
 
-test('rankConnections still prefers HTTPS when "Allow insecure" toggle is on', function () {
+test('rankConnections prefers LAN HTTP when allow insecure is on', function () {
   var best = pickBestConnection(
     [LAN_HTTP, LAN_HTTPS],
     { allowInsecure: true }
   );
-  assert.equal(best.uri, LAN_HTTPS.uri);
+  assert.equal(best.uri, LAN_HTTP.uri);
+});
+
+test('rankConnections still prefers remote HTTPS when allow insecure is on', function () {
+  var best = pickBestConnection(
+    [REMOTE_HTTP, REMOTE_HTTPS],
+    { allowInsecure: true }
+  );
+  assert.equal(best.uri, REMOTE_HTTPS.uri);
 });
 
 test('rankConnections falls back to HTTP when no HTTPS candidate exists', function () {

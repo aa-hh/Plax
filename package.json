@@ -9,6 +9,7 @@
     "build": "rollup -c build/rollup.config.js",
     "watch": "rollup -c build/rollup.config.js -w",
     "package": "npm run build && node scripts/package-ipk.cjs",
+    "package:tv": "npm run package",
     "validate": "node scripts/validate-compat.cjs && node scripts/validate-intro-markers.mjs && node scripts/validate-library-access.mjs",
     "icons": "node scripts/generate-icons.cjs",
     "prebuild": "node scripts/generate-icons.cjs",
@@ -22,7 +23,9 @@
     "sim:26": "npm run build && node scripts/sim-launch.cjs --version 26",
     "sim:launch": "node scripts/sim-launch.cjs",
     "sim:watch": "npm run watch",
-    "install:cli": "npm install -g @webos-tools/cli"
+    "install:cli": "npm install -g @webos-tools/cli && node scripts/ensure-global-webos-cli-rimraf.cjs",
+    "postinstall": "node scripts/ensure-webos-cli-rimraf.cjs",
+    "log:receive": "node scripts/log-receiver.cjs"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
@@ -33,7 +36,8 @@
     "@rollup/plugin-terser": "^1.0.0",
     "rollup": "^4.12.0",
     "rollup-plugin-copy": "^3.5.0",
-    "rollup-plugin-postcss": "^4.0.2"
+    "rollup-plugin-postcss": "^4.0.2",
+    "@webos-tools/cli": "3.2.4"
   },
   "dependencies": {
     "hls.js": "^1.6.16"

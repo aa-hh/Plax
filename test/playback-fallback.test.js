@@ -11,6 +11,10 @@ import {
   decideRebufferFallback,
   clearHlsFallbackAfterHlsTranscodeStart
 } from '../src/playback/playbackFallback.js';
+import {
+  setPlexDeviceInfo,
+  resetPlexDeviceInfoForTest
+} from '../src/plex/clientIdentity.js';
 
 test('isLadderFallbackStreamChange: ladder and subtitle-fallback', function () {
   assert.equal(isLadderFallbackStreamChange('direct-stream-fallback'), true);
@@ -84,7 +88,7 @@ test('decideErrorFallback ladder: direct → direct-stream → full-transcode �
     decideErrorFallback(state, { playbackMode: 'transcode-hls', codecUnsupported: false, isHls: true }),
     { action: 'http-transcode' }
   );
-  assert.equal(state.hlsFallbackTried, true);
+  assert.equal(state.httpFallbackTried, true);
 
   assert.deepEqual(
     decideErrorFallback(state, { playbackMode: 'transcode-http', codecUnsupported: false, isHls: false }),
@@ -214,6 +218,93 @@ test('decideRebufferFallback: HLS remux stalls escalate to full transcode before
     }),
     { action: 'http-transcode' }
   );
+});
+
+test('decideRebufferFallback: skips HTTP when PMS committed to HLS delivery', function () {
+  var state = createPlaybackFallbackState();
+  state.rebufferDownshiftTried = true;
+  assert.deepEqual(
+    decideRebufferFallback(state, {
+      transcodeProtocol: 'hls',
+      commitToHlsDelivery: true,
+      pmsDeliveryProtocol: 'hls'
+    }),
+    { action: 'none' }
+  );
+  assert.equal(state.httpFallbackTried, false);
+});
+
+test('decideErrorFallback: transcode-hls tries HTTP even when PMS committed to HLS', function () {
+  var state = createPlaybackFallbackState();
+  state.directStreamFallbackTried = true;
+  state.fullTranscodeFallbackTried = true;
+  assert.deepEqual(
+    decideErrorFallback(state, {
+      playbackMode: 'transcode-hls',
+      isHls: true,
+      commitToHlsDelivery: true,
+      pmsDeliveryProtocol: 'hls'
+    }),
+    { action: 'http-transcode' }
+  );
+  assert.equal(state.httpFallbackTried, true);
+});
+
+test('decideErrorFallback: skips HTTP when PMS committed to HLS delivery', function () {
+  var state = createPlaybackFallbackState();
+  state.directStreamFallbackTried = true;
+  state.fullTranscodeFallbackTried = true;
+  assert.deepEqual(
+    decideErrorFallback(state, {
+      playbackMode: 'direct-stream',
+      isHls: true,
+      commitToHlsDelivery: true,
+      pmsDeliveryProtocol: 'hls'
+    }),
+    { action: 'terminal' }
+  );
+  assert.equal(state.hlsFallbackTried, false);
+});
+
+test('decideErrorFallback: HLS codec error allows HTTP despite PMS HLS commit', function () {
+  var state = createPlaybackFallbackState();
+  state.directStreamFallbackTried = true;
+  state.fullTranscodeFallbackTried = true;
+  assert.deepEqual(
+    decideErrorFallback(state, {
+      playbackMode: 'transcode-hls',
+      codecUnsupported: true,
+      isHls: true,
+      commitToHlsDelivery: true,
+      pmsDeliveryProtocol: 'hls'
+    }),
+    { action: 'http-transcode' }
+  );
+  assert.equal(state.httpFallbackTried, true);
+});
+
+test('decideErrorFallback: webOS 4 skips remux after direct play failure', function () {
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+    }
+  };
+  resetPlexDeviceInfoForTest();
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+
+  var state = createPlaybackFallbackState();
+  assert.deepEqual(
+    decideErrorFallback(state, { playbackMode: 'direct', codecUnsupported: true, isHls: true }),
+    { action: 'full-transcode', codecUnsupported: true }
+  );
+  assert.equal(state.directStreamFallbackTried, true);
+  assert.equal(state.fullTranscodeFallbackTried, true);
+
+  delete globalThis.PalmSystem;
+  delete globalThis.webOS;
+  resetPlexDeviceInfoForTest();
 });
 
 test('clearHlsFallbackAfterHlsTranscodeStart resets hls flag for HLS URL', function () {

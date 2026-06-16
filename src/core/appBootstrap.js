@@ -9,11 +9,28 @@ import {
   pickDefaultLibrary
 } from '../plex/servers/discovery.js';
 import { prefetchHomeHubs } from '../plex/library.js';
+import { warmHubPrefetchPosters } from '../ui/posterImages.js';
 import { startBootNetworkProbe } from '../playback/networkProbe.js';
 import {
   filterLibrariesForUser,
   isRestrictedProfile
 } from '../security/libraryAccess.js';
+
+var DEFAULT_HUB_PREFETCH = {
+  initialRows: 2,
+  hubListSize: 16,
+  rowSize: 20
+};
+
+/** First visible home window: 2 rows × 8 posters (16 total) — full warm before Home on B8. */
+var DEFAULT_POSTER_WARM = {
+  maxUrls: 16,
+  perRow: 8,
+  maxRows: 2,
+  requireAll: true,
+  failOnTimeout: true,
+  timeoutMs: 90000
+};
 
 function shouldBlockIncompleteRestrictedSession(state) {
   return !!(
@@ -61,14 +78,28 @@ function runAppBootstrap(options) {
       resolvedCount: servers.length
     });
     onStatus('Loading libraries…');
+    var hubPrefetchEnabled = options.hubPrefetch !== false;
+    var hubPrefetchOpts = Object.assign({}, DEFAULT_HUB_PREFETCH, options.hubPrefetchOpts || {});
+    var hubsPromise = hubPrefetchEnabled
+      ? prefetchHomeHubs(activeServer, hubPrefetchOpts)
+      : Promise.resolve({ hubList: [], rows: [] });
     return Promise.all([
       getLibraries(activeServer, { fresh: true }),
-      prefetchHomeHubs(activeServer, { initialRows: 2, hubListSize: 16, rowSize: 20 })
-    ]);
-  }).then(function (results) {
-    startBootNetworkProbe(getState().activeServer, results[1]);
-    var apiItems = (results[0] && results[0].items) ? results[0].items.length : 0;
-    var rawSections = mapLibrarySections(results[0]);
+      hubsPromise
+    ]).then(function (results) {
+      return {
+        librariesResult: results[0],
+        hubPrefetchResult: results[1],
+        hubPrefetchEnabled: hubPrefetchEnabled
+      };
+    });
+  }).then(function (payload) {
+    var hubPrefetchResult = payload.hubPrefetchResult;
+    startBootNetworkProbe(getState().activeServer, hubPrefetchResult);
+    var apiItems = (payload.librariesResult && payload.librariesResult.items)
+      ? payload.librariesResult.items.length
+      : 0;
+    var rawSections = mapLibrarySections(payload.librariesResult);
     var homeUser = getState().activeHomeUser;
     var libs = filterLibrariesForUser(rawSections, homeUser);
     var activeServer = getState().activeServer;
@@ -93,8 +124,38 @@ function runAppBootstrap(options) {
     } else {
       setState({ libraries: libs, activeLibrary: pickDefaultLibrary(libs) || libs[0] || null });
     }
-    onStatus('Opening Home…');
+
+    var warmPosters = options.warmPosters !== false && payload.hubPrefetchEnabled;
+    if (!warmPosters || !hubPrefetchResult || !hubPrefetchResult.rows || !hubPrefetchResult.rows.length) {
+      onStatus('Opening Home…');
+      return;
+    }
+
+    onStatus('Loading artwork…');
+    var posterWarmOpts = Object.assign({}, DEFAULT_POSTER_WARM, options.posterWarm || {});
+    posterWarmOpts.onProgress = function (loaded, total) {
+      onStatus('Loading artwork… (' + loaded + '/' + total + ')');
+    };
+    return warmHubPrefetchPosters(hubPrefetchResult, posterWarmOpts).then(function (warmResult) {
+      if (!warmResult.complete || warmResult.warmed < warmResult.total) {
+        throw new Error(
+          'Artwork did not finish loading (' + warmResult.warmed + '/' + warmResult.total + '). Try again.'
+        );
+      }
+      console.info('[bootstrap] poster warm', {
+        requested: warmResult.urls.length,
+        warmed: warmResult.warmed,
+        requireAll: posterWarmOpts.requireAll !== false,
+        timeoutMs: posterWarmOpts.timeoutMs
+      });
+      onStatus('Opening Home…');
+    });
   });
 }
 
-export { runAppBootstrap, shouldBlockIncompleteRestrictedSession };
+export {
+  runAppBootstrap,
+  shouldBlockIncompleteRestrictedSession,
+  DEFAULT_HUB_PREFETCH,
+  DEFAULT_POSTER_WARM
+};

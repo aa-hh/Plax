@@ -65,7 +65,7 @@ Per [App Resolution spec](https://webostv.developer.lge.com/develop/specificatio
 ## Plex Server
 
 - Test against PMS 1.32.x and latest stable.
-- Insecure HTTP on LAN optional (user setting).
+- **Allow insecure connections** (Settings → Network): optional on all TVs; **default On** on webOS 4 (e.g. LG B8) because HTTPS to a personal PMS is unreliable on older webOS. On webOS 5+, default Off — HTTPS via `*.plex.direct` is preferred. Set Plex **Secure Connections** to **Preferred** (not Required) when using HTTP on LAN.
 
 ## Known Caveats
 

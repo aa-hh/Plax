@@ -42,7 +42,9 @@ function libraryScreen(root, params, navigate) {
     '<div class="library-main" id="lib-main">' +
     '<h1 class="screen-title screen-title-compact" id="lib-title">Library</h1>' +
     '<p class="watch-status-msg" id="lib-scan-status"></p>' +
+    '<div class="library-grid-host" id="library-grid-host">' +
     '<div class="media-grid" id="media-grid" data-cols="6"></div>' +
+    '</div>' +
     '</div>' +
     '</div>';
 
@@ -63,6 +65,7 @@ function libraryScreen(root, params, navigate) {
   });
   var scanBtn = document.getElementById('btn-scan-library');
   // Full grid virtualization is deferred (see code review #5); initial poster batch is capped.
+  var gridHost = document.getElementById('library-grid-host');
   var grid = document.getElementById('media-grid');
   var scanStatus = document.getElementById('lib-scan-status');
   var posterFocusToken = 0;
@@ -87,8 +90,8 @@ function libraryScreen(root, params, navigate) {
     if (card && grid && grid.contains(card)) schedulePosterNeighborhood(card);
   });
 
-  if (grid) {
-    grid.addEventListener('scroll', function () {
+  if (gridHost && grid) {
+    gridHost.addEventListener('scroll', function () {
       if (destroyed) return;
       if (gridScrollTimer) clearTimeout(gridScrollTimer);
       gridScrollTimer = setTimeout(function () {

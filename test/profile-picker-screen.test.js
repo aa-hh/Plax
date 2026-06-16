@@ -40,6 +40,32 @@ function pinBtn(id, label) {
   return el;
 }
 
+function buildPinPadGrid() {
+  var grid = createElement('div');
+  grid.className = 'pin-pad-grid';
+  grid.setAttribute('data-cols', '3');
+  var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  var row;
+  for (row = 0; row < 3; row++) {
+    var rowEl = createElement('div');
+    rowEl.className = 'pin-pad-row';
+    var col;
+    for (col = 0; col < 3; col++) {
+      rowEl.appendChild(pinBtn('pin-' + keys[row * 3 + col], keys[row * 3 + col]));
+    }
+    grid.appendChild(rowEl);
+  }
+  var bottomRow = createElement('div');
+  bottomRow.className = 'pin-pad-row pin-pad-row-bottom';
+  var spacer = createElement('span');
+  spacer.className = 'pin-pad-spacer';
+  bottomRow.appendChild(spacer);
+  bottomRow.appendChild(pinBtn('pin-0', '0'));
+  bottomRow.appendChild(pinBtn('pin-del', 'Delete'));
+  grid.appendChild(bottomRow);
+  return grid;
+}
+
 function buildProfilePickerFocusFixture(opts) {
   opts = opts || {};
   var cols = opts.cols != null ? opts.cols : 3;
@@ -62,18 +88,7 @@ function buildProfilePickerFocusFixture(opts) {
   if (opts.withPinPad) {
     var pinPanel = createElement('div');
     pinPanel.className = 'profile-picker-pin';
-    var grid = createElement('div');
-    grid.className = 'pin-pad-grid';
-    grid.setAttribute('data-cols', '3');
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach(function (k) {
-      grid.appendChild(pinBtn('pin-' + k, k));
-    });
-    var spacer = createElement('span');
-    spacer.className = 'pin-pad-spacer';
-    grid.appendChild(spacer);
-    grid.appendChild(pinBtn('pin-0', '0'));
-    grid.appendChild(pinBtn('pin-del', 'Delete'));
-    pinPanel.appendChild(grid);
+    pinPanel.appendChild(buildPinPadGrid());
     screen.appendChild(pinPanel);
   }
 
@@ -120,11 +135,12 @@ test('profile picker: PIN mode header title and header spinner during switch', f
   assert.match(screenSrc, /mode === 'pinEntry' && switching/);
   assert.match(screenSrc, /Verifying PIN/);
   assert.match(screenSrc, /runAppBootstrap/);
+  assert.doesNotMatch(screenSrc, /hubPrefetch:\s*false/);
   assert.doesNotMatch(screenSrc, /navigate\(['"]bootstrap/);
   assert.doesNotMatch(screenSrc, /Switching profile/);
   assert.doesNotMatch(screenSrc, /loading user/i);
   assert.match(screenSrc, /function openHomeAfterBootstrap/);
-  assert.match(screenSrc, /return openHomeAfterBootstrap\(\)/);
+  assert.match(screenSrc, /return openHomeAfterBootstrap\(op\)/);
 });
 
 test('profile picker: starts loading with empty grid hidden until users arrive', function () {
@@ -146,14 +162,35 @@ test('profile picker: hides chrome until column width is known', function () {
   assert.match(screenSrc, /if \(!sizeReady\) return/);
 });
 
-test('profile picker: CSS uses flex with margin-based gutters (webOS 4 safe)', function () {
-  // CSS grid+repeat(var()) was replaced with flex to support webOS 4 (Chromium ~53).
-  // Verify the new flex layout and that the column count variable is still used for max-width.
+test('profile picker: flex row and dynamic max-width (webOS 4 safe)', function () {
   assert.match(cssSrc, /--profile-picker-cols:\s*1/);
-  assert.doesNotMatch(cssSrc, /grid-template-columns:\s*repeat\(var\(--profile-picker-cols\)/);
   assert.match(cssSrc, /\.profile-picker-row[\s\S]*display:\s*flex/);
+  assert.doesNotMatch(cssSrc, /grid-template-columns:\s*repeat\(var\(--profile-picker-cols\)/);
   assert.match(cssSrc, /--profile-picker-max-w:\s*calc\(/);
   assert.match(cssSrc, /var\(--profile-picker-cols\) \* var\(--profile-card-min\)/);
+});
+
+test('profile picker: card spacing uses margins not flex gap (webOS 4 safe)', function () {
+  var rowBlock = cssSrc.match(/\.profile-picker-row\s*\{[\s\S]*?\}/);
+  assert.ok(rowBlock, 'profile-picker-row rule present');
+  assert.doesNotMatch(rowBlock[0], /\bgap\s*:/);
+  assert.match(cssSrc, /\.profile-picker-row[\s\S]*margin:\s*-12px/);
+  assert.match(
+    cssSrc,
+    /\.profile-picker-row \.profile-card[\s\S]*margin:\s*12px/
+  );
+});
+
+test('profile picker: PIN pad uses explicit rows (webOS 4 safe)', function () {
+  assert.match(screenSrc, /pin-pad-row/);
+  assert.match(screenSrc, /row \* 3 \+ col/);
+  assert.match(cssSrc, /\.pin-pad-grid[\s\S]*display:\s*flex/);
+  assert.match(cssSrc, /\.pin-pad-grid[\s\S]*flex-direction:\s*column/);
+  assert.match(cssSrc, /\.pin-pad-row[\s\S]*flex-wrap:\s*nowrap/);
+  assert.doesNotMatch(cssSrc, /\.pin-pad-grid[\s\S]*flex-wrap:\s*wrap/);
+  assert.doesNotMatch(cssSrc, /\.pin-pad-grid[\s\S]*display:\s*grid/);
+  assert.match(cssSrc, /\.pin-pad-row > \*[\s\S]*width:\s*84px/);
+  assert.match(cssSrc, /\.pin-pad-btn[\s\S]*padding:\s*0/);
 });
 
 test('parseHomeSize: valid, missing, and invalid values', function () {

@@ -167,16 +167,23 @@ test('pin pad Down from 8 focuses 0 on bottom row', function () {
   var grid = createElement('div');
   grid.className = 'pin-pad-grid';
   grid.setAttribute('data-cols', '3');
-  ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach(function (key) {
-    var btn = createElement('button');
-    btn.className = 'pin-pad-btn';
-    btn.id = 'pin-' + key;
-    btn.setAttribute('tabindex', '0');
-    grid.appendChild(btn);
-  });
+  var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  var row;
+  for (row = 0; row < 3; row++) {
+    var rowEl = createElement('div');
+    rowEl.className = 'pin-pad-row';
+    var col;
+    for (col = 0; col < 3; col++) {
+      var btn = createElement('button');
+      btn.className = 'pin-pad-btn';
+      btn.id = 'pin-' + keys[row * 3 + col];
+      btn.setAttribute('tabindex', '0');
+      rowEl.appendChild(btn);
+    }
+    grid.appendChild(rowEl);
+  }
   var bottom = createElement('div');
-  bottom.className = 'pin-pad-row-bottom';
-  bottom.setAttribute('data-cols', '2');
+  bottom.className = 'pin-pad-row pin-pad-row-bottom';
   var zero = createElement('button');
   zero.className = 'pin-pad-btn';
   zero.id = 'pin-0';
@@ -185,10 +192,11 @@ test('pin pad Down from 8 focuses 0 on bottom row', function () {
   del.className = 'pin-pad-btn';
   del.id = 'pin-del';
   del.setAttribute('tabindex', '0');
+  bottom.appendChild(createElement('span'));
   bottom.appendChild(zero);
   bottom.appendChild(del);
+  grid.appendChild(bottom);
   screen.appendChild(grid);
-  screen.appendChild(bottom);
   document.registerTree(screen);
 
   screen.querySelector('#pin-8').focus();

@@ -1,6 +1,7 @@
 import { isPerfEnabled, mark } from '../perf/resourceMonitor.js';
 import { clearPosterUrlMaps } from '../ui/posterImages.js';
 import { invalidateFocusableCache } from '../ui/focus.js';
+import { exitToLauncher } from '../platform/webos.js';
 
 var routes = {};
 var currentRoute = null;
@@ -24,6 +25,17 @@ function navigate(name, params) {
 
 function getRoute() {
   return { name: currentRoute, params: currentParams };
+}
+
+var ENTRY_ROUTES = { home: 1, library: 1, watchlist: 1, pairing: 1 };
+
+/**
+ * True when Back should exit to the TV Home launcher (LG entry-page behavior).
+ */
+function shouldExitToLauncher(route, params) {
+  if (!route) return true;
+  if (route === 'profile-picker') return !(params && params._from);
+  return !!ENTRY_ROUTES[route];
 }
 
 function back() {
@@ -56,6 +68,9 @@ function back() {
       navigate(currentParams._from, {});
     }
     return;
+  }
+  if (shouldExitToLauncher(currentRoute, currentParams)) {
+    exitToLauncher();
   }
 }
 
@@ -101,4 +116,4 @@ function render() {
   }
 }
 
-export { register, navigate, getRoute, back, init };
+export { register, navigate, getRoute, back, init, shouldExitToLauncher };

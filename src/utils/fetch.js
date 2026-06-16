@@ -2,6 +2,8 @@
  * Thin fetch wrapper with timeout and XML/JSON parsing.
  */
 
+import { isAbortControllerPolyfilled } from '../core/abortControllerPolyfill.js';
+
 var DEFAULT_TIMEOUT_MS = 20000;
 
 function timeoutPromise(ms) {
@@ -19,7 +21,8 @@ function resolveTimeoutMs(options) {
 
 function fetchWithTimeout(url, init, timeoutMs) {
   if (!timeoutMs) return fetch(url, init);
-  if (typeof AbortController !== 'undefined') {
+  // Polyfilled AbortController does not make legacy fetch honor signal; race instead.
+  if (typeof AbortController !== 'undefined' && !isAbortControllerPolyfilled()) {
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
     var merged = Object.assign({}, init, { signal: controller.signal });

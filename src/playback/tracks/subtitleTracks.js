@@ -156,13 +156,13 @@ function subtitleOutputFormat(track) {
   return 'srt';
 }
 
-/** Plex transcode offset query param is in seconds; viewOffset is ms. */
+/** Plex transcode offset query param is in seconds (integer); viewOffset is ms. */
 function offsetSecondsForPlex(session) {
   if (!session) return 0;
   var raw = session.playbackOffsetMs != null ? session.playbackOffsetMs : (session.offset || 0);
   if (!raw) return 0;
-  if (raw > 10000) return raw / 1000;
-  return raw;
+  if (raw > 10000) return Math.floor(raw / 1000);
+  return Math.floor(raw);
 }
 
 function parseTranscodeSessionFromUrl(url) {
@@ -180,6 +180,10 @@ function protocolForPlaybackMode(playbackMode) {
   if (playbackMode === 'transcode-http') return 'http';
   if (playbackMode === 'direct-stream' || playbackMode === 'transcode-hls') return 'hls';
   return 'http';
+}
+
+function isHlsPlaybackMode(playbackMode) {
+  return playbackMode === 'direct-stream' || playbackMode === 'transcode-hls';
 }
 
 /** directPlay flags for universal/subtitle transcode — match active playback mode. */
@@ -289,9 +293,14 @@ function isAdvancedSubtitleCodec(track) {
   return codec.indexOf('ass') >= 0 || codec.indexOf('ssa') >= 0;
 }
 
+function resolvePlaybackSessionId(session) {
+  if (!session) return null;
+  return session.playbackSessionId || session.sessionId || null;
+}
+
 function resolveSubtitleSessionId(session) {
   if (!session) return null;
-  return getActiveTranscodeSession(session) || session.sessionId || null;
+  return getActiveTranscodeSession(session) || null;
 }
 
 function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbackMode, options) {
@@ -311,10 +320,9 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
     location: plexLocationForServer(server),
     protocol: progressiveDirect ? 'http' : protocolForPlaybackMode(playbackMode)
   }, directFlags);
-  if (subtitleEndpoint && playbackMode === 'direct-stream') {
-    /* Keep subtitle extraction off the live HLS remux session. On some hosted
-     * PMS/proxy setups, hitting universal/subtitles in HLS mode can stall
-     * segment generation (repeating .ts 404). */
+  if (subtitleEndpoint && isHlsPlaybackMode(playbackMode) &&
+      options.isolatePlaybackSession === true) {
+    /* Isolated HTTP subtitle fetch — fallback when Plex-shaped HLS + same session fails. */
     params.protocol = 'http';
     params.directStream = '0';
     params.directStreamAudio = '1';
@@ -345,16 +353,15 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
     }
   }
   if (offsetSec > 0) params.offset = String(offsetSec);
-  var playbackSessionId = resolveSubtitleSessionId(session);
+  var transcodeSessionId = resolveSubtitleSessionId(session);
   var isolateFromPlaybackSession = !!(
     subtitleEndpoint &&
-    playbackMode === 'direct-stream' &&
+    isHlsPlaybackMode(playbackMode) &&
     options.isolatePlaybackSession === true
   );
-  if (playbackSessionId && !isolateFromPlaybackSession) {
-    params.session = playbackSessionId;
-    params.transcodeSessionId = playbackSessionId;
-    if (decisionEndpoint) params['X-Plex-Session-Identifier'] = playbackSessionId;
+  if (transcodeSessionId && !isolateFromPlaybackSession) {
+    params.session = transcodeSessionId;
+    params.transcodeSessionId = transcodeSessionId;
   }
   if (!decisionEndpoint && !subtitleEndpoint && session.subtitleOffset) {
     params['X-Plex-Subtitle-Offset'] = String(session.subtitleOffset);
@@ -389,9 +396,9 @@ function subtitleFetchHeaders(server, session, accept) {
     Accept: accept || 'text/srt, text/vtt, text/plain;q=0.9, */*;q=0.1'
   });
   var token = getServerToken(server);
-  var playbackSessionId = resolveSubtitleSessionId(session);
+  var clientSessionId = resolvePlaybackSessionId(session);
   if (token) headers['X-Plex-Token'] = token;
-  if (playbackSessionId) headers['X-Plex-Session-Identifier'] = playbackSessionId;
+  if (clientSessionId) headers['X-Plex-Session-Identifier'] = clientSessionId;
   return headers;
 }
 
@@ -436,7 +443,7 @@ function extractDecisionResourceSession(xmlText) {
  * the next `.ts`, infinite buffering).
  */
 function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
-  if (playbackMode !== 'direct' || !resolveSubtitleSessionId(session)) {
+  if (playbackMode !== 'direct') {
     return Promise.resolve();
   }
   var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
@@ -486,8 +493,10 @@ function buildSubtitleFetchPlan(server, session, track, options) {
 
   var resolvedTrack = track || null;
   var playbackMode = options.playbackMode || 'direct';
+  var preferUniversalFirst = plexLocationForServer(server) === 'wan';
 
-  if (isSidecarSubtitleTrack(resolvedTrack) && !isAdvancedSubtitleCodec(resolvedTrack)) {
+  if (!preferUniversalFirst &&
+      isSidecarSubtitleTrack(resolvedTrack) && !isAdvancedSubtitleCodec(resolvedTrack)) {
     pushSubtitleAttempt(
       attempts,
       'stream-sidecar',
@@ -496,7 +505,7 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   }
 
   var embedded = resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack);
-  if (embedded && !isAdvancedSubtitleCodec(resolvedTrack)) {
+  if (!preferUniversalFirst && embedded && !isAdvancedSubtitleCodec(resolvedTrack)) {
     pushSubtitleAttempt(
       attempts,
       'stream-embedded',
@@ -510,13 +519,13 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   /* Plex Web primary subtitle call uses `subtitles=auto` without explicit
    * subtitleStreamID, relying on prior part selection + session context.
    * Keep stream-id variants as fallbacks when auto/sidecar attempts fail.
-   * For HLS remux playback, isolate universal subtitle requests from the live
-   * stream session so subtitle probes cannot stall segment generation.
+   * For HLS playback, isolate universal subtitle requests from the live stream
+   * session so subtitle probes cannot stall segment generation.
    */
   var universalOpts = {
     advancedSubtitles: advanced,
     omitSubtitleStreamId: true,
-    isolatePlaybackSession: playbackMode === 'direct-stream'
+    isolatePlaybackSession: false
   };
   var allowPartFallbacks = !metadataPath || options.includePartFallbacks === true;
 
@@ -569,6 +578,33 @@ function buildSubtitleFetchPlan(server, session, track, options) {
       server, session, partPath, resolvedTrack, playbackMode,
       Object.assign({}, universalOpts, { subtitles: 'sidecar' })
     ));
+  }
+
+  if (isHlsPlaybackMode(playbackMode)) {
+    pushSubtitleAttempt(attempts, 'universal-metadata-auto-http-isolated', buildUniversalSubtitleRequest(
+      server, session, metadataPath, resolvedTrack, playbackMode,
+      Object.assign({}, universalOpts, {
+        subtitles: 'auto',
+        isolatePlaybackSession: true
+      })
+    ));
+  }
+
+  if (preferUniversalFirst) {
+    if (isSidecarSubtitleTrack(resolvedTrack) && !isAdvancedSubtitleCodec(resolvedTrack)) {
+      pushSubtitleAttempt(
+        attempts,
+        'stream-sidecar',
+        buildStreamKeySubtitleUrl(server, resolvedTrack)
+      );
+    }
+    if (embedded && !isAdvancedSubtitleCodec(resolvedTrack)) {
+      pushSubtitleAttempt(
+        attempts,
+        'stream-embedded',
+        buildStreamKeySubtitleUrl(server, resolvedTrack)
+      );
+    }
   }
 
   return attempts;
@@ -696,6 +732,7 @@ export {
   buildSubtitleFetchPlan,
   prepareClientSubtitlePlayback,
   selectPartSubtitleStream,
+  resolvePlaybackSessionId,
   resolveSubtitleSessionId,
   subtitleFetchUrls,
   buildClientSubtitleUrlCandidates,

@@ -12,21 +12,22 @@ var DECISION_QUERY_KEYS = [
   'autoAdjustQuality',
   'mediaBufferSize',
   'session',
-  'transcodeSessionId',
-  'X-Plex-Session-Identifier',
   'skipSubtitles',
   'subtitles',
   'subtitleStreamID',
   'X-Plex-Subtitle-Stream',
   'X-Plex-Subtitle-Offset',
   'subtitleSize',
+  'audioBoost',
   'autoAdjustSubtitle',
   'advancedSubtitles',
   'location',
   'offset',
   'maxVideoBitrate',
   'videoResolution',
-  'protocol'
+  'protocol',
+  'X-Plex-Incomplete-Segments',
+  'autoAdjustSubtitle'
 ];
 
 function buildMinimalDecisionParams(fullParams, metadataPath) {

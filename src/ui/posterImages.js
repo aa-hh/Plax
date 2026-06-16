@@ -1,12 +1,17 @@
 import { addOnceEventListener } from '../utils/domUtils.js';
 
 /** Poster sizing aligned with CSS (--row-poster-*, --grid-poster-*) plus modest overscan. */
-var POSTER_WIDTH_ROW = 220;
-var POSTER_WIDTH_GRID = 220;
+var POSTER_WIDTH_ROW = 180;
+var POSTER_WIDTH_GRID = 180;
 var POSTER_WIDTH_EPISODE = 300;
 var POSTER_HEIGHT_EPISODE = 168;
 
+/** Cap parallel Plex /photo transcodes — webOS 4 saturates above ~6. */
+var MAX_CONCURRENT_POSTER_LOADS = 6;
+
 var MAX_POSTER_URL_ENTRIES = 384;
+var activePosterLoads = 0;
+var posterLoadQueue = [];
 var loadedUrls = Object.create(null);
 var inflightUrls = Object.create(null);
 var urlMapOrder = [];
@@ -29,6 +34,8 @@ function clearPosterUrlMaps() {
   loadedUrls = Object.create(null);
   inflightUrls = Object.create(null);
   urlMapOrder = [];
+  posterLoadQueue = [];
+  activePosterLoads = 0;
 }
 
 function sizedPosterUrl(url, width, height) {
@@ -80,6 +87,49 @@ function markPosterLoaded(url) {
   }
 }
 
+function releasePosterLoadSlot() {
+  activePosterLoads = Math.max(0, activePosterLoads - 1);
+  drainPosterLoadQueue();
+}
+
+function drainPosterLoadQueue() {
+  while (posterLoadQueue.length && activePosterLoads < MAX_CONCURRENT_POSTER_LOADS) {
+    var job = posterLoadQueue.shift();
+    if (!job || !job.img) continue;
+    startPosterImageLoad(job.img, job.url, job.opts);
+  }
+}
+
+function startPosterImageLoad(img, url, opts) {
+  opts = opts || {};
+  activePosterLoads += 1;
+  watchPosterReveal(img);
+
+  img.decoding = 'async';
+  img.loading = opts.priority ? 'eager' : 'lazy';
+  img.dataset.posterSrc = url;
+
+  function finishLoad() {
+    img.onload = null;
+    img.onerror = null;
+    markPosterLoaded(url);
+    releasePosterLoadSlot();
+    if (img.naturalWidth > 0) revealPosterImage(img);
+    else if (opts.onError) opts.onError();
+  }
+
+  if (img.getAttribute('src') !== url) {
+    img.src = url;
+  }
+  if (img.complete && img.naturalWidth > 0) {
+    markPosterLoaded(url);
+    revealPosterImage(img);
+    releasePosterLoadSlot();
+    return;
+  }
+  img.onload = img.onerror = finishLoad;
+}
+
 function bindPosterImage(img, url, opts) {
   opts = opts || {};
   if (!img) return;
@@ -94,28 +144,11 @@ function bindPosterImage(img, url, opts) {
     revealPosterImage(img);
     return;
   }
-
-  watchPosterReveal(img);
-
-  img.decoding = 'async';
-  img.loading = opts.priority ? 'eager' : 'lazy';
-  img.dataset.posterSrc = url;
-
-  if (img.getAttribute('src') !== url) {
-    img.src = url;
+  if (activePosterLoads >= MAX_CONCURRENT_POSTER_LOADS) {
+    posterLoadQueue.push({ img: img, url: url, opts: opts });
+    return;
   }
-  if (img.complete && img.naturalWidth > 0) {
-    markPosterLoaded(url);
-    revealPosterImage(img);
-  } else {
-    img.onload = img.onerror = function () {
-      img.onload = null;
-      img.onerror = null;
-      markPosterLoaded(url);
-      if (img.naturalWidth > 0) revealPosterImage(img);
-      else if (opts.onError) opts.onError();
-    };
-  }
+  startPosterImageLoad(img, url, opts);
 }
 
 function hydrateCardPoster(card, opts) {
@@ -207,16 +240,140 @@ function prefetchPosterUrls(urls) {
     inflightUrls[url] = true;
     touchUrlKey(url);
     evictPosterUrlMapsIfNeeded();
-    var img = new Image();
-    img.decoding = 'async';
-    img.loading = 'eager';
-    img.onload = img.onerror = function () {
-      img.onload = null;
-      img.onerror = null;
-      markPosterLoaded(url);
-    };
-    img.src = url;
+    bindPosterImage(new Image(), url, { priority: true });
   }
+}
+
+function resolveItemPosterUrl(item) {
+  if (!item) return '';
+  var thumb = item.thumb || item.grandparentThumbUrl || '';
+  if (!thumb) return '';
+  if (item.type === 'episode') {
+    return sizedPosterUrl(thumb, POSTER_WIDTH_EPISODE, POSTER_HEIGHT_EPISODE);
+  }
+  return sizedPosterUrl(thumb, POSTER_WIDTH_ROW);
+}
+
+/**
+ * Poster URLs for the first visible home hub window (matches hubRow deferPoster + primeVisiblePosters).
+ */
+function collectHubPrefetchPosterUrls(hubPrefetchResult, opts) {
+  opts = opts || {};
+  var maxUrls = opts.maxUrls != null ? opts.maxUrls : 24;
+  var perRow = opts.perRow != null ? opts.perRow : 12;
+  var maxRows = opts.maxRows != null ? opts.maxRows : 2;
+  var rows = (hubPrefetchResult && hubPrefetchResult.rows) || [];
+  var urls = [];
+  var seen = Object.create(null);
+  var r;
+  var i;
+  for (r = 0; r < rows.length && urls.length < maxUrls; r++) {
+    if (r >= maxRows) break;
+    var items = rows[r].items || [];
+    var take = Math.min(perRow, maxUrls - urls.length, items.length);
+    for (i = 0; i < take; i++) {
+      var url = resolveItemPosterUrl(items[i]);
+      if (!url || seen[url]) continue;
+      seen[url] = true;
+      urls.push(url);
+    }
+  }
+  return urls;
+}
+
+function countLoadedPosterUrls(urls) {
+  var n = 0;
+  var i;
+  for (i = 0; i < urls.length; i++) {
+    if (loadedUrls[urls[i]]) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Resolve when targeted poster URLs have loaded/errored.
+ * requireAll (default true): wait for every URL; failOnTimeout rejects instead of navigating partial.
+ */
+function waitForPosterUrls(urls, opts) {
+  opts = opts || {};
+  var total = urls ? urls.length : 0;
+  var requireAll = opts.requireAll !== false;
+  var minReady = opts.minReady;
+  if (minReady == null) minReady = requireAll ? total : 8;
+  var timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 60000;
+  var failOnTimeout = opts.failOnTimeout === true;
+  var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+  if (!urls || !total) return Promise.resolve({ loaded: 0, total: 0, complete: true });
+
+  return new Promise(function (resolve, reject) {
+    var settled = false;
+    var pollTimer = null;
+    var timeoutTimer = null;
+
+    function reportProgress() {
+      if (onProgress) onProgress(countLoadedPosterUrls(urls), total);
+    }
+
+    function finishSuccess() {
+      if (settled) return;
+      settled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      var loaded = countLoadedPosterUrls(urls);
+      resolve({ loaded: loaded, total: total, complete: loaded >= minReady });
+    }
+
+    function finishTimeout() {
+      if (settled) return;
+      settled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      var loaded = countLoadedPosterUrls(urls);
+      if (failOnTimeout && loaded < minReady) {
+        reject(new Error(
+          'Artwork load timed out (' + loaded + '/' + total + '). Check network and Plex server, then try again.'
+        ));
+        return;
+      }
+      resolve({ loaded: loaded, total: total, complete: loaded >= minReady, timedOut: true });
+    }
+
+    function checkReady() {
+      var ready = countLoadedPosterUrls(urls);
+      reportProgress();
+      if (ready >= minReady || ready >= total) finishSuccess();
+    }
+
+    checkReady();
+    if (settled) return;
+
+    pollTimer = setInterval(checkReady, 120);
+    timeoutTimer = setTimeout(finishTimeout, timeoutMs);
+  });
+}
+
+/**
+ * Warm Plex poster transcodes for prefetched hub rows (HTTP cache + loadedUrls).
+ * Waits until all collected URLs settle unless opts.requireAll is false.
+ */
+function warmHubPrefetchPosters(hubPrefetchResult, opts) {
+  opts = opts || {};
+  var urls = collectHubPrefetchPosterUrls(hubPrefetchResult, opts);
+  if (!urls.length) return Promise.resolve({ urls: [], warmed: 0, total: 0, complete: true });
+  prefetchPosterUrls(urls);
+  var waitOpts = Object.assign({}, opts);
+  if (waitOpts.requireAll !== false && waitOpts.minReady == null) {
+    waitOpts.minReady = urls.length;
+  }
+  return waitForPosterUrls(urls, waitOpts).then(function (result) {
+    var warmed = countLoadedPosterUrls(urls);
+    return {
+      urls: urls,
+      warmed: warmed,
+      total: urls.length,
+      complete: result.complete === true && warmed >= urls.length
+    };
+  });
 }
 
 function cardPosterNeedsHydrate(card) {
@@ -460,6 +617,10 @@ export {
   hydrateGridWindow,
   hydrateFocusedNeighborhood,
   prefetchPosterUrls,
+  resolveItemPosterUrl,
+  collectHubPrefetchPosterUrls,
+  waitForPosterUrls,
+  warmHubPrefetchPosters,
   collectNeighborhoodThumbs,
   primeVisiblePosters,
   collectPosterBatchCards,
