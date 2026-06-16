@@ -1,13 +1,13 @@
 # Compatibility Matrix
 
-**Minimum platform: webOS TV 4.0** (2018 LG OLED B8 and newer). webOS TV 5.0+ remains the primary test target.
+**Minimum platform: webOS TV 4.0** (2018 LG OLED B8 and newer). webOS TV 4.0 and 5.0 are co-primary engineering targets.
 
 ## Platform
 
 | webOS TV | Engine | Status |
 |----------|--------|--------|
 | &lt; 4.0 | — | **Unsupported** (blocked at launch) |
-| 4.0 | Chromium (2018 TVs, e.g. B8) | Supported (best-effort; use **Auto** quality) |
+| 4.0 | Chromium ~53 (2018 TVs, e.g. B8) | Supported — **co-primary target**; CSS and JS polyfilled for Chromium 53; use **Auto** quality |
 | 5.0 | Chromium 68 | Supported (minimum for full spec alignment) |
 | 6.0 | Chromium 79 | Supported |
 | 22–26+ | Newer Chromium | Supported |
@@ -72,4 +72,6 @@ Per [App Resolution spec](https://webostv.developer.lge.com/develop/specificatio
 1. Codec support still varies by TV model within webOS 4+.
 2. Graphical subtitles not supported.
 3. Only one HTML5 video element active at a time (LG platform rule).
-4. webOS 4 TVs use an older Chromium than webOS 5; prefer **Auto** over **Original file only** for DTS or high-bitrate files.
+4. webOS 4 TVs run Chromium ~53 — older than webOS 5 (Chromium 68). Prefer **Auto** over **Original file only** for DTS or high-bitrate files.
+5. **Chrome 53 JS polyfills**: `String.prototype.padEnd/padStart` (`src/core/stringPolyfills.js`), `AbortController` (`src/core/abortControllerPolyfill.js`), `Promise.prototype.finally` (`src/core/promiseFinallyPolyfill.js`). `addEventListener({ once: true })` is replaced throughout with `addOnceEventListener` from `src/utils/domUtils.js`.
+6. **Chrome 53 CSS**: `flex gap:`, `display: grid`, CSS math functions (`min()`/`max()`/`clamp()`), `aspect-ratio:`, `inset:`, `scroll-padding-inline`, and `overscroll-behavior:` are all removed or replaced in `src/styles/app.css`. See `docs/webos-tv-spec-compliance.md` section 2a for the full list.

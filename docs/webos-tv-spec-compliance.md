@@ -1,6 +1,6 @@
 # webOS TV Platform Specification Compliance
 
-Minimum supported platform: **webOS TV 4.0** (2018 LG OLED B8). Primary engineering target: **webOS TV 5.0** (2020).  
+Minimum supported platform: **webOS TV 4.0** (2018 LG OLED B8). Co-primary engineering targets: **webOS TV 4.0** (Chromium ~53) and **webOS TV 5.0** (Chromium 68, 2020).  
 Official references: [Platform specifications](https://webostv.developer.lge.com/develop/specifications)
 
 This document maps LG requirements to XPlay Lite implementation.
@@ -24,12 +24,42 @@ Source: [Web API and Web Engine](https://webostv.developer.lge.com/develop/speci
 
 | webOS TV | Chromium (approx.) | XPlay Lite |
 |----------|-------------------|------------|
-| 5.0 | 68 | **Minimum target** — Babel `chrome 68` |
+| 4.0 | ~53 | **Co-primary target** — Babel `chrome 53`; CSS and JS polyfilled for Chromium 53 |
+| 5.0 | 68 | **Co-primary target** — full spec alignment |
 | 6.0+ | 79+ | Supported |
 
-- Bundle targets Chromium 68+ (not legacy WebKit / Chrome 38).
+- Bundle targets Chromium 53+ (Babel transpile target `chrome 53`, not `chrome 68`).
 - Include [webOSTV.js](https://webostv.developer.lge.com/develop/references/webostvjs-introduction) for Luna Service, back key, and `deviceInfo`.
 - Enforce `versionMajor >= 4` on device before app start (`src/platform/versionGate.js`).
+
+## 2a. Chrome 53 Compatibility (webOS TV 4.0)
+
+webOS 4 ships Chromium ~53 (released 2016). Several JS and CSS APIs available on Chrome 68 are absent and require polyfills or workarounds.
+
+### JavaScript gaps and mitigations
+
+| API | Chrome introduced | Mitigation |
+|-----|-------------------|------------|
+| `String.prototype.padEnd` / `padStart` | Chrome 57 | Polyfilled in `src/core/stringPolyfills.js` |
+| `addEventListener({ once: true })` | Chrome 55 | Replaced with `addOnceEventListener` helper in `src/utils/domUtils.js` |
+| `AbortController` / `AbortSignal` | Chrome 66 | Polyfilled in `src/core/abortControllerPolyfill.js` |
+| `Promise.prototype.finally` | Chrome 63 | Polyfilled in `src/core/promiseFinallyPolyfill.js` |
+
+Babel transpile target is set to `chrome 53` so class syntax, arrow functions, template literals, destructuring, spread, and `async`/`await` are all downlevelled.
+
+### CSS gaps and mitigations
+
+| CSS feature | Chrome introduced | Mitigation in `app.css` |
+|-------------|-------------------|-------------------------|
+| `flex gap:` | Chrome 84 | Replaced with `> * + *` margin rules |
+| `display: grid` + `gap` | Chrome 66 (gap in grid 66) | Converted to `display: flex` equivalents |
+| `grid-template-columns: repeat(var())` | Chrome 57 | Removed; profile picker now uses flex + negative-margin gutters |
+| CSS `min()` / `max()` / `clamp()` | Chrome 79 | Replaced with static pixel values |
+| `aspect-ratio:` | Chrome 88 | Replaced with `padding-bottom: 150%` trick for 2:3 posters; explicit `height` elsewhere |
+| `inset:` shorthand | Chrome 87 | Replaced with explicit `top / right / bottom / left: 0` |
+| `overscroll-behavior:` | Chrome 63 | Removed (no functional substitute on Chrome 53) |
+| `scroll-padding-inline` | Chrome 69 | Replaced with `scroll-padding-left` / `scroll-padding-right` |
+| `justify-self:` in flex | Chrome 57 | Removed; transport center uses explicit `margin-left: auto / margin-right: auto` |
 
 ## 3. TLS and Root Certificates
 

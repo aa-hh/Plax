@@ -63,7 +63,8 @@
   --detail-margin-y: var(--space-4);
   --focus-w: 3px;
   /* Space for outline + box-shadow outside poster (≥ prior 10px row padding) */
-  --focus-ring-pad: max(10px, calc(var(--focus-w) + 4px));
+  /* Static 10px — CSS max-function is Chrome 79+, not available on webOS 4 (Chromium ~53) */
+  --focus-ring-pad: 10px;
   --z-player: 1000;
   --z-player-overlay: 1002;
   --z-loading: 1005;
@@ -207,17 +208,23 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex: 1;
   min-height: 0;
-  gap: var(--space-7);
   align-items: stretch;
+}
+
+.home-layout > * + * {
+  margin-left: var(--space-7);
 }
 
 .browsing-hub-nav-host {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
   width: 220px;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.browsing-hub-nav-host > * + * {
+  margin-top: var(--space-5);
 }
 
 .browsing-hub-section--search,
@@ -263,14 +270,16 @@ html { min-width: 1280px; min-height: 720px; }
 .browsing-hub-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   width: 100%;
+}
+
+.browsing-hub-nav > * + * {
+  margin-top: 2px;
 }
 
 .browsing-hub-item {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
   width: 100%;
   text-align: left;
   padding: 12px 14px 12px 10px;
@@ -281,6 +290,10 @@ html { min-width: 1280px; min-height: 720px; }
   border: none;
   border-left: 4px solid transparent;
   font-size: var(--font-meta);
+}
+
+.browsing-hub-item__icon + .browsing-hub-item__label {
+  margin-left: var(--space-4);
 }
 
 .browsing-hub-item__icon {
@@ -403,10 +416,13 @@ html { min-width: 1280px; min-height: 720px; }
 /* ── Top navigation ── */
 .top-nav {
   display: flex;
-  gap: var(--space-2);
   margin-bottom: var(--space-7);
   padding-bottom: var(--space-5);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.top-nav > * + * {
+  margin-left: var(--space-2);
 }
 
 .top-nav--browse {
@@ -418,8 +434,11 @@ html { min-width: 1280px; min-height: 720px; }
 .nav-item--search {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
   margin-left: auto;
+}
+
+.nav-item--search .nav-item__icon + * {
+  margin-left: var(--space-3);
 }
 
 .nav-item__icon {
@@ -470,8 +489,11 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-9);
   max-width: 560px;
+}
+
+.pairing-layout > * + * {
+  margin-top: var(--space-9);
 }
 
 .pairing-layout-centered {
@@ -513,7 +535,10 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex: 1;
   min-height: 0;
-  gap: var(--space-7);
+}
+
+.library-layout > * + * {
+  margin-left: var(--space-7);
 }
 
 .library-sidebar {
@@ -523,8 +548,11 @@ html { min-width: 1280px; min-height: 720px; }
   padding-right: 8px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.library-sidebar > * + * {
+  margin-top: var(--space-4);
 }
 
 .library-sidebar .browsing-hub-nav-host {
@@ -539,7 +567,6 @@ html { min-width: 1280px; min-height: 720px; }
 .library-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
   width: 100%;
   text-align: left;
   padding: 12px 14px 12px 10px;
@@ -550,6 +577,10 @@ html { min-width: 1280px; min-height: 720px; }
   color: var(--text-secondary);
   border: none;
   border-left: 4px solid transparent;
+}
+
+.library-item__icon + .library-item__label {
+  margin-left: var(--space-3);
 }
 
 .library-item__icon {
@@ -611,6 +642,17 @@ html { min-width: 1280px; min-height: 720px; }
   position: relative;
 }
 
+.library-grid-host {
+  flex: 1 1 0;
+  height: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-left: var(--focus-ring-pad);
+  scroll-padding-right: var(--focus-ring-pad);
+}
+
 /* Inline poster batch loading (library / home) */
 .poster-batch-host {
   position: relative;
@@ -622,7 +664,10 @@ html { min-width: 1280px; min-height: 720px; }
 
 .poster-loading-overlay {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 3;
   display: flex;
   align-items: center;
@@ -636,27 +681,42 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 /* ── Media grid (library) ── */
+/* Margin-based gutters — flex gap is Chrome 84+, not available on webOS 4 (Chromium ~53).
+   scroll-padding-inline is also Chrome 69+; use left/right forms instead. */
 .media-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px 20px;
+  margin: -12px -10px;
   overflow-y: auto;
   flex: 1;
   padding: var(--focus-ring-pad) var(--focus-ring-pad) 16px;
-  scroll-padding-inline: var(--focus-ring-pad);
+  scroll-padding-left: var(--focus-ring-pad);
+  scroll-padding-right: var(--focus-ring-pad);
   align-content: flex-start;
+}
+
+.media-grid > .media-card {
+  margin: 12px 10px;
 }
 
 .media-card {
   position: relative;
-  width: var(--grid-poster-w);
   flex-shrink: 0;
   outline: none;
 }
 
-.media-card .poster {
+.media-grid .media-card {
+  width: var(--grid-poster-w);
+}
+
+.media-grid .media-card .card-poster-wrap {
   width: var(--grid-poster-w);
   height: var(--grid-poster-h);
+}
+
+.media-grid .media-card .poster {
+  width: 100%;
+  height: 100%;
   background: var(--bg-surface);
   border-radius: var(--radius-lg);
   object-fit: cover;
@@ -842,19 +902,26 @@ html { min-width: 1280px; min-height: 720px; }
 
 .row-scroll {
   display: flex;
-  gap: var(--row-card-gap);
   overflow-x: auto;
   overflow-y: visible;
   padding: 8px var(--focus-ring-pad) 16px;
-  scroll-padding-inline: var(--focus-ring-pad);
+  scroll-padding-left: var(--focus-ring-pad);
+  scroll-padding-right: var(--focus-ring-pad);
   width: 100%;
   --row-count: 10;
   scrollbar-width: none;
 }
 
+.row-scroll > * + * {
+  margin-left: var(--row-card-gap);
+}
+
 .screen-home .home-feed .row-scroll {
-  gap: 20px;
   padding-bottom: 12px;
+}
+
+.screen-home .home-feed .row-scroll > * + * {
+  margin-left: 20px;
 }
 
 /* Home hub rows: one poster width (On Deck compact vs promoted/section rails). */
@@ -884,16 +951,17 @@ html { min-width: 1280px; min-height: 720px; }
 
 .row-scroll::-webkit-scrollbar { display: none; }
 
-.row-section--compact .row-scroll {
-  gap: 10px;
+.row-section--compact .row-scroll > * + * {
+  margin-left: 10px;
 }
 
+/* CSS clamp-function is Chrome 79+ — not available on webOS 4 (Chromium ~53). Use fixed width. */
 .row-section--compact .row-item,
 .row-section--compact .row-scroll .media-card {
-  width: clamp(122px, calc(var(--row-poster-w) - 22px), var(--row-poster-w));
+  width: calc(var(--row-poster-w) - 22px);
 }
 
-.row-item,
+.row-scroll .row-item,
 .row-scroll .media-card {
   flex-shrink: 0;
   width: var(--row-poster-w);
@@ -903,18 +971,27 @@ html { min-width: 1280px; min-height: 720px; }
    the available width instead of leaving a large empty right gutter. */
 .row-scroll--sparse .row-item,
 .row-scroll--sparse .media-card {
-  width: clamp(
-    var(--row-poster-w),
-    calc((100% - (var(--row-count) - 1) * var(--row-card-gap)) / var(--row-count)),
-    240px
-  );
+  /* Fixed rail width — webOS 4 safe (no CSS clamp/dynamic width) */
+  width: var(--row-poster-w);
+  max-width: 240px;
 }
 
-.row-item .poster,
-.row-scroll .media-card:not(.media-card--episode) .poster {
+/* Portrait row posters: padding-bottom keeps 2:3 at any card width (webOS 4 safe).
+   aspect-ratio is Chrome 88+ — not available on webOS 4 (Chromium ~53). */
+.row-scroll .row-item:not(.media-card--episode) .card-poster-wrap,
+.row-scroll .media-card:not(.media-card--episode) .card-poster-wrap {
+  height: 0;
+  padding-bottom: 150%;
+  overflow: hidden;
+}
+
+.row-scroll .row-item:not(.media-card--episode) .card-poster-wrap .poster,
+.row-scroll .media-card:not(.media-card--episode) .card-poster-wrap .poster {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: auto;
-  aspect-ratio: 2 / 3;
+  height: 100%;
   border-radius: var(--radius-md);
   object-fit: cover;
   background: var(--bg-surface);
@@ -926,11 +1003,11 @@ html { min-width: 1280px; min-height: 720px; }
   width: 300px;
 }
 
+/* aspect-ratio is Chrome 88+ — use explicit height instead (webOS 4 safe) */
 .row-scroll--episodes .media-card--episode .card-poster-wrap,
 .row-scroll--episodes .media-card--episode .poster {
   width: 300px;
   height: 168px;
-  aspect-ratio: 16 / 9;
   border-radius: var(--radius-md);
   object-fit: cover;
 }
@@ -954,8 +1031,11 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .row-skeleton .row-skeleton-scroll {
-  gap: var(--row-card-gap);
   padding: 8px var(--focus-ring-pad) 16px;
+}
+
+.row-skeleton .row-skeleton-scroll > * + * {
+  margin-left: var(--row-card-gap);
 }
 
 .row-skeleton-card {
@@ -970,9 +1050,12 @@ html { min-width: 1280px; min-height: 720px; }
 /* ── Detail ── */
 .detail-layout {
   display: flex;
-  gap: 40px;
   flex: 1;
   min-height: 0;
+}
+
+.detail-layout > * + * {
+  margin-left: 40px;
 }
 
 .detail-home-main--has-bg {
@@ -1019,17 +1102,23 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .detail-actions {
-  margin: 0 0 var(--space-7);
+  margin: 0 -6px var(--space-7);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+}
+
+.detail-actions > * {
+  margin: 6px;
 }
 
 .detail-primary-actions {
   margin: 0 0 var(--space-4);
   display: flex;
-  gap: var(--space-3);
   align-items: center;
+}
+
+.detail-primary-actions > * + * {
+  margin-left: var(--space-3);
 }
 
 .detail-actions-secondary {
@@ -1063,9 +1152,12 @@ html { min-width: 1280px; min-height: 720px; }
 .detail-setting-row {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
   margin-bottom: var(--space-5);
   max-width: 880px;
+}
+
+.detail-setting-row > * + * {
+  margin-top: var(--space-3);
 }
 
 .detail-setting-label {
@@ -1075,9 +1167,12 @@ html { min-width: 1280px; min-height: 720px; }
 
 .detail-setting-options {
   display: flex;
-  gap: var(--space-3);
   align-items: center;
   padding-bottom: var(--space-2);
+}
+
+.detail-setting-options > * + * {
+  margin-left: var(--space-3);
 }
 
 .detail-setting-chip {
@@ -1180,26 +1275,31 @@ html { min-width: 1280px; min-height: 720px; }
 /* Episode detail (TV) */
 .detail-layout--episode {
   flex-direction: column;
-  gap: 0;
 }
 
 .detail-episode-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
+.detail-episode-panel > * + * {
+  margin-top: var(--space-5);
+}
+
 .detail-playback-columns {
   display: flex;
-  gap: var(--space-5);
   width: 100%;
   margin-top: auto;
   flex-shrink: 0;
   align-items: flex-start;
+}
+
+.detail-playback-columns > * + * {
+  margin-left: var(--space-5);
 }
 
 .detail-playback-columns .detail-file-section,
@@ -1236,7 +1336,11 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  margin: -4px;
+}
+
+.detail-breadcrumb-trail > * {
+  margin: 4px;
 }
 
 .detail-breadcrumb-trail__sep {
@@ -1276,10 +1380,13 @@ html { min-width: 1280px; min-height: 720px; }
 
 .detail-standard-hero {
   display: flex;
-  gap: 40px;
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+.detail-standard-hero > * + * {
+  margin-left: 40px;
 }
 
 .detail-layout--season {
@@ -1310,9 +1417,12 @@ html { min-width: 1280px; min-height: 720px; }
 .detail-top-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
   align-items: center;
-  margin-bottom: var(--space-5);
+  margin: -6px -6px var(--space-5);
+}
+
+.detail-top-bar > * {
+  margin: 6px;
 }
 
 .detail-top-bar--with-bookmark {
@@ -1375,8 +1485,11 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  margin: -6px -6px var(--space-3);
+}
+
+.settings-watchlist-row > * {
+  margin: 6px;
 }
 
 .settings-watchlist-name {
@@ -1414,8 +1527,11 @@ html { min-width: 1280px; min-height: 720px; }
 .detail-episode-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  margin: var(--space-3) 0 0;
+  margin: var(--space-3) -6px 0;
+}
+
+.detail-episode-nav > * {
+  margin: 6px;
 }
 
 .detail-episode-nav .detail-series-title,
@@ -1429,8 +1545,11 @@ html { min-width: 1280px; min-height: 720px; }
 
 .detail-episode-main {
   display: flex;
-  gap: var(--space-7);
   align-items: flex-start;
+}
+
+.detail-episode-main > * + * {
+  margin-left: var(--space-7);
 }
 
 .detail-episode-art-wrap {
@@ -1444,10 +1563,11 @@ html { min-width: 1280px; min-height: 720px; }
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.5);
 }
 
+/* aspect-ratio is Chrome 88+ — use explicit height instead (webOS 4 safe) */
 .detail-episode-art {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: 236px;
   object-fit: cover;
   background: var(--bg-surface);
 }
@@ -1502,7 +1622,11 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  margin: -3px -5px;
+}
+
+.detail-episode-line--primary > * {
+  margin: 3px 5px;
 }
 
 .detail-season-link {
@@ -1549,7 +1673,6 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-5);
   width: 100%;
   max-width: 880px;
   margin: 0 0 var(--space-3);
@@ -1560,6 +1683,10 @@ html { min-width: 1280px; min-height: 720px; }
   text-align: left;
   font-size: var(--font-meta);
   color: var(--text-primary);
+}
+
+.detail-file-label + .detail-file-value {
+  margin-left: var(--space-5);
 }
 
 .detail-file-row:disabled {
@@ -1650,9 +1777,12 @@ html { min-width: 1280px; min-height: 720px; }
 .detail-network-recommend-row {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-3);
   margin: 0 0 var(--space-4);
   padding: 0 4px;
+}
+
+.detail-network-recommend-row > * + * {
+  margin-left: var(--space-3);
 }
 
 .detail-network-recommend-row .detail-network-recommend {
@@ -1669,8 +1799,8 @@ html { min-width: 1280px; min-height: 720px; }
   line-height: 1;
 }
 
-.detail-modal-list--info {
-  gap: var(--space-3);
+.detail-modal-list--info > * + * {
+  margin-top: var(--space-3);
 }
 
 .detail-network-info-line {
@@ -1687,7 +1817,10 @@ html { min-width: 1280px; min-height: 720px; }
 
 .detail-modal {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: calc(var(--z-player-overlay) + 2);
   display: flex;
   align-items: center;
@@ -1700,18 +1833,23 @@ html { min-width: 1280px; min-height: 720px; }
   display: none !important;
 }
 
+/* CSS min-function is Chrome 79+ — use static values (webOS 4 safe) */
 .detail-modal-sheet {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  width: min(900px, 100%);
-  max-height: min(78vh, 820px);
+  width: 100%;
+  max-width: 900px;
+  max-height: 820px;
   min-height: 0;
   overflow: hidden;
   padding: var(--space-6) var(--space-7);
   background: rgba(13, 17, 26, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-md);
+}
+
+.detail-modal-sheet > * + * {
+  margin-top: var(--space-4);
 }
 
 .detail-modal-title {
@@ -1724,10 +1862,13 @@ html { min-width: 1280px; min-height: 720px; }
 .detail-modal-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
   overflow-y: auto;
   min-height: 0;
   flex: 1;
+}
+
+.detail-modal-list > * + * {
+  margin-top: var(--space-2);
 }
 
 .detail-modal-list--episodes {
@@ -1735,8 +1876,12 @@ html { min-width: 1280px; min-height: 720px; }
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  gap: var(--space-3);
   padding-bottom: var(--space-2);
+}
+
+.detail-modal-list--episodes > * + * {
+  margin-top: 0;
+  margin-left: var(--space-3);
 }
 
 .detail-modal-option {
@@ -1827,7 +1972,6 @@ html { min-width: 1280px; min-height: 720px; }
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
-  gap: 14px;
   padding: 16px 32px;
   margin: 0;
   border: 2px solid var(--accent);
@@ -1840,6 +1984,10 @@ html { min-width: 1280px; min-height: 720px; }
   box-shadow: 0 0 0 3px var(--accent-soft);
   z-index: 2;
   overflow: hidden;
+}
+
+.player-skip-intro-prompt > * + * {
+  margin-left: 14px;
 }
 
 .player-skip-intro-prompt--credits-countdown::before {
@@ -1906,8 +2054,11 @@ html { min-width: 1280px; min-height: 720px; }
 .player-bottom {
   display: flex;
   flex-direction: column;
-  gap: 14px;
   width: 100%;
+}
+
+.player-bottom > * + * {
+  margin-top: 14px;
 }
 
 .player-control-bar {
@@ -1920,6 +2071,7 @@ html { min-width: 1280px; min-height: 720px; }
   min-height: 76px;
 }
 
+/* CSS min-function is Chrome 79+ — use static max-width (webOS 4 safe) */
 .player-meta-col {
   position: absolute;
   left: 14px;
@@ -1927,11 +2079,14 @@ html { min-width: 1280px; min-height: 720px; }
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
   min-width: 0;
-  max-width: min(42%, 520px);
+  max-width: 520px;
   transform: translateY(-50%);
   pointer-events: none;
+}
+
+.player-meta-col > * + * {
+  margin-top: 4px;
 }
 
 .player-meta-col .player-retry-btn {
@@ -1995,8 +2150,11 @@ html { min-width: 1280px; min-height: 720px; }
 .player-seek-row {
   display: flex;
   align-items: center;
-  gap: 20px;
   width: 100%;
+}
+
+.player-seek-row > * + * {
+  margin-left: 20px;
 }
 
 .player-seek-wrap {
@@ -2013,8 +2171,11 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
   pointer-events: none;
+}
+
+.player-scrub-preview > * + * {
+  margin-top: 8px;
 }
 
 .player-scrub-preview[hidden] {
@@ -2127,11 +2288,14 @@ html { min-width: 1280px; min-height: 720px; }
   z-index: calc(var(--z-player-overlay) + 1);
   display: flex;
   align-items: center;
-  gap: 10px;
   padding: 8px 12px;
   border-radius: var(--radius-md);
   background: rgba(10, 10, 15, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.player-subtitle-delay > * + * {
+  margin-left: 10px;
 }
 
 .player-subtitle-delay[hidden] {
@@ -2163,16 +2327,18 @@ html { min-width: 1280px; min-height: 720px; }
   min-width: 0;
 }
 
+/* Flex layout for player transport — grid+1fr auto 1fr+justify-self+gap were converted
+   to flex for full webOS 4 (Chromium ~53) safety: justify-self and grid gap are
+   Chrome 57+/66+, unavailable on the B8. */
 .player-transport-col {
   position: absolute;
   left: 0;
   right: 0;
   top: 50%;
   z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 10px;
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -2180,8 +2346,13 @@ html { min-width: 1280px; min-height: 720px; }
 .player-transport-wing {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex: 1;
+  min-width: 0;
   pointer-events: auto;
+}
+
+.player-transport-wing > * + * {
+  margin-left: 10px;
 }
 
 .player-transport-wing--left {
@@ -2193,7 +2364,9 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-transport-center {
-  justify-self: center;
+  flex-shrink: 0;
+  margin-left: 10px;
+  margin-right: 10px;
   pointer-events: auto;
 }
 
@@ -2253,16 +2426,18 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 10px;
   min-width: 0;
   margin-left: auto;
+}
+
+.player-settings-col > * + * {
+  margin-left: 10px;
 }
 
 .player-stream-pill {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   min-height: 52px;
   padding: 10px 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -2277,16 +2452,23 @@ html { min-width: 1280px; min-height: 720px; }
   min-width: 0;
 }
 
+.player-stream-pill > * + * {
+  margin-left: 10px;
+}
+
 .player-stream-pill:focus {
   outline: 3px solid var(--border-focus);
   outline-offset: 3px;
 }
 
 .player-stream-pill--icon {
-  gap: 0;
   min-width: 52px;
   padding: 12px;
   justify-content: center;
+}
+
+.player-stream-pill--icon > * + * {
+  margin-left: 0;
 }
 
 .player-stream-pill--on {
@@ -2329,7 +2511,10 @@ html { min-width: 1280px; min-height: 720px; }
 
 .player-track-modal {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
   align-items: center;
@@ -2342,18 +2527,23 @@ html { min-width: 1280px; min-height: 720px; }
   display: none !important;
 }
 
+/* CSS min-function is Chrome 79+ — use static values (webOS 4 safe) */
 .player-track-modal-sheet {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  width: min(760px, 100%);
-  max-height: min(78vh, 820px);
+  width: 100%;
+  max-width: 760px;
+  max-height: 820px;
   min-height: 0;
   overflow: hidden;
   padding: var(--space-6) var(--space-7);
   background: rgba(13, 17, 26, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-md);
+}
+
+.player-track-modal-sheet > * + * {
+  margin-top: var(--space-4);
 }
 
 .player-track-modal-title {
@@ -2428,18 +2618,22 @@ html { min-width: 1280px; min-height: 720px; }
 
 .player-info-panel { max-width: 720px; }
 
+/* CSS min-function is Chrome 79+, overscroll-behavior is Chrome 63+, flex gap is Chrome 84+ —
+   all unavailable on webOS 4 (Chromium ~53). Use static height and margin spacing. */
 .player-menu-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   flex: 1 1 auto;
   min-height: 0;
-  max-height: min(52vh, 520px);
+  max-height: 520px;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
   padding-right: 4px;
+}
+
+.player-menu-list > * + * {
+  margin-top: 10px;
 }
 
 .player-menu-option {
@@ -2481,7 +2675,10 @@ html { min-width: 1280px; min-height: 720px; }
 
 .player-exit-actions {
   display: flex;
-  gap: var(--space-3);
+}
+
+.player-exit-actions > * + * {
+  margin-left: var(--space-3);
 }
 
 .player-hint {
@@ -2529,7 +2726,10 @@ html { min-width: 1280px; min-height: 720px; }
 
 .player-autoplay-actions {
   display: flex;
-  gap: var(--space-3);
+}
+
+.player-autoplay-actions > * + * {
+  margin-left: var(--space-3);
 }
 
 .native-player {
@@ -2626,8 +2826,11 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .design-review-variants {
-  gap: var(--space-4);
   overflow-x: auto;
+}
+
+.design-review-variants > * + * {
+  margin-left: var(--space-4);
 }
 
 .design-review-variant {
@@ -2657,9 +2860,13 @@ html { min-width: 1280px; min-height: 720px; }
 
 .design-review-loaders {
   display: flex;
-  gap: var(--space-8);
   flex-wrap: wrap;
+  margin: -16px;
   padding: var(--space-3) 0 var(--space-5);
+}
+
+.design-review-loaders > * {
+  margin: 16px;
 }
 
 .design-review-composed {
@@ -2698,9 +2905,12 @@ html { min-width: 1280px; min-height: 720px; }
 /* ── User switcher ── */
 .user-bar {
   display: flex;
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
+  margin: -6px -6px var(--space-5);
   flex-wrap: wrap;
+}
+
+.user-bar > * {
+  margin: 6px;
 }
 
 .user-chip {
@@ -2749,8 +2959,11 @@ html { min-width: 1280px; min-height: 720px; }
 .profile-picker-header {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
   margin-bottom: var(--space-5);
+}
+
+.profile-picker-header > * + * {
+  margin-left: var(--space-4);
 }
 
 /* Spinner matches compact title cap height (var(--font-title-compact) = 36px) */
@@ -2783,21 +2996,20 @@ html { min-width: 1280px; min-height: 720px; }
   visibility: hidden;
 }
 
+/* Flex (not grid+repeat(var())) — webOS 4 Chromium rejects CSS vars in repeat() count.
+   Also: flex gap is Chrome 84+ — use margin on cards instead. */
 .profile-picker-row {
-  display: grid;
-  grid-template-columns: repeat(var(--profile-picker-cols), minmax(var(--profile-card-min), 1fr));
-  gap: var(--profile-picker-gap);
-  justify-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: flex-start;
+  margin: -12px;
   padding: 0;
   transition: opacity 0.25s ease;
 }
 
 .profile-picker--pin-mode .profile-picker-row {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  gap: var(--profile-picker-gap);
+  flex-wrap: nowrap;
   min-height: 160px;
 }
 
@@ -2807,21 +3019,27 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .profile-picker-row .profile-card {
-  width: 100%;
+  flex: 0 0 var(--profile-card-min);
+  width: var(--profile-card-min);
   max-width: var(--profile-card-min);
+  margin: 12px;
+  box-sizing: border-box;
 }
 
 .profile-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
   min-width: var(--profile-card-min);
   padding: var(--space-5);
   background: var(--bg-surface);
   border-radius: var(--radius-lg);
   position: relative;
   transition: transform 0.35s ease, opacity 0.25s ease;
+}
+
+.profile-card-avatar + .profile-card-name {
+  margin-top: var(--space-3);
 }
 
 .profile-card--admin .profile-card-avatar {
@@ -2876,7 +3094,14 @@ html { min-width: 1280px; min-height: 720px; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-4);
+  width: 100%;
+  max-width: 288px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.profile-picker-pin > * + * {
+  margin-top: var(--space-4);
 }
 
 .pin-display {
@@ -2902,28 +3127,55 @@ html { min-width: 1280px; min-height: 720px; }
   75% { transform: translateX(8px); }
 }
 
+/* Pin pad: flex layout — grid and gap require Chrome 57+/84+, unavailable on webOS 4 (Chromium ~53) */
 .pin-pad {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
+  width: 100%;
 }
 
-.pin-pad-grid,
-.pin-pad-row-bottom {
-  display: grid;
-  grid-template-columns: repeat(3, 88px);
-  gap: var(--space-3);
+.pin-pad-grid {
+  /* Column of explicit rows — avoids flex-wrap miscount on webOS 4 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 288px;
+}
+
+.pin-pad-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  width: 288px;
+}
+
+.pin-pad-row > * {
+  flex: 0 0 84px;
+  width: 84px;
+  height: 64px;
+  margin: 6px;
+  box-sizing: border-box;
 }
 
 .pin-pad-spacer {
   display: block;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .pin-pad-btn {
-  min-width: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 64px;
+  min-width: 84px;
   min-height: 64px;
+  padding: 0;
   font-size: var(--font-body);
+  box-sizing: border-box;
 }
 
 .settings-row--info span {
@@ -3031,14 +3283,20 @@ video.native-player.subtitle-no-bg ::cue {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
+}
+
+.xplay-loader-wrap > * + * {
+  margin-top: 18px;
 }
 
 .xplay-loader {
   display: inline-flex;
-  gap: 12px;
   align-items: center;
   justify-content: center;
+}
+
+.xplay-loader > * + * {
+  margin-left: 12px;
 }
 
 .xplay-loader-dot {
@@ -3131,7 +3389,10 @@ video.native-player.subtitle-no-bg ::cue {
 /* ── Splash ── */
 .splash-screen {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: var(--z-splash);
   display: flex;
   flex-direction: column;
@@ -3168,7 +3429,10 @@ video.native-player.subtitle-no-bg ::cue {
 /* ── Loading overlay (playback) ── */
 .loading-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: var(--z-loading);
   display: flex;
   align-items: center;
@@ -3218,7 +3482,10 @@ video.native-player.subtitle-no-bg ::cue {
 .settings-row--stacked {
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+}
+
+.settings-row--stacked > * + * {
+  margin-top: 10px;
 }
 
 .settings-row--stacked select { align-self: flex-end; max-width: 100%; }
