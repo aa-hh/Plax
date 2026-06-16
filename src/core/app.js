@@ -1,3 +1,4 @@
+import './stringPolyfills.js';
 import '../styles/app.css';
 import { init as initRouter, register, navigate, getRoute } from './router.js';
 import { getState, setState } from './store.js';
@@ -9,6 +10,7 @@ import { runVersionGate } from '../platform/versionGate.js';
 import { initSplash, setSplashStatus, hideSplash } from '../ui/splash.js';
 import { initResourceMonitor, isPerfEnabled, mark, startSampling } from '../perf/resourceMonitor.js';
 import { initPerfHud } from '../perf/perfHud.js';
+import { tvLog, initTvDebug } from '../utils/tvDebug.js';
 import * as player from '../playback/playerAdapter.js';
 import { pairingScreen, generateClientId } from '../ui/screens/pairingScreen.js';
 import { homeScreen } from '../ui/screens/homeScreen.js';
@@ -21,7 +23,7 @@ import { designReviewScreen } from '../ui/screens/designReviewScreen.js';
 import { profilePickerScreen } from '../ui/screens/profilePickerScreen.js';
 import { watchlistScreen } from '../ui/screens/watchlistScreen.js';
 
-function startApp() {
+function startApp(platformMajor) {
   if (isPerfEnabled()) mark('boot:startApp');
   setSplashStatus('Starting app…');
   var root = document.getElementById('app-root');
@@ -72,7 +74,13 @@ function startApp() {
     user: persisted.user,
     activeHomeUser: persisted.activeHomeUser,
     networkPrefs: persisted.networkPrefs || getState().networkPrefs,
-    playbackPrefs: persisted.playbackPrefs || getState().playbackPrefs
+    playbackPrefs: persisted.playbackPrefs || getState().playbackPrefs,
+    platformMajor: platformMajor || 0
+  });
+  tvLog('boot', 'network-prefs', {
+    allowInsecure: persisted.networkPrefs ? persisted.networkPrefs.allowInsecure : false,
+    preferDirect: persisted.networkPrefs ? persisted.networkPrefs.preferDirect : false,
+    major: platformMajor
   });
   persistAuth({ clientId: clientId });
   if (persisted.authToken && !getOwnerAuthToken() && !restrictedChildSession) {
@@ -110,16 +118,19 @@ function startApp() {
 
 function boot() {
   initResourceMonitor();
+  initTvDebug();
   if (isPerfEnabled()) mark('boot:init');
   initSplash();
   setSplashStatus('Checking device…');
   runVersionGate().then(function (allowed) {
     if (!allowed) {
       if (isPerfEnabled()) mark('boot:blocked-version-gate');
+      tvLog('boot', 'version-gate', { major: 0, allowed: false });
       hideSplash();
       return;
     }
     if (isPerfEnabled()) mark('boot:version-gate-ok');
+    tvLog('boot', 'version-gate', { major: 0, allowed: true });
     startApp();
   });
 }
