@@ -23,14 +23,30 @@ function navTabIndex(el) {
 function isNavFocusable(el) {
   if (!el || el.disabled) return false;
   if (el.hidden) return false;
-  if (el.offsetParent === null) return false;
   if (navTabIndex(el) < 0) return false;
+  // More reliable than offsetParent === null on older Chromium
+  if (el.offsetWidth <= 0 && el.offsetHeight <= 0) return false;
+  try {
+    var style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+  } catch (e) { /* ignore — treat as focusable */ }
   return true;
 }
 
+var focusableCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+
+function invalidateFocusableCache() {
+  if (focusableCache) focusableCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+}
+
 function getFocusables(container) {
-  return Array.prototype.slice.call(container.querySelectorAll(focusableSelector))
+  if (focusableCache && focusableCache.has(container)) {
+    return focusableCache.get(container);
+  }
+  var list = Array.prototype.slice.call(container.querySelectorAll(focusableSelector))
     .filter(isNavFocusable);
+  if (focusableCache) focusableCache.set(container, list);
+  return list;
 }
 
 function focusFirst(container) {
@@ -738,6 +754,7 @@ function attachFocusNav(container) {
 export {
   focusableSelector,
   getFocusables,
+  invalidateFocusableCache,
   focusFirst,
   handleKeyNav,
   attachFocusNav,
