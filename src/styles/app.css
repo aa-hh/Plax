@@ -357,21 +357,56 @@ html.caps-motion #btn-test-connection:focus {
   border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Expand to full sidebar when any descendant has focus. */
-.browsing-hub-nav-host:focus-within {
+/* Smooth the collapse/expand + entry peek on capable devices; webOS 4 snaps. */
+html.caps-motion .browsing-hub-nav-host {
+  transition: width var(--focus-motion-dur) ease;
+}
+
+/* Expand to full sidebar when any descendant has focus, or during the
+   one-shot entry "peek" hint (E) so a cold landing reveals where nav lives. */
+.browsing-hub-nav-host:focus-within,
+.browsing-hub-nav-host--peek {
   width: 220px;
 }
 
 /* Hide labels and section headings when collapsed. */
-.browsing-hub-nav-host:not(:focus-within) .browsing-hub-item__label,
-.browsing-hub-nav-host:not(:focus-within) .browsing-hub-section__title {
+.browsing-hub-nav-host:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item__label,
+.browsing-hub-nav-host:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-section__title {
   display: none;
 }
 
-.browsing-hub-nav-host:not(:focus-within) .browsing-hub-item {
+.browsing-hub-nav-host:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item {
   padding-left: 14px;
   padding-right: 14px;
   justify-content: center;
+}
+
+/* Collapsed-but-labelled active section (E): when the rail is collapsed and not
+   peeking, the active item (aria-current="page") stacks its icon over a compact
+   accent label so the current section stays legible from a cold landing. The
+   72px width holds it; other items remain icon-only. */
+.browsing-hub-nav-host--label-active:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item[aria-current="page"] {
+  flex-direction: column;
+  justify-content: center;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.browsing-hub-nav-host--label-active:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item[aria-current="page"] .browsing-hub-item__label {
+  display: block;
+  flex: none;
+  width: 100%;
+  margin-left: 0;
+  margin-top: var(--space-1);
+  text-align: center;
+  font-size: var(--font-card-meta);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Stacked active item: drop the horizontal icon->label gap. */
+.browsing-hub-nav-host--label-active:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item[aria-current="page"] .browsing-hub-item__icon + .browsing-hub-item__label {
+  margin-left: 0;
 }
 
 .browsing-hub-nav-host > * + * {
