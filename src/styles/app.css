@@ -175,7 +175,6 @@ html { min-width: 1280px; min-height: 720px; }
 .profile-card,
 .pin-pad-btn,
 .detail-breadcrumb,
-.detail-breadcrumb-trail__btn,
 .detail-episode-picker,
 .detail-link,
 .detail-file-row,
@@ -208,7 +207,6 @@ html { min-width: 1280px; min-height: 720px; }
 .profile-card:focus,
 .pin-pad-btn:focus,
 .detail-breadcrumb:focus,
-.detail-breadcrumb-trail__btn:focus,
 .detail-episode-picker:focus,
 .detail-link:focus,
 .detail-file-row:focus,
@@ -241,7 +239,6 @@ html.caps-motion .library-filter-chip,
 html.caps-motion .user-chip,
 html.caps-motion .profile-card,
 html.caps-motion .pin-pad-btn,
-html.caps-motion .detail-breadcrumb-trail__btn,
 html.caps-motion .detail-episode-picker,
 html.caps-motion .detail-link,
 html.caps-motion .detail-network-retest,
@@ -266,7 +263,6 @@ html.caps-motion .library-filter-chip:focus,
 html.caps-motion .user-chip:focus,
 html.caps-motion .profile-card:focus,
 html.caps-motion .pin-pad-btn:focus,
-html.caps-motion .detail-breadcrumb-trail__btn:focus,
 html.caps-motion .detail-episode-picker:focus,
 html.caps-motion .detail-link:focus,
 html.caps-motion .detail-network-retest:focus,
@@ -1744,9 +1740,32 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   user-select: none;
 }
 
+/* Breadcrumbs (G): light text wayfinding, NOT filled buttons. Muted text with
+   the `›` separators above; on focus the crumb goes accent + underlined. */
 .detail-breadcrumb-trail__btn {
-  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: 0 var(--space-1);
+  background: transparent;
+  border: var(--focus-w) solid transparent;
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+  color: var(--text-muted);
   font-size: var(--font-meta);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.detail-breadcrumb-trail__btn:focus {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  /* No ring — the underline IS the focus cue (overrides the episode-picker
+     crumb's inherited W1 ring). */
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .detail-episode-actions .detail-play-btn {
