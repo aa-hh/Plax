@@ -56,6 +56,10 @@ function refreshHubNavIcons(host, activeHubId) {
     var id = btn.getAttribute('data-hub-id');
     var isActive = id === activeHubId;
     btn.classList.toggle('active', isActive);
+    // aria-current marks the active section for assistive tech and gives the
+    // collapsed-rail "keep the active label legible" CSS a stable hook.
+    if (isActive) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
     var kind = btn.dataset.iconKind || 'home';
     var iconWrap = btn.querySelector('.browsing-hub-item__icon');
     if (iconWrap) {
@@ -108,7 +112,10 @@ function appendHubButtons(navEl, items, activeId, onSelect) {
     btn.dataset.iconKind = item.iconKind;
     btn.tabIndex = 0;
     btn.setAttribute('aria-label', item.label);
-    if (item.id === activeId) btn.classList.add('active');
+    if (item.id === activeId) {
+      btn.classList.add('active');
+      btn.setAttribute('aria-current', 'page');
+    }
 
     var filledBookmark = item.iconKind === 'watchlist' && item.id === activeId;
     btn.innerHTML =
@@ -149,6 +156,29 @@ function focusSidebarHub(host, activeHubId) {
   return true;
 }
 
+// Entry "peek" hint: briefly expand the collapsed rail on a cold landing so the
+// user can see where nav lives, then collapse it. Class hook only — DesignSystem
+// styles --peek to the expanded width with a transition; we just toggle it and
+// remove it after a one-shot delay (cleared if the host goes away first).
+var SIDEBAR_PEEK_MS = 1400;
+
+function playSidebarPeekHint(host) {
+  if (!host) return function () {};
+  // Don't fight an already-focused rail (it's expanded anyway).
+  var hasFocus = typeof host.contains === 'function' && document.activeElement &&
+    host.contains(document.activeElement);
+  if (hasFocus) return function () {};
+  host.classList.add('browsing-hub-nav-host--peek');
+  var timer = setTimeout(function () {
+    timer = null;
+    host.classList.remove('browsing-hub-nav-host--peek');
+  }, SIDEBAR_PEEK_MS);
+  return function cancelPeek() {
+    if (timer) { clearTimeout(timer); timer = null; }
+    host.classList.remove('browsing-hub-nav-host--peek');
+  };
+}
+
 /**
  * Mount Media, Search, and System sidebar sections.
  */
@@ -170,7 +200,9 @@ function mountBrowsingHubNav(host, options) {
   }
 
   host.innerHTML = '';
-  host.className = 'browsing-hub-nav-host';
+  // --label-active: opt-in hook so DesignSystem can keep the ACTIVE section's
+  // label legible even while the rail is collapsed (the rest stay icon-only).
+  host.className = 'browsing-hub-nav-host browsing-hub-nav-host--label-active';
   host.setAttribute('role', 'navigation');
   host.setAttribute('aria-label', 'Browse');
 
@@ -187,6 +219,9 @@ function mountBrowsingHubNav(host, options) {
   renderHubSection(host, 'browsing-hub-section--system', 'System', settingsItems, activeId, onItemSelect);
   refreshHubNavIcons(host, activeId);
 
+  // One-shot entry hint: briefly reveal the rail on a cold landing, then collapse.
+  var cancelPeek = playSidebarPeekHint(host);
+
   return {
     mediaItems: mediaItems,
     searchItems: searchItems,
@@ -198,6 +233,9 @@ function mountBrowsingHubNav(host, options) {
     },
     focusSidebar: function () {
       return focusSidebarHub(host, activeId);
+    },
+    destroy: function () {
+      if (cancelPeek) cancelPeek();
     }
   };
 }
@@ -213,5 +251,6 @@ export {
   refreshHubNavIcons,
   handleHubNavSelect,
   focusSidebarHub,
+  playSidebarPeekHint,
   mountBrowsingHubNav
 };
