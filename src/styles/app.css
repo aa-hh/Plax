@@ -156,22 +156,127 @@ html { min-width: 1280px; min-height: 720px; }
   pointer-events: none;
 }
 
-/* ── Focus (static rings only — no motion) ── */
-.btn, .card:not(.media-card), .nav-item, .library-item, .row-item:not(.media-card), .season-chip, .episode-chip, .user-chip, .profile-card, .pin-pad-btn {
+/* ── Focus — ONE language app-wide (W1) ──
+   Every focusable carries a transparent --focus-w border so focus never shifts
+   layout; on focus it gets a single box-shadow ring (--focus-shadow). The dark
+   halo in that token keeps the ring legible over bright poster art, which is the
+   only focus cue on webOS 4 (no caps-motion). Motion (scale) is layered later,
+   gated behind html.caps-motion for newer webOS. */
+.btn,
+.card:not(.media-card),
+.nav-item,
+.library-item,
+.row-item:not(.media-card),
+.season-chip,
+.episode-chip,
+.detail-setting-chip,
+.library-filter-chip,
+.user-chip,
+.profile-card,
+.pin-pad-btn,
+.detail-breadcrumb,
+.detail-breadcrumb-trail__btn,
+.detail-episode-picker,
+.detail-link,
+.detail-file-row,
+.detail-network-retest,
+.detail-network-info-btn,
+.detail-watchlist-btn,
+.detail-secondary-actions .btn,
+.watchlist-row-link,
+.detail-season-link,
+.detail-modal-cancel,
+.player-control-pill,
+.player-stream-pill,
+.player-media-info-btn,
+#btn-test-connection {
   outline: none;
   cursor: pointer;
   border: var(--focus-w) solid transparent;
 }
 
-.btn:focus, .card:not(.media-card):focus, .nav-item:focus, .library-item:focus, .row-item:not(.media-card):focus,
-.season-chip:focus, .episode-chip:focus, .detail-breadcrumb:focus,
-.detail-breadcrumb-trail__btn:focus, .detail-episode-picker:focus,
-.detail-link:focus, .detail-file-row:focus, .detail-network-retest:focus,
-.detail-network-info-btn:focus, #btn-test-connection:focus,
-.detail-modal-option:focus, .detail-modal-cancel:focus,
-.user-chip:focus, .profile-card:focus, .pin-pad-btn:focus {
+.btn:focus,
+.card:not(.media-card):focus,
+.nav-item:focus,
+.library-item:focus,
+.row-item:not(.media-card):focus,
+.season-chip:focus,
+.episode-chip:focus,
+.detail-setting-chip:focus,
+.library-filter-chip:focus,
+.user-chip:focus,
+.profile-card:focus,
+.pin-pad-btn:focus,
+.detail-breadcrumb:focus,
+.detail-breadcrumb-trail__btn:focus,
+.detail-episode-picker:focus,
+.detail-link:focus,
+.detail-file-row:focus,
+.detail-network-retest:focus,
+.detail-network-info-btn:focus,
+.detail-watchlist-btn:focus,
+.detail-secondary-actions .btn:focus,
+.watchlist-row-link:focus,
+.detail-season-link:focus,
+.detail-modal-cancel:focus,
+.player-control-pill:focus,
+.player-stream-pill:focus,
+.player-media-info-btn:focus,
+#btn-test-connection:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  box-shadow: var(--focus-shadow);
+}
+
+/* Capability-gated motion (newer webOS / sim / dev browser only — A).
+   webOS 4 never gets this class, so it keeps the static ring above. */
+html.caps-motion .btn,
+html.caps-motion .card:not(.media-card),
+html.caps-motion .nav-item,
+html.caps-motion .library-item,
+html.caps-motion .row-item:not(.media-card),
+html.caps-motion .season-chip,
+html.caps-motion .episode-chip,
+html.caps-motion .detail-setting-chip,
+html.caps-motion .library-filter-chip,
+html.caps-motion .user-chip,
+html.caps-motion .profile-card,
+html.caps-motion .pin-pad-btn,
+html.caps-motion .detail-breadcrumb-trail__btn,
+html.caps-motion .detail-episode-picker,
+html.caps-motion .detail-link,
+html.caps-motion .detail-network-retest,
+html.caps-motion .detail-network-info-btn,
+html.caps-motion .detail-watchlist-btn,
+html.caps-motion .detail-secondary-actions .btn,
+html.caps-motion .player-control-pill,
+html.caps-motion .player-stream-pill,
+html.caps-motion #btn-test-connection {
+  transition: transform var(--focus-motion-dur) ease, box-shadow var(--focus-motion-dur) ease;
+}
+
+html.caps-motion .btn:focus,
+html.caps-motion .card:not(.media-card):focus,
+html.caps-motion .nav-item:focus,
+html.caps-motion .library-item:focus,
+html.caps-motion .row-item:not(.media-card):focus,
+html.caps-motion .season-chip:focus,
+html.caps-motion .episode-chip:focus,
+html.caps-motion .detail-setting-chip:focus,
+html.caps-motion .library-filter-chip:focus,
+html.caps-motion .user-chip:focus,
+html.caps-motion .profile-card:focus,
+html.caps-motion .pin-pad-btn:focus,
+html.caps-motion .detail-breadcrumb-trail__btn:focus,
+html.caps-motion .detail-episode-picker:focus,
+html.caps-motion .detail-link:focus,
+html.caps-motion .detail-network-retest:focus,
+html.caps-motion .detail-network-info-btn:focus,
+html.caps-motion .detail-watchlist-btn:focus,
+html.caps-motion .detail-secondary-actions .btn:focus,
+html.caps-motion .player-control-pill:focus,
+html.caps-motion .player-stream-pill:focus,
+html.caps-motion #btn-test-connection:focus {
+  transform: scale(var(--focus-scale));
 }
 
 /* ── Screens ── */
@@ -371,8 +476,7 @@ html { min-width: 1280px; min-height: 720px; }
 .browsing-hub-item:focus {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
-  outline: 3px solid var(--border-focus);
-  outline-offset: 0;
+  box-shadow: var(--focus-shadow);
 }
 
 .browsing-hub-item:focus .hub-icon {
@@ -396,7 +500,7 @@ html { min-width: 1280px; min-height: 720px; }
 
 .watchlist-row-link:focus {
   color: var(--accent);
-  box-shadow: 0 0 0 3px var(--border-focus);
+  box-shadow: var(--focus-shadow);
 }
 
 .watchlist-manage-actions {
@@ -455,10 +559,7 @@ html { min-width: 1280px; min-height: 720px; }
   font-weight: 600;
 }
 
-.btn-primary:focus {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
+/* .btn-primary uses the shared W1 focus ring (no one-off white border). */
 
 .btn:disabled {
   opacity: 0.4;
@@ -783,7 +884,9 @@ html { min-width: 1280px; min-height: 720px; }
   position: relative;
   width: 100%;
   border-radius: var(--radius-lg);
-  outline: var(--focus-w) solid transparent;
+  /* Transparent border holds the focus-ring footprint with no layout shift. */
+  border: var(--focus-w) solid transparent;
+  transform-origin: center;
 }
 
 /* Poster artwork: skeleton/placeholder visible until load, then 200ms fade-in */
@@ -855,9 +958,20 @@ html { min-width: 1280px; min-height: 720px; }
   outline: none;
 }
 
+/* Card focus = the one ring, applied to the poster wrap (W1). */
 .media-card:focus .card-poster-wrap {
-  outline-color: var(--border-focus);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-shadow);
+}
+
+/* Motion: scale the poster wrap (transform-origin: center). The --focus-ring-pad
+   reserved around rails/grids keeps the lifted, ringed poster from clipping. */
+html.caps-motion .media-card .card-poster-wrap {
+  transition: transform var(--focus-motion-dur) ease, box-shadow var(--focus-motion-dur) ease;
+}
+
+html.caps-motion .media-card:focus .card-poster-wrap {
+  transform: scale(var(--focus-scale));
 }
 
 .media-card .badge {
@@ -1241,7 +1355,7 @@ html { min-width: 1280px; min-height: 720px; }
 
 .detail-setting-chip:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  box-shadow: var(--focus-shadow);
   outline: none;
 }
 
@@ -1701,7 +1815,7 @@ html { min-width: 1280px; min-height: 720px; }
 .detail-watchlist-btn:focus {
   border-color: var(--border-focus);
   color: var(--text-primary);
-  box-shadow: 0 0 0 3px var(--border-focus);
+  box-shadow: var(--focus-shadow);
 }
 
 .detail-watchlist-btn--active:focus,
@@ -1872,7 +1986,7 @@ html { min-width: 1280px; min-height: 720px; }
 
 .detail-season-link:focus {
   outline: none;
-  box-shadow: 0 0 0 3px var(--border-focus);
+  box-shadow: var(--focus-shadow);
 }
 
 .detail-episode-code,
@@ -2279,8 +2393,8 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-skip-intro-prompt:focus {
-  outline: 3px solid var(--border-focus);
-  outline-offset: 4px;
+  outline: none;
+  box-shadow: var(--focus-shadow);
 }
 
 .player-skip-intro-prompt[hidden] {
@@ -2567,7 +2681,7 @@ html { min-width: 1280px; min-height: 720px; }
 .player-seek-bar:focus .player-seek-thumb,
 .player-seek-bar--scrubbing .player-seek-thumb {
   transform: scale(1);
-  box-shadow: 0 0 0 3px var(--border-focus);
+  box-shadow: var(--focus-shadow);
 }
 
 .player-subtitle-delay {
@@ -2685,8 +2799,9 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-control-pill:focus {
-  outline: 3px solid var(--border-focus);
-  outline-offset: 3px;
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-shadow);
 }
 
 .player-control-pill--play {
@@ -2743,8 +2858,9 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .player-stream-pill:focus {
-  outline: 3px solid var(--border-focus);
-  outline-offset: 3px;
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-shadow);
 }
 
 .player-stream-pill--icon {
@@ -3138,7 +3254,7 @@ html { min-width: 1280px; min-height: 720px; }
 
 .settings-row select:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  box-shadow: var(--focus-shadow);
   outline: none;
 }
 
@@ -3195,8 +3311,8 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .design-review-card-focused .card-poster-wrap {
-  outline-color: var(--border-focus);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-shadow);
 }
 
 .design-review-card-focused .card-title {
@@ -3624,7 +3740,7 @@ video.native-player.subtitle-no-bg ::cue {
 .search-input:focus {
   border-color: var(--border-focus);
   background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  box-shadow: var(--focus-shadow);
 }
 
 .search-results {
@@ -3874,7 +3990,7 @@ video.native-player.subtitle-no-bg ::cue {
 .library-filter-chip:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: var(--focus-shadow);
   color: var(--text-primary);
 }
 
