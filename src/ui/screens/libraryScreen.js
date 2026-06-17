@@ -77,13 +77,13 @@ function libraryScreen(root, params, navigate) {
       loadGrid(lib);
     }
   });
-  var scanBtn = document.getElementById('btn-scan-library');
-  var gridHost = document.getElementById('library-grid-host');
-  var grid = document.getElementById('media-grid');
-  var scanStatus = document.getElementById('lib-scan-status');
-  var filterChipAll = document.getElementById('filter-chip-all');
-  var filterChipUnwatched = document.getElementById('filter-chip-unwatched');
-  var filterChipSort = document.getElementById('filter-chip-sort');
+  var scanBtn = screen.querySelector('#btn-scan-library');
+  var gridHost = screen.querySelector('#library-grid-host');
+  var grid = screen.querySelector('#media-grid');
+  var scanStatus = screen.querySelector('#lib-scan-status');
+  var filterChipAll = screen.querySelector('#filter-chip-all');
+  var filterChipUnwatched = screen.querySelector('#filter-chip-unwatched');
+  var filterChipSort = screen.querySelector('#filter-chip-sort');
 
   var posterFocusToken = 0;
   var posterFocusTimer = null;
@@ -368,7 +368,7 @@ function libraryScreen(root, params, navigate) {
 
   function loadGrid(lib) {
     var token = ++gridLoadToken;
-    document.getElementById('lib-title').textContent = lib.title;
+    screen.querySelector('#lib-title').textContent = lib.title;
     grid.innerHTML = '<p class="status-msg">Loading…</p>';
     lastRenderStart = -1;
     lastRenderEnd = -1;

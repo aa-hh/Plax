@@ -4,10 +4,7 @@ import { extractVersions, pickBestVersion } from './versionSelector.js';
 import { probePlayback } from './capabilityProbe.js';
 import { isDirectPlayOnlyQuality } from './qualityProfiles.js';
 import { parseAudioStreams } from './tracks/audioTracks.js';
-import {
-  parseSubtitleStreams,
-  pickDefaultSubtitleTrack
-} from './tracks/subtitleTracks.js';
+import { parseSubtitleStreams } from './tracks/subtitleTracks.js';
 import { showLoadingOverlay, hideLoadingOverlay } from '../ui/loadingOverlay.js';
 import {
   shouldOfferResumeChoice,
@@ -27,23 +24,16 @@ function getActiveMediaForVersion(item, version) {
 function resolveDefaultStreamIds(metadata, version) {
   var media = getActiveMediaForVersion(metadata, version);
   var audio = parseAudioStreams(media);
-  var subs = parseSubtitleStreams(media, { includeGraphical: true });
   var audioStreamId = null;
-  var subtitleStreamId = null;
 
   if (audio.length) {
     var defaultAudio = audio.filter(function (a) { return a.selected; })[0] || audio[0];
     audioStreamId = defaultAudio.id;
   }
-  // Auto-select TEXT subs only (pickDefaultSubtitleTrack skips graphical, which
-  // would force a burn-in transcode). Text subs render client-side and keep
-  // Direct Play; on webOS 4 the decision sends subtitles=none so PMS leaves the
-  // video untouched while we draw the SRT sidecar.
-  if (subs.length) {
-    var pickedSub = pickDefaultSubtitleTrack(subs);
-    subtitleStreamId = pickedSub ? pickedSub.id : null;
-  }
-  return { audioStreamId: audioStreamId, subtitleStreamId: subtitleStreamId };
+  // No automatic default subtitle, ever. A subtitle applies only on explicit
+  // user selection (details screen or in-player menu), so hub/continue-watching
+  // direct play starts with subtitles Off (null) and PMS is told subtitles=none.
+  return { audioStreamId: audioStreamId, subtitleStreamId: null };
 }
 
 function resolveHubResumeOffset(item) {

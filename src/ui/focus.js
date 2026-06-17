@@ -850,14 +850,6 @@ function handleKeyNav(container, e) {
     return false;
   }
 
-  if (key === ARROW_DOWN && container.querySelector('.browsing-hub-nav-host')) {
-    var topBar = container.querySelector('[data-focus-zone="detail-top-bar"]');
-    if (topBar && zone === topBar) {
-      e.preventDefault();
-      if (focusSidebar(container)) return true;
-    }
-  }
-
   if (key === ARROW_DOWN || key === ARROW_UP) {
     e.preventDefault();
     if (focusInAdjacentZone(zones, zIdx, key, active, idx)) return true;

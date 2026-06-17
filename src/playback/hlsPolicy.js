@@ -14,6 +14,7 @@ import { isTvRuntime } from '../platform/versionGate.js';
 import { tvLog, tvError } from '../utils/tvDebug.js';
 import { getState } from '../core/store.js';
 import { buildWebOsClientProfileExtra } from './deviceProfile.js';
+import { resolveWebOsMajor } from './capabilityMatrix.js';
 
 /** Legacy remux/transcode profile for webOS 5+ LG native HLS (MPEG-TS segments). */
 var WEBOS_HLS_MPEGTS_PROFILE_EXTRA =
@@ -45,16 +46,20 @@ function getWebOsPlatformMajor() {
   return isNaN(major) ? 0 : major;
 }
 
-function isWebOs4Model(model) {
-  return /OLED\d{2}[BCEW]8/i.test(String(model || ''));
-}
-
-/** True on real LG TVs running webOS 4.x (e.g. 2018 B8). */
+/**
+ * True on real LG TVs running webOS 4.x (e.g. 2018 B8). Detection is delegated
+ * to the capability matrix's `resolveWebOsMajor` (the single source of truth for
+ * the `OLED\d{2}[BCEW]8` model regex + version parsing). The Plex identity uses
+ * `platformVersion` for the OS version, so map it onto the deviceInfo shape the
+ * matrix expects (`version` + `model`).
+ */
 function isWebOs4Tv() {
   if (!shouldUseWebOsHlsProfileExtra()) return false;
-  if (getWebOsPlatformMajor() === 4) return true;
-  var identity = getPlexClientIdentity();
-  return isWebOs4Model(identity && identity.model);
+  var identity = getPlexClientIdentity() || {};
+  return resolveWebOsMajor({
+    version: identity.platformVersion,
+    model: identity.model
+  }) === 4;
 }
 
 function isFullTranscodeStrategy(strategy) {
@@ -68,8 +73,15 @@ function resolveWebOsHlsProfileExtra(options) {
   var webOs4 = isWebOs4Tv();
   var extra;
   if (webOs4) {
+    // Verified by probing PMS directly: requesting container=mpegts at /start
+    // (matching the mpegts target in /decision) yields a clean .ts playlist with
+    // NO #EXT-X-MAP init segment, and the segments fetch 200 (video/MP2T).
+    // hls.js demuxes TS via MSE. fMP4 here makes PMS emit an #EXT-X-MAP
+    // /base/header init segment that 404s on startup and hangs hls.js, so a full
+    // transcode MUST use mpegts. Stream-copy/remux is delivered over progressive
+    // HTTP (not HLS) on webOS 4, so its profile here is moot — keep fMP4.
     extra = isFullTranscodeStrategy(strategy)
-      ? WEBOS_HLS_TRANSCODE_FMP4_PROFILE_EXTRA
+      ? WEBOS_HLS_MPEGTS_PROFILE_EXTRA
       : WEBOS_HLS_FMP4_PROFILE_EXTRA;
   } else {
     extra = WEBOS_HLS_MPEGTS_PROFILE_EXTRA;

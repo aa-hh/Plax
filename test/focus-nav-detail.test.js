@@ -108,7 +108,7 @@ function buildFilmDetailFixture(opts) {
   return screen;
 }
 
-test('Down from breadcrumb reaches sidebar first when hub present', function () {
+test('Down from breadcrumb reaches content actions, not the sidebar, when hub present', function () {
   installMinimalDom();
   var screen = buildDetailFixture();
   document.registerTree(screen);
@@ -123,7 +123,8 @@ test('Down from breadcrumb reaches sidebar first when hub present', function () 
   var ev = keyEvent(ARROW_DOWN);
   var handled = handleKeyNav(screen, ev);
   assert.equal(handled, true);
-  assert.equal(document.activeElement.id, 'hub-home');
+  // DOWN moves into the content below the breadcrumb (the sidebar is reached via LEFT).
+  assert.equal(document.activeElement.id, 'btn-start');
 });
 
 test('Down from content can reach settings hub item', function () {

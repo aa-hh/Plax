@@ -6,6 +6,7 @@ import {
   resetPlexDeviceInfoForTest,
   setPlexDeviceInfo
 } from '../src/plex/clientIdentity.js';
+import { setState } from '../src/core/store.js';
 
 installMinimalDom();
 
@@ -183,20 +184,26 @@ test('play logs stream type with mode and redacted url', function () {
     console.info = origInfo;
   }
 
-  assert.equal(logs.length, 3);
-  var streamLine = logs[0].join(' ');
+  var streamLog = logs.filter(function (entry) {
+    return typeof entry[0] === 'string' && entry[0].indexOf('[playback] stream type: pure-transcode') === 0;
+  })[0];
+  assert.ok(streamLog, 'stream type log should be emitted');
+  var streamLine = streamLog.join(' ');
   assert.match(streamLine, /^\[playback\] stream type: pure-transcode \(mode=transcode-hls, url=/);
   assert.ok(streamLine.indexOf('abc123') < 0);
   assert.ok(streamLine.indexOf('X-Plex-Token=%5Bredacted%5D') >= 0);
 
-  assert.equal(logs[1][0], '[playback] params:');
-  var params = logs[1][1];
+  var paramsEntry = logs.filter(function (entry) { return entry[0] === '[playback] params:'; })[0];
+  assert.ok(paramsEntry, 'transcode params log should be emitted');
+  var params = paramsEntry[1];
   assert.equal(params.path, '/library/parts/1/file.mkv');
   assert.equal(params.protocol, 'hls');
   assert.equal(params.offset, '60');
   assert.ok(!('X-Plex-Token' in params), 'params log must not leak token');
 
-  assert.equal(logs[2].join(' '), '[playback] connection: HTTP');
+  assert.ok(logs.some(function (entry) {
+    return entry.join(' ') === '[playback] connection: HTTP';
+  }));
 });
 
 test('play logs connection scheme from HTTPS playback URL', function () {
@@ -274,7 +281,7 @@ test('play sets Plex auth headers on hls.js requests', function () {
   assert.equal(reqHeaders['X-Plex-Session-Identifier'], 'xplay-session');
 });
 
-test('play keeps real webOS TV HLS on native video', function () {
+test('play uses hls.js for H.264 transcode fallback on webOS 4 TV', function () {
   var FakeHls = createFakeHls();
   var video = playerModule.getVideoElement();
   playerModule.setHlsPlayerForTest(FakeHls);
@@ -289,8 +296,33 @@ test('play keeps real webOS TV HLS on native video', function () {
 
   playerModule.play('http://127.0.0.1/video.m3u8', session, { mode: 'transcode-hls' });
 
+  assert.equal(FakeHls.instances.length, 1);
+  assert.equal(video.querySelector('source'), null);
+});
+
+test('play uses native source mediaOption for direct play on webOS 4', function () {
+  var FakeHls = createFakeHls();
+  var video = playerModule.getVideoElement();
+  playerModule.setHlsPlayerForTest(FakeHls);
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'OLED55B8LLA', version: '4.4.0', uhd: true });
+    }
+  };
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  setState({ deviceInfo: { uhd: true, hdr10: true, dolbyVision: true } });
+
+  playerModule.play('http://127.0.0.1/video.mkv', session, { mode: 'direct' });
+
   assert.equal(FakeHls.instances.length, 0);
-  assert.equal(video.src, 'http://127.0.0.1/video.m3u8');
+  var source = video.querySelector('source');
+  assert.ok(source);
+  assert.equal(source.getAttribute('src'), 'http://127.0.0.1/video.mkv');
+  var typeAttr = source.getAttribute('type') || '';
+  assert.ok(typeAttr.indexOf('mediaOption=') >= 0);
+  assert.ok(typeAttr.indexOf('3840') >= 0);
 });
 
 test('timeupdate at zero does not sync playing before progress', async function () {
@@ -331,6 +363,7 @@ test('stop teardown order clears src before load and nulls session', async funct
   };
 
   playerModule.play('http://127.0.0.1/video.mkv', session);
+  order.length = 0;
   video.currentTime = 30;
   playerModule.stop();
 
@@ -380,6 +413,7 @@ test('rebufferFired resets when buffering clears; watchdog fires onRebufferTimeo
 
   playerModule.play('http://127.0.0.1/video.mkv', session);
   var video = playerModule.getVideoElement();
+  video.dispatchEvent('waiting');
 
   clock.tick(playerModule.REBUFFER_TIMEOUT_MS);
   assert.equal(timeouts, 1);
@@ -763,4 +797,24 @@ test('loadClientSubtitleFromUrls does not follow video variant manifest entries'
     if (savedXhr === undefined) delete globalThis.XMLHttpRequest;
     else globalThis.XMLHttpRequest = savedXhr;
   }
+});
+
+test('serializeTimeRanges helper limits output to three ranges', function () {
+  var ranges = {
+    length: 5,
+    start: function (index) { return index * 10; },
+    end: function (index) { return (index * 10) + 5; }
+  };
+  var out = playerModule.__serializeTimeRangesForTest(ranges, 3);
+  assert.deepEqual(out, [
+    { start: 0, end: 5 },
+    { start: 10, end: 15 },
+    { start: 20, end: 25 }
+  ]);
+});
+
+test('truncatePlaybackString helper bounds long strings', function () {
+  var truncated = playerModule.__truncatePlaybackStringForTest('abcdefghijklmnopqrstuvwxyz', 10);
+  assert.equal(truncated, 'abcdefg...');
+  assert.equal(playerModule.__truncatePlaybackStringForTest('short', 10), 'short');
 });

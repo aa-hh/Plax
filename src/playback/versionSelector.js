@@ -5,12 +5,13 @@
 function extractVersions(metadata) {
   var mediaList = metadata.media || metadata._children || [];
   var versions = [];
-  mediaList.forEach(function (m) {
+  mediaList.forEach(function (m, idx) {
     if (m._tag === 'Media' || m.videoResolution || m.id) {
       var parts = m._children || m._nested || [];
       var part = parts.find(function (p) { return p._tag === 'Part' || p.file; }) || parts[0];
       versions.push({
         id: m.id,
+        mediaIndex: idx,
         videoResolution: m.videoResolution,
         videoCodec: m.videoCodec,
         videoProfile: m.videoProfile,

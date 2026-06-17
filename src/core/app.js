@@ -19,7 +19,7 @@ import { tvLog, initTvDebug } from '../utils/tvDebug.js';
 import { logStartupBuild, parseChromiumMajor } from './startupBuildLog.js';
 import { getWebOsPlatformMajor, isWebOs4Tv } from '../playback/hlsPolicy.js';
 import { getPlexClientIdentity } from '../plex/clientIdentity.js';
-import * as player from '../playback/playerAdapter.js';
+import * as player from '../playback/playerFactory.js';
 import { pairingScreen, generateClientId } from '../ui/screens/pairingScreen.js';
 import { homeScreen } from '../ui/screens/homeScreen.js';
 import { libraryScreen } from '../ui/screens/libraryScreen.js';

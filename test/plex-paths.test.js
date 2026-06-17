@@ -38,6 +38,7 @@ test('buildPlaybackUrl path param excludes Part key query string', function () {
   var session = {
     server: mockServer,
     sessionId: 'xplay-pap12mhbajmpbi0zij',
+    transcodeSessionId: 'plex-transcode-sess-paths',
     offset: 454000,
     mediaIndex: 0,
     partIndex: 0,

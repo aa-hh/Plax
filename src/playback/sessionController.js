@@ -129,7 +129,7 @@ function buildTranscodeParams(server, partKey, session, protocol, strategyOverri
   assignStartUrlSessionParams(params, session);
   var offsetSec = offsetSecondsForPlex(session);
   if (offsetSec > 0) params.offset = String(offsetSec);
-  applyProfileToParams(params, session.quality || prefs.quality, prefs);
+  applyProfileToParams(params, session.quality || prefs.quality, prefs, session.version && session.version.bitrate);
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
   var usesTranscoder = directStream || fullTranscode;
   applyPlexTranscodeLevelParams(params, session, usesTranscoder);
@@ -148,7 +148,18 @@ function buildTranscodeParams(server, partKey, session, protocol, strategyOverri
   ));
 
   if (protocol === 'http') {
-    buildHttpTranscodeFallbackParams(params);
+    if (isWebOs4Tv()) {
+      // webOS 4 progressive HTTP needs the SAME WAN-400-safe param stripping as
+      // the HLS path (this PMS build 400s start URLs that carry hasMDE,
+      // mediaBufferSize, location=wan, the X-Plex-* identity fields, etc.).
+      // applyWebOsHlsTranscodeParams does that stripping; then switch to
+      // progressive HTTP (drop the HLS-only incomplete-segments flag).
+      applyWebOsHlsTranscodeParams(params, { strategy: strategy });
+      params.protocol = 'http';
+      delete params['X-Plex-Incomplete-Segments'];
+    } else {
+      params = buildHttpTranscodeFallbackParams(params);
+    }
   } else {
     applyWebOsHlsTranscodeParams(params, { strategy: strategy });
   }
@@ -227,9 +238,21 @@ function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrid
     location: plexLocationForServer(server)
   }, flagOverrides || {}));
   assignDecisionSessionParams(params, session);
+  // webOS 4: pin the decision to protocol=hls. Verified against PMS — without a
+  // protocol the server defaults toward the http target and, because our profile
+  // offers both an hls/mpegts and an http/mp4 transcode target, it commits the
+  // session to mp4 (fMP4). fMP4 HLS then emits an #EXT-X-MAP /base/header init
+  // segment that 404s and hangs hls.js. With protocol=hls the server
+  // deterministically commits to mpegts (clean .ts, no init segment), and
+  // direct-playable items still return directplay (protocol doesn't force a
+  // transcode). The transcode is delivered over HLS to hls.js; copy/DV reroutes
+  // to progressive HTTP at start time regardless of this.
+  if (isWebOs4Tv()) {
+    params.protocol = 'hls';
+  }
   var offsetSec = offsetSecondsForPlex(session);
   if (offsetSec > 0) params.offset = String(offsetSec);
-  applyProfileToParams(params, session.quality || prefs.quality, prefs);
+  applyProfileToParams(params, session.quality || prefs.quality, prefs, session.version && session.version.bitrate);
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
   if (session.subtitleStreamId != null && session.subtitleBurnIn !== true) {
     // We render text subs client-side (SRT TextTrack pipeline). On webOS 4 the
@@ -248,6 +271,14 @@ function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrid
         advancedSubtitles: session.subtitleAdvancedBurn ? 'burn' : undefined
       }
     ));
+  } else {
+    // No subtitle selected. If we leave the param off, PMS auto-selects and
+    // BURNS a (often forced) subtitle, which mandates a full video transcode.
+    // Tell it subtitles=none for ALL webOS versions: with nothing chosen there
+    // is nothing to show, so never let PMS auto-pick. (subtitles is already in
+    // DECISION_QUERY_KEYS so it survives the WAN strip; do not add
+    // subtitleStreamID/skipSubtitles here — none is a value, not a new key.)
+    params.subtitles = 'none';
   }
   return buildMinimalDecisionParams(params, path);
 }
@@ -366,7 +397,7 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
   if (!url) {
     return Promise.resolve(resolveStrategyFromDecision(null, session, protocol));
   }
-  tvLog('session', 'decision request', { url: redactPlexUrl(url) });
+  tvError('session', 'decision request', { url: redactPlexUrl(url) });
   var headers = buildDecisionHeaders(server, session);
 
   function fetchDecision(decisionUrl) {
@@ -378,25 +409,34 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
 
   function handleDecisionBody(body) {
     var bodyStr = String(body || '').replace(/\s+/g, ' ');
-    tvLog('session', 'decision response body', {
-      body: bodyStr.slice(0, 800)
+    tvError('session', 'decision response body', {
+      body: bodyStr.slice(0, 3000)
     });
+    var parsed = parseTranscodeDecision(body, session);
     // The per-Stream decisions name exactly which track PMS refuses to direct
     // play and why (e.g. videoCodec/container/audioCodec). The container-level
     // text is generic ("Direct play is disabled"); the Stream tags carry the
-    // real reason, so surface them explicitly.
-    var streamTags = bodyStr.match(/<Stream\b[^>]*>/gi) || [];
-    streamTags.forEach(function (tag) {
-      var dt = (tag.match(/decisionText=("|')(.*?)\1/i) || [])[2];
-      if (!dt) return;
-      tvLog('session', 'stream decision', {
-        type: (tag.match(/streamType=("|')(.*?)\1/i) || [])[2],
-        codec: (tag.match(/\bcodec=("|')(.*?)\1/i) || [])[2],
-        decision: (tag.match(/\bdecision=("|')(.*?)\1/i) || [])[2],
-        why: dt
+    // real reason. Drive these off the single parse (no second inline scrape).
+    parsed.streams.forEach(function (s) {
+      if (!s.decisionText) return;
+      tvError('session', 'stream decision', {
+        type: s.streamType,
+        kind: s.kind,
+        codec: s.codec,
+        decision: s.decision,
+        burn: s.burn,
+        why: s.decisionText
       });
     });
-    var parsed = parseTranscodeDecision(body, session);
+    // One structured outcome line — with subtitleBurned surfaced, an auto-burned
+    // forced subtitle (the original full-transcode bug) is obvious at a glance.
+    tvLog('session', 'decision outcome', {
+      part: parsed.part,
+      video: parsed.videoDecision,
+      audio: parsed.audioDecision,
+      subtitleBurned: parsed.subtitleBurned,
+      reason: parsed.transcodeReason
+    });
     if (session) {
       if (parsed.resourceSession) {
         session.transcodeSessionId = parsed.resourceSession;
@@ -414,6 +454,7 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
     if (parsed.part && parsed.part.decision) {
       session.pmsPlaybackDecision = parsed.part.decision;
     }
+    session.decisionInfo = parsed;
     session.playbackStrategy = resolved.strategy;
     logPlaybackDecisionOutcome(session, parsed, resolved);
     return resolved;
@@ -497,7 +538,7 @@ function logPlaybackDecisionOutcome(session, parsed, resolved) {
   tvError('session', 'decision ' + parts.join(' '));
   var v = session.version || {};
   var dev = getState().deviceInfo || {};
-  tvLog('session', 'decision why', {
+  tvError('session', 'decision why', {
     source: {
       container: v.container,
       videoCodec: v.videoCodec,
@@ -508,7 +549,7 @@ function logPlaybackDecisionOutcome(session, parsed, resolved) {
       bitrateKbps: v.bitrate,
       audioCodec: v.audioCodec
     },
-    device: { uhd: dev.uhd, hdr10: dev.hdr10, dolbyVision: dev.dolbyVision, model: dev.model }
+    device: { uhd: dev.uhd, hdr10: dev.hdr10, dolbyVision: dev.dolbyVision, model: dev.model, versionMajor: dev.versionMajor, version: dev.version }
   });
 }
 
@@ -541,7 +582,10 @@ function createSession(item, version, options) {
     offsetMs: offset,
     quality: session.quality,
     strategy: session.playbackStrategy,
-    protocol: session.transcodeProtocol
+    protocol: session.transcodeProtocol,
+    mediaIndex: session.mediaIndex,
+    versionContainer: version && version.container,
+    versionAudioCodec: version && version.audioCodec
   });
   return session;
 }
@@ -640,17 +684,23 @@ function resolveStreamUrl(session) {
         };
       }
       var startProtocol = strategy === 'http-transcode' ? 'http' : protocol;
-      // webOS 4: the fMP4 HLS path is broken — for HEVC/DV content PMS emits an
-      // #EXT-X-MAP init segment (/base/header) that 404s during startup and
-      // hangs playback forever (plain .ts segments and progressive HTTP both
-      // work). Deliver any segmented transcode/copy strategy as progressive
-      // HTTP instead: copy→progressive MP4 preserves DV, transcode→progressive
-      // MP4 still plays. True direct play (strategy 'direct') is already
-      // progressive and left untouched.
+      // webOS 4 delivery split (verified by probing the PMS endpoints directly):
+      //  - Full transcode (H.264) → HLS with mpegts (.ts) segments via hls.js.
+      //    When container=mpegts is requested at BOTH /decision and /start, PMS
+      //    emits a clean TS playlist with NO #EXT-X-MAP init segment and the .ts
+      //    segments fetch 200 (video/MP2T). hls.js demuxes TS via MSE. (The
+      //    start-time mpegts profile is forced in resolveWebOsHlsProfileExtra;
+      //    fMP4 here is what produced the /base/header 404 that hung startup.)
+      //  - Progressive HTTP (/start protocol=http) is NOT usable: PMS returns
+      //    200 video/mp4 with a ZERO-byte body, so <video> stalls at
+      //    networkState=3. Never route transcode there on webOS 4.
+      //  - Direct-stream/copy (HEVC/DV remux) → progressive HTTP as before; it
+      //    can't ride hls.js MSE on this hardware. True direct play is already
+      //    progressive.
       if (isWebOs4Tv() && isSegmentedDeliveryProtocol(startProtocol) &&
-          (strategy === 'direct-stream' || strategy === 'transcode')) {
+          strategy === 'direct-stream') {
         startProtocol = 'http';
-        tvError('session', 'webOS4: HLS → progressive HTTP', { strategy: strategy });
+        tvError('session', 'webOS4: direct-stream HLS → progressive HTTP', { strategy: strategy });
       } else if (strategy === 'direct-stream' && prefersMp4RemuxForDv(session)) {
         startProtocol = 'http';
         tvLog('session', 'DV MKV remux → progressive MP4', {

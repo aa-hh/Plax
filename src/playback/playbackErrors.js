@@ -58,7 +58,7 @@ function formatPlaybackFailure(err, context) {
     return phase + 'Media not found on Plex (HTTP 404).';
   }
   if (status === 400) {
-    return phase + 'Plex rejected the playback request (HTTP 400). Try Auto or 720p quality, or check remote access on the server.';
+    return phase + 'Plex rejected the playback request (HTTP 400). Try Original or 720p quality, or check remote access on the server.';
   }
   if (status >= 500) {
     return phase + 'Plex server error (HTTP ' + status + '). Check the server or try lower quality.';
@@ -69,13 +69,13 @@ function formatPlaybackFailure(err, context) {
     return line;
   }
   if (/request timeout/i.test(msg)) {
-    return phase + 'Plex request timed out. Check network or try Auto quality.';
+    return phase + 'Plex request timed out. Check network or try a transcode quality.';
   }
   if (/failed to fetch|network error|load failed/i.test(msg)) {
     return phase + 'Network error reaching Plex. Check connection or HTTPS certificate.';
   }
   if (/not supported|codec|decode|MEDIA_ERR/i.test(msg)) {
-    return phase + msg + ' Try Auto quality or 720p in Settings.';
+    return phase + msg + ' Try Original or 720p in Settings.';
   }
   if (context.fallback) {
     return phase + msg + ' ' + context.fallback;
@@ -83,7 +83,7 @@ function formatPlaybackFailure(err, context) {
   if (phase && msg.indexOf(phase) !== 0) {
     return phase + msg;
   }
-  return msg || 'Playback failed. Try Auto quality or check your Plex server.';
+  return msg || 'Playback failed. Try Original quality or check your Plex server.';
 }
 
 export {

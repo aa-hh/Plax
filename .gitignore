@@ -1,9 +1,14 @@
 node_modules/
 dist/
 .build-last-stamp.json
+.build-seq.json
 *.ipk
 .DS_Store
 logs/
 # Track build config but ignore compiled output
 build/*.js.map
 build/rollup.cache/
+
+# Local agent tooling (skills, worktrees) — not project source
+.claude/
+.agents/

@@ -1,6 +1,6 @@
 /**
  * webOS TV 4.x (Chromium ~53) lacks AbortController (Chrome 66+).
- * Load first from app.js before network probes or fetch timeouts run.
+ * Load first from app.js before fetch timeouts run.
  */
 var polyfilled = false;
 

@@ -130,11 +130,18 @@ function formatResolutionTag(tag) {
  * defeats the implicit default. */
 var ORIGINAL_MAX_BITRATE_KBPS = 2000000;
 
-function applyProfileToParams(params, profileKey, prefs) {
+function applyProfileToParams(params, profileKey, prefs, sourceBitrateKbps) {
   var profile = getProfile(profileKey);
   prefs = prefs || {};
   if (profile.maxVideoBitrate) {
     params['maxVideoBitrate'] = profile.maxVideoBitrate;
+  } else if (sourceBitrateKbps && sourceBitrateKbps > 0) {
+    // Original quality: target the source file's own bitrate. This still lets
+    // Direct Play through (source <= max), but when a transcode IS forced (e.g.
+    // PGS burn-in) PMS targets a sane bitrate instead of the 2 Gbps placeholder
+    // — which otherwise makes it transcode to an absurd bitrate the TV/WAN
+    // can't sustain. Small headroom so rounding never trips the <= check.
+    params['maxVideoBitrate'] = Math.ceil(Number(sourceBitrateKbps) * 1.1);
   } else {
     params['maxVideoBitrate'] = ORIGINAL_MAX_BITRATE_KBPS;
   }

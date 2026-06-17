@@ -42,6 +42,9 @@ var playPressedAtMs = 0;
 var pendingSeekListener = null;
 var pendingSeekWrapper = null;
 var bufferingShown = false;
+/** True while the user has explicitly paused. Blocks the rebuffer watchdog so a
+ *  deliberate pause never triggers a buffering overlay or fallback restart. */
+var userPaused = false;
 var scrobbled = false;
 var lastTimelineMs = -1;
 var lastKnownPositionMs = 0;
@@ -455,7 +458,7 @@ function applyNativeVideoSource(url, mode, offsetMs, session, options) {
   // Diagnose <source> rejection: Chromium skips a <source> whose type fails
   // canPlayType (→ networkState 3, no error event). Log what the TV accepts.
   if (videoEl && typeof videoEl.canPlayType === 'function') {
-    tvLog('playback', 'canPlayType', {
+    tvError('playback', 'canPlayType', {
       full: videoEl.canPlayType(built.sourceType),
       mime: videoEl.canPlayType(sourceTypePrefix),
       mp4: videoEl.canPlayType('video/mp4'),
@@ -528,13 +531,13 @@ function attachMseHls(url, requestHeaders) {
   });
   activeHls.on(events.MANIFEST_PARSED, function (_e, data) {
     var levels = data && data.levels ? data.levels.length : 'unknown';
-    tvLog('playback', 'hls.js manifest parsed', { levels: levels, url: url ? url.slice(0, 120) : null });
+    tvError('playback', 'hls.js manifest parsed', { levels: levels, url: url ? url.slice(0, 120) : null });
     notifyBuffering(false);
   });
   activeHls.on(events.ERROR, function (_event, data) {
     if (!data) return;
     if (!data.fatal) {
-      tvLog('playback', 'hls.js error', {
+      tvError('playback', 'hls.js error', {
         fatal: false,
         type: data.type,
         details: data.details,
@@ -560,10 +563,15 @@ function attachMseHls(url, requestHeaders) {
     }
   });
   activeHls.attachMedia(videoEl);
-  tvLog('playback', 'using hls.js');
+  tvError('playback', 'using hls.js');
 }
 
 function notifyBuffering(show) {
+  // A deliberate pause must stay paused: never arm the rebuffer watchdog or show
+  // the buffering overlay while the user has paused. webOS still fires
+  // waiting/stalled on a paused element as its buffer drains, which previously
+  // tripped a fallback restart a second after pausing.
+  if (show && userPaused) return;
   if (!rebufferWatchdog.notifyBuffering(show)) return;
   bufferingShown = show;
   if (onBufferingCb) onBufferingCb(show);
@@ -742,11 +750,11 @@ function attachPlaybackEvents() {
 
   videoEl.addEventListener('waiting', function () {
     notifyBuffering(true);
-    logPlaybackLifecycle('waiting');
+    logPlaybackLifecycle('waiting', undefined, 'error');
   });
   videoEl.addEventListener('stalled', function () {
     notifyBuffering(true);
-    logPlaybackLifecycle('stalled');
+    logPlaybackLifecycle('stalled', undefined, 'error');
   });
   videoEl.addEventListener('playing', function () {
     notifyBuffering(false);
@@ -1116,6 +1124,7 @@ function play(url, session, options) {
     mseHls: shouldUseMseHls(url, mode),
     url: compactPlaybackUrl(url)
   });
+  userPaused = false;
   rebufferWatchdog.resetEpisode();
   videoEl.classList.remove('hidden');
   keepScreenOn(true);
@@ -1208,13 +1217,16 @@ function getVideoElement() {
 }
 
 function pause() {
+  userPaused = true;
   if (videoEl) videoEl.pause();
   stopProgressSync();
+  notifyBuffering(false);
   rebufferWatchdog.resetEpisode();
   syncTimeline('paused', true);
 }
 
 function resume() {
+  userPaused = false;
   if (videoEl) videoEl.play();
   startProgressSync();
   syncTimeline('playing', true);
@@ -1230,6 +1242,7 @@ function stop(options) {
   if (ms > 0) lastKnownPositionMs = ms;
 
   stopProgressSync();
+  userPaused = false;
   rebufferWatchdog.resetEpisode();
   cancelInitialPlayingTimelineSync();
   cancelPendingSeek();

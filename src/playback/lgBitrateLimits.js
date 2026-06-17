@@ -1,17 +1,35 @@
 /**
- * LG webOS TV maximum decode bitrates (webOS TV 5.0 AV spec).
+ * LG webOS TV maximum decode bitrates.
+ *
+ * The max-bitrate ceilings are now sourced from the single source of truth in
+ * `capabilityMatrix.js` (`bitrateCeilingKbps`) instead of a hardcoded table, so
+ * webOS 5/6 differences flow through automatically. The resolution / fps fields
+ * (which the matrix keys per-tier but consumers here only read alongside the
+ * ceiling) stay in a small local geometry table.
+ *
+ * `getLimits` keeps its `(isUhd, family)` signature — with no threadable device
+ * context it resolves against the matrix's `default` (latest-known) entry, whose
+ * ceilings match the previous hardcoded table exactly (FHD h264/hevc 40000;
+ * UHD h264 50000, hevc 60000, vp9/av1 50000). `checkBitrate` threads its
+ * `deviceInfo` arg into the matrix so per-version ceilings apply when known.
+ *
  * https://webostv.developer.lge.com/develop/specifications/video-audio-50
  */
-var LIMITS = {
+import { bitrateCeilingKbps } from './capabilityMatrix.js';
+
+// Per-tier geometry (resolution / fps) only — the bitrate ceiling comes from the
+// matrix. Kept so getLimits keeps returning its full {maxWidth,maxHeight,maxFps,
+// maxBitrateKbps} shape.
+var GEOMETRY = {
   fhd: {
-    h264: { maxWidth: 1920, maxHeight: 1080, maxFps: 60, maxBitrateKbps: 40000 },
-    hevc: { maxWidth: 1920, maxHeight: 1080, maxFps: 60, maxBitrateKbps: 40000 }
+    h264: { maxWidth: 1920, maxHeight: 1080, maxFps: 60 },
+    hevc: { maxWidth: 1920, maxHeight: 1080, maxFps: 60 }
   },
   uhd: {
-    h264: { maxWidth: 3840, maxHeight: 2160, maxFps: 30, maxBitrateKbps: 50000 },
-    hevc: { maxWidth: 3840, maxHeight: 2160, maxFps: 60, maxBitrateKbps: 60000 },
-    vp9: { maxWidth: 3840, maxHeight: 2160, maxFps: 60, maxBitrateKbps: 50000 },
-    av1: { maxWidth: 3840, maxHeight: 2160, maxFps: 60, maxBitrateKbps: 50000 }
+    h264: { maxWidth: 3840, maxHeight: 2160, maxFps: 30 },
+    hevc: { maxWidth: 3840, maxHeight: 2160, maxFps: 60 },
+    vp9: { maxWidth: 3840, maxHeight: 2160, maxFps: 60 },
+    av1: { maxWidth: 3840, maxHeight: 2160, maxFps: 60 }
   }
 };
 
@@ -23,9 +41,27 @@ function codecFamily(videoCodec) {
   return 'h264';
 }
 
-function getLimits(isUhd, family) {
-  var tier = isUhd ? LIMITS.uhd : LIMITS.fhd;
-  return tier[family] || tier.h264;
+/**
+ * Max-decode limits for a codec family at a resolution tier.
+ * The bitrate ceiling is sourced from the capability matrix; an optional
+ * `caps`/deviceInfo selects the webOS-version entry (defaults to latest-known).
+ *
+ * @param {boolean} isUhd
+ * @param {string} family h264 | hevc | vp9 | av1
+ * @param {object} [caps] resolved caps, {version,entry}, or raw deviceInfo
+ * @returns {{maxWidth?:number, maxHeight?:number, maxFps?:number, maxBitrateKbps:number}}
+ */
+function getLimits(isUhd, family, caps) {
+  var tier = isUhd ? GEOMETRY.uhd : GEOMETRY.fhd;
+  var geo = tier[family] || tier.h264;
+  // caps == null → matrix resolves to its `default` (latest) entry, whose
+  // ceilings match the previous hardcoded table, so numbers are unchanged.
+  return {
+    maxWidth: geo.maxWidth,
+    maxHeight: geo.maxHeight,
+    maxFps: geo.maxFps,
+    maxBitrateKbps: bitrateCeilingKbps(caps, family, isUhd)
+  };
 }
 
 function kbpsToMbps(kbps) {
@@ -62,7 +98,9 @@ function checkBitrate(version, deviceInfo) {
 
   var isUhd = deviceInfo && deviceInfo.uhd;
   var family = codecFamily(version.videoCodec);
-  var lim = getLimits(isUhd, family);
+  // Thread deviceInfo into the matrix so per-webOS-version ceilings apply when
+  // resolvable; falls back to the latest-known entry otherwise.
+  var lim = getLimits(isUhd, family, deviceInfo);
   var limitKbps = lim.maxBitrateKbps;
   var actualMbps = kbpsToMbps(kbps);
   var limitMbps = kbpsToMbps(limitKbps);
@@ -90,4 +128,4 @@ function checkBitrate(version, deviceInfo) {
   };
 }
 
-export { LIMITS, getLimits, codecFamily, kbpsToMbps, exceedsBitrate, checkBitrate };
+export { getLimits, codecFamily, kbpsToMbps, exceedsBitrate, checkBitrate };

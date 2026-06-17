@@ -18,6 +18,7 @@ import {
   resetPlexDeviceInfoForTest,
   PMS_PRODUCT
 } from '../src/plex/clientIdentity.js';
+import { setState } from '../src/core/store.js';
 
 var savedPalmSystem;
 var savedWebOS;
@@ -53,20 +54,20 @@ test.afterEach(function () {
   }
 });
 
-test('webOS 4 TV HLS start uses Generic profile name, not a custom profile extra', function () {
-  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+test('webOS 4 TV HLS start uses device profile with HEVC direct play', function () {
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0', uhd: true });
+  setState({ deviceInfo: { uhd: true, hdr10: true, dolbyVision: false, versionMajor: 4 } });
   assert.equal(isWebOs4Tv(), true);
 
-  // PMS returns HTTP 400 for our append-transcode-target-codec(container=mp4)
-  // directive on webOS 4 — request via the server-side Generic profile instead.
   var remux = applyWebOsHlsTranscodeParams({}, { strategy: 'direct-stream' });
   assert.equal(remux['X-Plex-Client-Profile-Name'], 'Generic');
-  assert.equal(remux['X-Plex-Client-Profile-Extra'], undefined);
+  assert.ok(remux['X-Plex-Client-Profile-Extra'].indexOf('videoCodec=h264,hevc') >= 0);
   assert.equal(remux.protocol, 'hls');
 
   var transcode = applyWebOsHlsTranscodeParams({}, { strategy: 'transcode' });
   assert.equal(transcode['X-Plex-Client-Profile-Name'], 'Generic');
-  assert.equal(transcode['X-Plex-Client-Profile-Extra'], undefined);
+  assert.ok(transcode['X-Plex-Client-Profile-Extra'].indexOf('add-transcode-target') >= 0);
+  assert.ok(!/add-transcode-target[^+]*videoCodec=h264,hevc/.test(transcode['X-Plex-Client-Profile-Extra']));
 });
 
 test('webOS 5+ TV keeps mpegts profile extra', function () {

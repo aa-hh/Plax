@@ -12,7 +12,6 @@ import { redactPlexUrl } from '../src/playback/playerAdapter.js';
 import { checkBitrate } from '../src/playback/lgBitrateLimits.js';
 import { probePlayback } from '../src/playback/capabilityProbe.js';
 import {
-  pickDefaultSubtitleTrack,
   findSubtitleTrack,
   canUseClientSubtitles,
   isClientSubtitlePlaybackMode,
@@ -78,10 +77,10 @@ test('shouldResetScrobble: clears after seek below 85% or scrobble threshold', f
   assert.equal(shouldResetScrobble(97000, duration), false);
 });
 
-test('nextLowerTranscodeProfileKey steps down 1080 to 720 to 480', function () {
-  assert.equal(nextLowerTranscodeProfileKey('1080'), '720');
-  assert.equal(nextLowerTranscodeProfileKey('720'), '480');
-  assert.equal(nextLowerTranscodeProfileKey('480'), null);
+test('nextLowerTranscodeProfileKey steps down Plex Web ladder', function () {
+  assert.equal(nextLowerTranscodeProfileKey('1080'), '1080p-10');
+  assert.equal(nextLowerTranscodeProfileKey('720'), '720p-3');
+  assert.equal(nextLowerTranscodeProfileKey('480'), '320p-720');
   assert.equal(nextLowerTranscodeProfileKey('auto'), null);
 });
 
@@ -139,22 +138,6 @@ test('probePlayback: unknown bitrate blocks direct play but allows direct stream
   assert.equal(probe.canDirectPlay, false);
   assert.equal(probe.canDirectStream, true);
   assert.ok(probe.warnings.some(function (w) { return w.indexOf('bitrate') >= 0; }));
-});
-
-test('pickDefaultSubtitleTrack prefers forced when none selected', function () {
-  var tracks = [
-    { id: 1, title: 'English', forced: false, hearingImpaired: false, selected: false },
-    { id: 2, title: 'English (forced)', forced: true, hearingImpaired: false, selected: false }
-  ];
-  assert.equal(pickDefaultSubtitleTrack(tracks).id, 2);
-});
-
-test('pickDefaultSubtitleTrack prefers non-SDH when no forced', function () {
-  var tracks = [
-    { id: 1, title: 'English SDH', forced: false, hearingImpaired: true, selected: false },
-    { id: 2, title: 'English', forced: false, hearingImpaired: false, selected: false }
-  ];
-  assert.equal(pickDefaultSubtitleTrack(tracks).id, 2);
 });
 
 test('snapOffsetMs floors to interval', function () {
@@ -932,6 +915,30 @@ test('subtitleMenuOptionLabel shows type beside language title', function () {
   assert.equal(
     subtitleMenuOptionLabel({ title: 'English', codec: 'hdmv_pgs_subtitle', forced: true }),
     'English (Forced) · PGS'
+  );
+});
+
+test('subtitleMenuOptionLabel appends Embedded/External source token', function () {
+  assert.equal(
+    subtitleMenuOptionLabel({ title: 'English', codec: 'srt', delivery: 'embedded' }),
+    'English · SRT · Embedded'
+  );
+  assert.equal(
+    subtitleMenuOptionLabel({ title: 'Spanish', codec: 'subrip', delivery: 'sidecar' }),
+    'Spanish · SRT · External'
+  );
+  assert.equal(
+    subtitleMenuOptionLabel({ title: 'French', codec: 'srt', delivery: 'onDemand' }),
+    'French · SRT · External'
+  );
+  // Unknown/graphical delivery omits the source token gracefully.
+  assert.equal(
+    subtitleMenuOptionLabel({ title: 'English', codec: 'hdmv_pgs_subtitle', delivery: 'graphical' }),
+    'English · PGS'
+  );
+  assert.equal(
+    subtitleMenuOptionLabel({ title: 'English', codec: 'srt' }),
+    'English · SRT'
   );
 });
 

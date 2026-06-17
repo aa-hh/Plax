@@ -126,7 +126,6 @@ function homeScreen(root, params, navigate) {
         cols: 12,
         visibleCount: 20,
         server: state.activeServer,
-        directPlayFromRow: true,
         playbackPrefs: state.playbackPrefs
       });
     });
@@ -241,7 +240,6 @@ function homeScreen(root, params, navigate) {
         cols: 12,
         visibleCount: 20,
         server: state.activeServer,
-        directPlayFromRow: true,
         playbackPrefs: state.playbackPrefs
       });
         var wlId = String(row.hubIdentifier || '').replace('watchlist.', '');

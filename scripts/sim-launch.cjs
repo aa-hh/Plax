@@ -127,6 +127,12 @@ function resolveSimulatorPaths(simulatorPath) {
   }
 
   if (!fs.existsSync(resolved)) {
+    var inferredApp = /^webOS_TV_[0-9.]+\_Simulator/i.test(path.basename(resolved))
+      ? path.join(resolved, path.basename(resolved) + '.app')
+      : null;
+    if (inferredApp) {
+      return { appPath: inferredApp, aresDir: resolved };
+    }
     return { appPath: resolved, aresDir: resolved };
   }
 
@@ -145,6 +151,12 @@ function resolveSimulatorPaths(simulatorPath) {
   }
   if (appName) {
     return { appPath: path.join(resolved, appName), aresDir: resolved };
+  }
+  var inferredApp = /^webOS_TV_[0-9.]+\_Simulator/i.test(path.basename(resolved))
+    ? path.join(resolved, path.basename(resolved) + '.app')
+    : null;
+  if (inferredApp) {
+    return { appPath: inferredApp, aresDir: resolved };
   }
   return { appPath: resolved, aresDir: resolved };
 }

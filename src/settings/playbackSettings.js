@@ -68,19 +68,17 @@ function renderPlaybackSettings(container) {
   var qualityHint = container.querySelector('#quality-hint');
   function syncQualityHint() {
     if (!qualityHint) return;
-    var id = qsel.value || 'auto';
-    if (id === 'auto') {
+    var id = qsel.value || 'original';
+    if (id === 'original' || id === 'directOnly') {
       qualityHint.textContent =
-        'Recommended on LG B8 and most TVs — tries direct play, then HLS remux (stream copy), then server transcode.';
-    } else if (id === 'original' || id === 'directOnly') {
-      qualityHint.textContent =
-        'Plays the original Plex file only — no automatic remux or transcode fallback.';
+        'Plays the original Plex file when possible — Plex picks direct play or HLS remux.';
     } else {
-      qualityHint.textContent = 'Requests server transcode at the selected cap.';
+      qualityHint.textContent = 'Requests server transcode at the selected bitrate cap.';
     }
   }
-  qsel.value = prefs.quality || 'auto';
-  if (prefs.quality === 'directOnly') qsel.value = 'original';
+  var initialQuality = prefs.quality || 'original';
+  if (initialQuality === 'auto' || initialQuality === 'directOnly') initialQuality = 'original';
+  qsel.value = initialQuality;
   syncQualityHint();
   qsel.addEventListener('change', function () {
     setPlaybackPrefs({ quality: qsel.value });

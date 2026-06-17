@@ -30,6 +30,20 @@ var MAX_RETAINED = 3;
 // Active video / transient auth must never be kept alive in the background.
 var NON_RETAINED_ROUTES = { player: 1, pairing: 1, 'profile-picker': 1 };
 
+/**
+ * Logical navigation history ("breadcrumbs"), independent of the DOM
+ * retainStack. Every forward navigation pushes the screen we're leaving so
+ * that Back always returns to where the user actually came from — instead of
+ * the old hardcoded per-route guesses that could land on a blank screen.
+ *
+ * Each entry: { name, params }. Transient routes (player/pairing/profile-
+ * picker) are never pushed — backing out of a detail page must not drop the
+ * user back into the video they just left.
+ */
+var history = [];
+var MAX_HISTORY = 30;
+var navigatingBack = false;
+
 function paramsKeyFor(params) {
   return JSON.stringify(params || {});
 }
@@ -89,10 +103,25 @@ function register(name, factory) {
   routes[name] = factory;
 }
 
-function navigate(name, params) {
+function navigate(name, params, opts) {
   params = params || {};
+  opts = opts || {};
   if (currentRoute === name && paramsKeyFor(currentParams) === paramsKeyFor(params)) {
     return;
+  }
+  // Record the breadcrumb for the screen we're leaving (unless this is a Back
+  // step, an explicit replace, or we're leaving a transient route).
+  if (!navigatingBack && !opts.replace && currentRoute &&
+      !NON_RETAINED_ROUTES[currentRoute]) {
+    var top = history[history.length - 1];
+    // Navigating straight back to the previous screen? Collapse it instead of
+    // pushing a duplicate — prevents A→B→A back-and-forth loops.
+    if (top && top.name === name && paramsKeyFor(top.params) === paramsKeyFor(params)) {
+      history.pop();
+    } else {
+      history.push({ name: currentRoute, params: currentParams });
+      if (history.length > MAX_HISTORY) history.shift();
+    }
   }
   currentRoute = name;
   currentParams = params;
@@ -115,36 +144,18 @@ function shouldExitToLauncher(route, params) {
 }
 
 function back() {
-  if (currentRoute === 'detail') {
-    if (currentParams && currentParams.parentDetail && currentParams.parentDetail.ratingKey) {
-      navigate('detail', currentParams.parentDetail);
-      return;
-    }
-    navigate('library', {});
-    return;
-  }
-  if (currentRoute === 'player') {
-    navigate('detail', currentParams._detail || {});
-    return;
-  }
-  if (currentRoute === 'settings') {
-    navigate(currentParams._from || 'library', {});
-    return;
-  }
-  if (currentRoute === 'search') {
-    navigate(currentParams._from || 'home', {});
-    return;
-  }
-  if (currentRoute === 'design-review') {
-    navigate(currentParams._from || 'settings', {});
-    return;
-  }
-  if (currentRoute === 'profile-picker') {
-    if (currentParams._from) {
-      navigate(currentParams._from, {});
+  // Follow the breadcrumb trail back to wherever the user actually came from.
+  if (history.length > 0) {
+    var prev = history.pop();
+    navigatingBack = true;
+    try {
+      navigate(prev.name, prev.params);
+    } finally {
+      navigatingBack = false;
     }
     return;
   }
+  // No breadcrumbs left — we're at an entry screen. Back exits to the launcher.
   if (shouldExitToLauncher(currentRoute, currentParams)) {
     exitToLauncher();
   }
@@ -155,12 +166,57 @@ function back() {
 var SEARCH_KEYCODE = 84;
 var SEARCH_BLOCKED_ROUTES = { player: 1, pairing: 1, search: 1, 'profile-picker': 1 };
 
+function isBackKey(e) {
+  return e.keyCode === 461 || e.key === 'Backspace' || e.key === 'GoBack';
+}
+
+// Hold-to-quit at the home screen. webOS auto-repeats keydown (~every 100ms)
+// while a key is physically held, so a quick tap fires once while a hold fires
+// many times in quick succession; we treat a burst as "held".
+var BACK_HOLD_REPEATS = 4;
+var BACK_HOLD_WINDOW_MS = 700;
+var backRepeatCount = 0;
+var backRepeatTimer = null;
+
+function clearBackHold() {
+  backRepeatCount = 0;
+  if (backRepeatTimer) {
+    clearTimeout(backRepeatTimer);
+    backRepeatTimer = null;
+  }
+}
+
+function registerBackHold() {
+  backRepeatCount += 1;
+  if (backRepeatCount >= BACK_HOLD_REPEATS) {
+    clearBackHold();
+    exitToLauncher();
+    return;
+  }
+  if (backRepeatTimer) clearTimeout(backRepeatTimer);
+  backRepeatTimer = setTimeout(clearBackHold, BACK_HOLD_WINDOW_MS);
+}
+
 function init(root) {
   rootEl = root;
+  document.addEventListener('keyup', function (e) {
+    if (isBackKey(e)) clearBackHold();
+  });
   document.addEventListener('keydown', function (e) {
-    if (e.keyCode === 461 || e.key === 'Backspace' || e.key === 'GoBack') {
+    if (isBackKey(e)) {
+      // Have breadcrumbs? Always walk back one step and swallow the key so the
+      // webOS system doesn't also exit us to the launcher.
+      if (history.length > 0) {
+        e.preventDefault();
+        clearBackHold();
+        back();
+        return;
+      }
+      // At an entry screen (home with no history): a single tap does nothing;
+      // holding Back quits the app. We detect a hold via the remote's keydown
+      // auto-repeat so we don't depend on a (flaky on webOS 4) keyup.
       e.preventDefault();
-      back();
+      registerBackHold();
       return;
     }
     if (e.keyCode === SEARCH_KEYCODE && !SEARCH_BLOCKED_ROUTES[currentRoute]) {
@@ -332,6 +388,7 @@ function trimRetainedToTop() {
  */
 function invalidateRetention() {
   trimRetainedToTop();
+  history = [];
   clearPosterUrlMaps();
 }
 

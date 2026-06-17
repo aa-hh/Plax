@@ -23,6 +23,7 @@ fs.writeFileSync(
 );
 
 var runtimeStamp = {
+  buildNumber: stamp.buildNumber,
   builtAt: stamp.builtAt,
   gitCommit: stamp.gitCommit,
   gitBranch: stamp.gitBranch,

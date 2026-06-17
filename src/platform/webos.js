@@ -7,24 +7,89 @@ import { loadDeviceDisplay, applyGraphicsViewport } from './deviceDisplay.js';
 import { initMotionCursor } from './motionCursor.js';
 import { getWebOSVersion, isSimulatorRuntime } from './webosRuntime.js';
 import { setPlexDeviceInfo, logPlexClientIdentityOnce } from '../plex/clientIdentity.js';
+import { setState } from '../core/store.js';
+import {
+  resolveWebOsMajor,
+  isAudioDirectPlay as matrixIsAudioDirectPlay
+} from '../playback/capabilityMatrix.js';
+
+function normalizeDeviceInfoForStore(info, sdkVersion) {
+  info = info || {};
+  // sdkVersion from luna://com.webos.service.tv.systemproperty is the reliable
+  // webOS version string (e.g. "4.4.3-22"). Falls back to deviceInfo.version
+  // which on some firmwares reports internal firmware (e.g. "05.50.70") rather
+  // than the actual webOS version.
+  var version = sdkVersion || info.version;
+  return {
+    version: version,
+    versionMajor: parseWebOSVersionMajor(version),
+    model: info.modelName || info.model || 'LG TV',
+    screenWidth: info.screenWidth,
+    screenHeight: info.screenHeight,
+    uhd: !!info.uhd,
+    hdr10: !!info.hdr10,
+    dolbyVision: !!info.dolbyVision
+  };
+}
+
+function parseWebOSVersionMajor(versionString) {
+  if (!versionString) return 0;
+  var major = parseInt(String(versionString), 10);
+  return !isNaN(major) && major > 0 ? major : 0;
+}
+
+/**
+ * Fetch sdkVersion via the luna TV system property service.
+ * sdkVersion is the authoritative webOS version string (e.g. "4.4.3-22").
+ * Calls onSuccess(sdkVersion) or onFailure() if unavailable.
+ */
+function fetchSdkVersion(onSuccess, onFailure) {
+  if (typeof webOS === 'undefined' || !webOS.service || !webOS.service.request) {
+    onFailure();
+    return;
+  }
+  webOS.service.request('luna://com.webos.service.tv.systemproperty', {
+    method: 'getSystemInfo',
+    parameters: { keys: ['sdkVersion'] },
+    onSuccess: function (res) { onSuccess(res.sdkVersion || ''); },
+    onFailure: function () { onFailure(); }
+  });
+}
 
 function getDeviceInfo(callback) {
   if (typeof webOS !== 'undefined' && webOS.deviceInfo) {
+    var deviceInfoResult = null;
+    var sdkVersionResult = null;
+    var pending = 2;
+
+    function onBothReady() {
+      var normalized = normalizeDeviceInfoForStore(deviceInfoResult, sdkVersionResult);
+      setState({ deviceInfo: normalized });
+      callback(normalized);
+    }
+
     webOS.deviceInfo(function (info) {
-      callback({
-        version: info.version,
-        versionMajor: info.versionMajor,
-        model: info.modelName || 'LG TV',
-        screenWidth: info.screenWidth,
-        screenHeight: info.screenHeight,
-        uhd: info.uhd,
-        hdr10: info.hdr10,
-        dolbyVision: info.dolbyVision
-      });
+      deviceInfoResult = info;
+      if (--pending === 0) onBothReady();
     });
+
+    fetchSdkVersion(
+      function (sdkVersion) { sdkVersionResult = sdkVersion; if (--pending === 0) onBothReady(); },
+      function () { if (--pending === 0) onBothReady(); }
+    );
     return;
   }
-  callback({ version: 'browser', model: 'Browser', screenWidth: window.innerWidth, screenHeight: window.innerHeight });
+  var browserInfo = {
+    version: 'browser',
+    model: 'Browser',
+    screenWidth: window.innerWidth,
+    screenHeight: window.innerHeight,
+    uhd: false,
+    hdr10: false,
+    dolbyVision: false
+  };
+  setState({ deviceInfo: browserInfo });
+  callback(browserInfo);
 }
 
 function initPlatform() {
@@ -32,10 +97,30 @@ function initPlatform() {
   window.addEventListener('resize', applyGraphicsViewport);
 
   if (typeof webOS !== 'undefined' && webOS.deviceInfo) {
-    webOS.deviceInfo(function (device) {
-      setPlexDeviceInfo(device);
+    var deviceInfoResult = null;
+    var sdkVersionResult = null;
+    var pending = 2;
+
+    function onBothReady() {
+      var normalized = normalizeDeviceInfoForStore(deviceInfoResult, sdkVersionResult);
+      setState({ deviceInfo: normalized });
+      // Pass the NORMALIZED device (version = sdkVersion, e.g. "4.4.0") so the
+      // Plex client identity's platformVersion reflects the real webOS version,
+      // not the firmware string (e.g. "05.50.70") that deviceInfo.version
+      // reports. isWebOs4Tv() reads platformVersion from this identity.
+      setPlexDeviceInfo(normalized);
       logPlexClientIdentityOnce();
+    }
+
+    webOS.deviceInfo(function (device) {
+      deviceInfoResult = device;
+      if (--pending === 0) onBothReady();
     });
+
+    fetchSdkVersion(
+      function (sdkVersion) { sdkVersionResult = sdkVersion; if (--pending === 0) onBothReady(); },
+      function () { if (--pending === 0) onBothReady(); }
+    );
   } else if (typeof webOS === 'undefined') {
     logPlexClientIdentityOnce();
   }
@@ -50,18 +135,11 @@ function initPlatform() {
     });
   }
 
-  if (typeof webOS !== 'undefined' && webOS.platformBack) {
-    try {
-      webOS.platformBack.onBackKey = function () {
-        document.dispatchEvent(new CustomEvent('webos-back'));
-      };
-    } catch (e) { /* ignore */ }
-  }
-
-  document.addEventListener('webos-back', function () {
-    var backEv = new KeyboardEvent('keydown', { keyCode: 461 });
-    document.dispatchEvent(backEv);
-  });
+  // Note: do NOT set webOS.platformBack.onBackKey here.
+  // The router already handles keydown 461 natively. Setting onBackKey would
+  // cause a double back() call: native keydown 461 fires first, then onBackKey
+  // fires and dispatches a synthetic 461, triggering back() a second time on
+  // the home screen while exitToLauncher() is still in flight.
 
   initRelaunchHandling();
   initMotionCursor();
@@ -99,12 +177,17 @@ function initRelaunchHandling() {
  * Leave the app (Home / exit prompt per webOS version). Use on entry routes when Back
  * cannot go further in-app. https://webostv.developer.lge.com/develop/guides/back-button
  */
+var _exitPending = false;
 function exitToLauncher() {
+  if (_exitPending) return;
+  _exitPending = true;
+  // Reset after 2 s in case the exit was intercepted or the user cancelled.
+  setTimeout(function () { _exitPending = false; }, 2000);
   if (typeof webOS !== 'undefined' && typeof webOS.platformBack === 'function') {
-    try {
-      webOS.platformBack();
-    } catch (e) { /* ignore */ }
+    try { webOS.platformBack(); return; } catch (e) { /* ignore */ }
   }
+  // Fallback for webOS versions where platformBack is not a callable function.
+  try { window.close(); } catch (e) { /* ignore */ }
 }
 
 function probeCodec(mime) {
@@ -113,28 +196,27 @@ function probeCodec(mime) {
   return v.canPlayType(mime) || '';
 }
 
+/**
+ * Resolve the webOS major version from a deviceInfo object. Delegates to the
+ * capability matrix's `resolveWebOsMajor` (single source of truth for version
+ * parsing + the `OLED\d{2}[BCEW]8` model regex) so webos.js and the matrix can
+ * never drift. The matrix is DOM-free; webos.js delegates to it (not the
+ * reverse) because the matrix must not import this DOM-touching module.
+ */
 function parseWebOsMajor(deviceInfo) {
-  if (!deviceInfo) return 0;
-  if (deviceInfo.versionMajor != null) {
-    var n = parseInt(deviceInfo.versionMajor, 10);
-    if (!isNaN(n)) return n;
-  }
-  if (deviceInfo.version) {
-    var parts = String(deviceInfo.version).split('.');
-    var major = parseInt(parts[0], 10);
-    if (!isNaN(major)) return major;
-  }
-  return 0;
+  return resolveWebOsMajor(deviceInfo);
 }
 
 /**
- * Device-only heuristic (no runtime / window). Used on real LG TVs when canPlayType omits DTS.
+ * Device-only heuristic (no runtime / window). Used on real LG TVs when
+ * canPlayType omits DTS. webOS 4+ resolves directly via the matrix; the extra
+ * model regex covers later B/C/E/W-series (e.g. C9, B7) whose version string
+ * may be absent so the matrix returns 0 but the hardware still decodes DTS.
  */
 function tvLikelySupportsDtsFromDevice(deviceInfo) {
   var major = parseWebOsMajor(deviceInfo);
   if (major >= 4) return true;
   var model = String((deviceInfo && (deviceInfo.modelName || deviceInfo.model)) || '');
-  if (/OLED\d{2}[BCEW]8/i.test(model)) return true;
   if (/OLED\d{2}[BCEW][789]\d/i.test(model)) return true;
   return false;
 }
@@ -149,6 +231,15 @@ function tvLikelySupportsDts(deviceInfo) {
   return tvLikelySupportsDtsFromDevice(deviceInfo);
 }
 
+/**
+ * Browser `canPlayType` is the genuine runtime decode signal; we keep probing
+ * it. When it comes back empty on a real TV (common on 2018 LG OLED / webOS 4.x
+ * where the media pipeline decodes formats the HTML5 probe omits), fall back to
+ * the capability matrix as the authority for *which* audio codecs the TV
+ * direct-plays — `isAudioDirectPlay` replaces the old hardcoded DTS/AC-3 branch.
+ * `tvLikelySupportsDts` stays as the runtime gate so browsers/simulators stay
+ * conservative and never infer support they can't honour.
+ */
 function getCodecCapabilities(deviceInfo) {
   var caps = {
     h264: probeCodec('video/mp4; codecs="avc1.640028"'),
@@ -157,15 +248,19 @@ function getCodecCapabilities(deviceInfo) {
     eac3: probeCodec('audio/mp4; codecs="ec-3"'),
     dts: probeCodec('audio/vnd.dts')
   };
-  if ((!caps.dts || caps.dts === '') && tvLikelySupportsDts(deviceInfo)) {
+  var inferOnTv = tvLikelySupportsDts(deviceInfo);
+  if ((!caps.dts || caps.dts === '') && inferOnTv &&
+      matrixIsAudioDirectPlay(deviceInfo, 'dca')) {
     caps.dts = 'probably';
     caps.dtsInferred = true;
   }
-  if ((!caps.eac3 || caps.eac3 === '') && tvLikelySupportsDts(deviceInfo)) {
+  if ((!caps.eac3 || caps.eac3 === '') && inferOnTv &&
+      matrixIsAudioDirectPlay(deviceInfo, 'eac3')) {
     caps.eac3 = 'probably';
     caps.eac3Inferred = true;
   }
-  if ((!caps.ac3 || caps.ac3 === '') && tvLikelySupportsDts(deviceInfo)) {
+  if ((!caps.ac3 || caps.ac3 === '') && inferOnTv &&
+      matrixIsAudioDirectPlay(deviceInfo, 'ac3')) {
     caps.ac3 = 'probably';
     caps.ac3Inferred = true;
   }

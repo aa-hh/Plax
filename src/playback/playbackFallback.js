@@ -12,7 +12,6 @@ function createPlaybackFallbackState() {
     fullTranscodeFallbackTried: false,
     hlsFallbackTried: false,
     httpFallbackTried: false,
-    rebufferDownshiftTried: false,
     /* Remux was started only to deliver subtitles (e.g. embedded SRT on a
      * server whose direct play works but universal transcode does not, like
      * some Whatbox/seedbox setups). On failure we revert to direct play
@@ -30,14 +29,8 @@ function resetPlaybackFallbackFlags(state) {
   state.fullTranscodeFallbackTried = false;
   state.hlsFallbackTried = false;
   state.httpFallbackTried = false;
-  state.rebufferDownshiftTried = false;
   state.enteredRemuxForSubtitlesOnly = false;
   state.directNoSubsFallbackTried = false;
-}
-
-/** Allow another quality downshift on the next rebuffer episode. */
-function resetRebufferDownshiftForEpisode(state) {
-  state.rebufferDownshiftTried = false;
 }
 
 /** PMS /decision chose HLS (or DASH) — do not fall back to progressive HTTP transcode. */
@@ -86,6 +79,33 @@ function applyRestartPlaybackFallbackFlags(state, streamChange) {
 }
 
 /**
+ * Burn-in guard: when the user explicitly chose a graphical/PGS subtitle that
+ * must be burned, the ladder must NEVER revert to a sub-dropping mode
+ * (direct / direct-stream-as-direct-play / direct-no-subs) — that would
+ * silently drop the chosen subtitle. The only permitted steps keep a
+ * burn-capable transcode: full-transcode → http-transcode → terminal. We never
+ * loop: each rung sets its tried flag before returning.
+ */
+function decideBurnInErrorFallback(state, context) {
+  var codecUnsupported = context.codecUnsupported;
+
+  if (!state.fullTranscodeFallbackTried) {
+    state.fullTranscodeFallbackTried = true;
+    tvLog('fallback', 'error → full-transcode (subtitle burn-in preserved)');
+    return { action: 'full-transcode', codecUnsupported: codecUnsupported };
+  }
+  if (!state.httpFallbackTried && !isPmsCommittedToHlsDelivery(context)) {
+    state.hlsFallbackTried = true;
+    state.httpFallbackTried = true;
+    tvLog('fallback', 'error → http-transcode (subtitle burn-in preserved)');
+    return { action: 'http-transcode' };
+  }
+  if (!state.httpFallbackTried) state.httpFallbackTried = true;
+  tvLog('fallback', 'error → terminal (subtitle burn-in)');
+  return { action: 'terminal' };
+}
+
+/**
  * Next step after a playback error when auto-fallback is allowed.
  * @returns {{ action: 'direct-stream'|'direct-no-subs'|'full-transcode'|'http-transcode'|'terminal' }}
  */
@@ -93,6 +113,12 @@ function decideErrorFallback(state, context) {
   var playbackMode = context.playbackMode;
   var codecUnsupported = context.codecUnsupported;
   var isHls = context.isHls;
+
+  /* Subtitle burn-in must survive the ladder: only burn-capable transcode
+   * fallbacks are allowed (never direct / direct-stream / direct-no-subs). */
+  if (context.subtitleBurnIn === true) {
+    return decideBurnInErrorFallback(state, context);
+  }
 
   if (playbackMode === 'direct' && !state.directStreamFallbackTried) {
     state.directStreamFallbackTried = true;
@@ -154,19 +180,11 @@ function decideErrorFallback(state, context) {
 }
 
 /**
- * Rebuffer watchdog: one quality downshift on HLS transcode, then HTTP transcode.
- * @returns {{ action: 'quality-downshift'|'http-transcode'|'none', nextQuality?: string }}
+ * Rebuffer watchdog: HLS remux falls back to full transcode, then HTTP transcode.
+ * Quality is never downgraded on buffering.
+ * @returns {{ action: 'http-transcode'|'full-transcode'|'none' }}
  */
 function decideRebufferFallback(state, context) {
-  if (
-    context.onHlsTranscode &&
-    context.nextLowerQuality &&
-    !state.rebufferDownshiftTried
-  ) {
-    state.rebufferDownshiftTried = true;
-    tvLog('fallback', 'rebuffer → quality-downshift', context.nextLowerQuality);
-    return { action: 'quality-downshift', nextQuality: context.nextLowerQuality };
-  }
   /* HLS remux with soft subs: try full HLS transcode before HTTP progressive
    * (HTTP fails on desktop MSE and does not fix a stalled remux session). */
   if (
@@ -200,7 +218,6 @@ function clearHlsFallbackAfterHlsTranscodeStart(state, mode, urlIsHls) {
 export {
   createPlaybackFallbackState,
   resetPlaybackFallbackFlags,
-  resetRebufferDownshiftForEpisode,
   isPmsCommittedToHlsDelivery,
   isLadderFallbackStreamChange,
   applyRestartPlaybackFallbackFlags,

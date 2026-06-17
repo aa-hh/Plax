@@ -10,7 +10,6 @@ import {
 } from '../plex/servers/discovery.js';
 import { prefetchHomeHubs } from '../plex/library.js';
 import { warmHubPrefetchPosters } from '../ui/posterImages.js';
-import { startBootNetworkProbe } from '../playback/networkProbe.js';
 import {
   filterLibrariesForUser,
   isRestrictedProfile
@@ -69,7 +68,7 @@ function runAppBootstrap(options) {
     if (!servers.length) throw new Error('No reachable Plex servers');
     var activeServer = pickActiveServer(servers, discovery.profileResources);
     if (!activeServer) throw new Error('No reachable Plex servers');
-    setState({ servers: servers, activeServer: activeServer, networkProbe: null });
+    setState({ servers: servers, activeServer: activeServer });
     console.info('[bootstrap] server selected', {
       name: activeServer.name,
       connectionUri: activeServer.connectionUri,
@@ -95,7 +94,6 @@ function runAppBootstrap(options) {
     });
   }).then(function (payload) {
     var hubPrefetchResult = payload.hubPrefetchResult;
-    startBootNetworkProbe(getState().activeServer, hubPrefetchResult);
     var apiItems = (payload.librariesResult && payload.librariesResult.items)
       ? payload.librariesResult.items.length
       : 0;

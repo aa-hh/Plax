@@ -24,7 +24,6 @@ import {
   buildSubtitleFetchPlan,
   prepareClientSubtitlePlayback,
   parseTranscodeSessionFromUrl,
-  pickDefaultSubtitleTrack,
   subtitleDisplayTitle,
   subtitleMenuOptionLabel
 } from '../../playback/tracks/subtitleTracks.js';
@@ -70,6 +69,7 @@ import {
 } from '../../playback/playbackFallback.js';
 import { createPlaybackRestartLock } from '../../playback/playbackRestartLock.js';
 import { probePlayback } from '../../playback/capabilityProbe.js';
+import { getDeviceCapabilities, audioTranscodeTarget } from '../../playback/capabilityMatrix.js';
 import { isStalePlaybackGeneration } from '../../playback/playbackGeneration.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
 import { onAppBackground } from '../../platform/webos.js';
@@ -83,7 +83,8 @@ import {
   focusFirst,
   attachFocusNav,
   scrollFocusedIntoView,
-  focusableSelector
+  focusableSelector,
+  invalidateFocusableCache
 } from '../focus.js';
 import { getPlaybackPrefs, setPlaybackPrefs } from '../../settings/playbackSettings.js';
 import {
@@ -173,6 +174,12 @@ var ICON_SKIP_INTRO =
   '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
   '<path fill="currentColor" d="M4 18l8.5-6L4 6v12zm9-6v6h2V6h-2zm3.5 6 5.5-3-5.5-3v6z"/>' +
   '</svg>';
+// Stream-lines icon with a small badge to indicate codec/decision detail
+var ICON_MEDIA_INFO =
+  '<svg class="player-media-info-btn-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path fill="currentColor" d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h9v2H4v-2z"/>' +
+  '<path fill="currentColor" d="M17 14a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm-.5 1.5v1h-1v1h1v1h1v-1h1v-1h-1v-1h-1z"/>' +
+  '</svg>';
 
 function formatPlaybackDisplay(item) {
   if (!item) return { primary: 'Loading…', secondary: '' };
@@ -201,6 +208,18 @@ function playerScreen(root, params, navigate) {
   var overlay = document.createElement('div');
   overlay.className = 'player-overlay';
   overlay.innerHTML =
+    '<button type="button" class="player-media-info-btn" id="btn-media-info" tabindex="0" aria-haspopup="dialog" aria-label="Media info" hidden>' +
+    ICON_MEDIA_INFO +
+    '</button>' +
+    '<div class="player-media-info-modal" id="player-media-info-modal" hidden role="dialog" aria-modal="true" aria-labelledby="player-media-info-title">' +
+    '<div class="player-media-info-sheet" data-focus-zone="player-media-info" data-focus-mode="sequential">' +
+    '<p class="player-track-modal-title" id="player-media-info-title">Playback Info</p>' +
+    '<div class="player-media-info-body" id="player-media-info-body"></div>' +
+    '<div class="player-track-modal-footer">' +
+    '<button type="button" class="btn btn-player-modal-cancel" id="btn-media-info-close" tabindex="0">Close</button>' +
+    '</div>' +
+    '</div>' +
+    '</div>' +
     '<div class="player-subtitle-delay" id="player-subtitle-delay" hidden>' +
     '<button type="button" class="btn player-subtitle-delay-btn" id="btn-sub-delay-minus" tabindex="0" aria-label="Subtitle earlier">−</button>' +
     '<span class="player-subtitle-delay-value" id="player-sub-delay-value">0 ms</span>' +
@@ -284,8 +303,7 @@ function playerScreen(root, params, navigate) {
     '<div class="player-autoplay-actions" data-cols="2">' +
     '<button class="btn btn-primary" id="btn-autoplay-play" tabindex="0">Play now</button>' +
     '<button class="btn" id="btn-autoplay-cancel" tabindex="0">Cancel</button>' +
-    '</div></div>' +
-    '<p class="player-hint" id="player-hint">Seek: focus timeline + ←→ · Red: subtitles · Blue: info</p>';
+    '</div></div>';
   root.appendChild(overlay);
   var detachFocus = attachFocusNav(overlay);
 
@@ -339,6 +357,7 @@ function playerScreen(root, params, navigate) {
         setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
       }
       if (infoPanelVisible) updateInfoPanel();
+      if (mediaInfoOpen) updateMediaInfoPanel();
     }
   });
 
@@ -346,6 +365,10 @@ function playerScreen(root, params, navigate) {
   var menuOpen = null;
   var infoPanelVisible = false;
   var scrubPreviewMs = null;
+  /** Resume/seek target to display on the progress bar before the first frame
+   *  arrives, so resuming playback shows where it will start instead of 0:00.
+   *  Cleared once real playback begins. */
+  var primedPositionMs = null;
   var scrubPreviewSource = null;
   var scrubPreviewSourceKey = null;
   var scrubPreviewLoadGen = 0;
@@ -572,6 +595,7 @@ function playerScreen(root, params, navigate) {
 
   function getScrubMs() {
     if (isSeekScrubbing()) return scrubPreviewMs;
+    if (primedPositionMs != null) return primedPositionMs;
     return player.getCurrentTimeMs();
   }
 
@@ -595,7 +619,11 @@ function playerScreen(root, params, navigate) {
   function playbackFallbackContext(extra) {
     return Object.assign({
       pmsDeliveryProtocol: session && session.pmsDeliveryProtocol,
-      commitToHlsDelivery: session && session.commitToHlsDelivery
+      commitToHlsDelivery: session && session.commitToHlsDelivery,
+      /* Preserve a user-chosen burn-in subtitle across the fallback ladder:
+       * the ladder must keep a burn-capable transcode, never revert to a
+       * sub-dropping direct mode. */
+      subtitleBurnIn: !!(session && session.subtitleBurnIn)
     }, extra || {});
   }
 
@@ -620,7 +648,7 @@ function playerScreen(root, params, navigate) {
   function scheduleOverlayHide() {
     clearOverlayHideTimer();
     if (isMotionCursorVisible()) return;
-    if (!overlayVisible || menuOpen || infoPanelVisible) return;
+    if (!overlayVisible || menuOpen || infoPanelVisible || mediaInfoOpen) return;
     if (autoplayPanel && !autoplayPanel.hidden) return;
     overlayHideTimer = setTimeout(function () {
       setOverlayVisible(false);
@@ -632,6 +660,11 @@ function playerScreen(root, params, navigate) {
     overlayVisible = visible;
     overlay.classList.toggle('player-overlay--hidden', !visible);
     if (visible) {
+      // The overlay (and its chrome) is visibility:hidden while collapsed, so any
+      // focusables cached during that time were excluded by isNavFocusable. Drop
+      // the cache now that they're visible again, or D-pad nav finds nothing to
+      // move to (sequential nav sees a 1-item list and bails).
+      invalidateFocusableCache();
       if (shouldScheduleOverlayHideWhenShowing(overlayHideAfterFirstFrame) && !isMotionCursorVisible()) {
         scheduleOverlayHide();
       }
@@ -675,12 +708,9 @@ function playerScreen(root, params, navigate) {
       var selA = audioTracks.filter(function (a) { return a.selected; })[0];
       if (selA) selectedAudioId = selA.id;
     }
-    if (selectedSubtitleId == null) {
-      var defaultSub = pickDefaultSubtitleTrack(
-        subtitleTracks.concat(graphicalSubtitleTracks)
-      );
-      if (defaultSub) selectedSubtitleId = defaultSub.id;
-    }
+    // No automatic default subtitle. selectedSubtitleId is honored only from the
+    // explicit details-screen choice (params.subtitleStreamId) or an in-player
+    // menu pick; if nothing was chosen it stays null ("Off").
     updateTrackButtonLabels();
   }
 
@@ -801,7 +831,7 @@ function playerScreen(root, params, navigate) {
   }
 
   function shouldTrapPlayerChromeFocus() {
-    return !!(menuOpen || infoPanelVisible ||
+    return !!(menuOpen || infoPanelVisible || mediaInfoOpen ||
       (autoplayPanel && !autoplayPanel.hidden));
   }
 
@@ -830,6 +860,21 @@ function playerScreen(root, params, navigate) {
   function syncPlayerChromeFocusable() {
     setPlayerBottomFocusable(!shouldTrapPlayerChromeFocus());
     syncPlaybackPausedForModal();
+  }
+
+  // Trap D-pad inside the media-info modal — same rule as the track modal:
+  // swallow arrow keys so attachFocusNav can't move focus into background
+  // controls, and snap focus back to Close if it ever escapes.
+  function onMediaInfoModalKeyDown(e) {
+    if (!mediaInfoOpen) return;
+    var key = e.keyCode;
+    if (key !== 38 && key !== 40 && key !== 37 && key !== 39) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    var closeBtn = document.getElementById('btn-media-info-close');
+    if (closeBtn && document.activeElement !== closeBtn) {
+      try { closeBtn.focus(); } catch (err) { /* ignore */ }
+    }
   }
 
   function onTrackModalKeyDown(e) {
@@ -1122,6 +1167,7 @@ function playerScreen(root, params, navigate) {
     menuReturnFocus = document.activeElement;
     if (infoPanel) infoPanel.hidden = true;
     infoPanelVisible = false;
+    if (mediaInfoOpen) closeMediaInfo();
     setOverlayVisible(true);
     var titleEl = document.getElementById('player-menu-title');
     var listEl = document.getElementById('player-menu-list');
@@ -1288,6 +1334,12 @@ function playerScreen(root, params, navigate) {
     if (e.keyCode !== KEYS.BACK && e.key !== 'GoBack' && e.keyCode !== 8) return;
     if (menuOpen) {
       closeMenu();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    if (mediaInfoOpen) {
+      closeMediaInfo();
       e.preventDefault();
       e.stopImmediatePropagation();
       return;
@@ -1606,10 +1658,12 @@ function playerScreen(root, params, navigate) {
     video.setAttribute('data-xplay-progress-sync', '1');
     video.addEventListener('playing', function () {
       if (destroyed) return;
+      primedPositionMs = null;
       syncPlaybackProgressUi();
     });
     video.addEventListener('seeked', function () {
       if (destroyed || isSeekScrubbing()) return;
+      primedPositionMs = null;
       syncPlaybackProgressUi();
     });
   }
@@ -1638,14 +1692,18 @@ function playerScreen(root, params, navigate) {
       if (playbackSession === session) session.transcodeSessionId = transcodeSession;
     }
     player.setPlaybackMode(playbackMode);
+    primedPositionMs = offset > 0 ? offset : null;
     player.play(result.url, playbackSession, { offset: offset, mode: playbackMode });
+    if (btnMediaInfo) btnMediaInfo.hidden = false;
     applySubtitleAppearance();
     ensurePlaybackProgressUiSync();
+    updateSeekUi(false);
     if (!progressInterval) {
       progressInterval = setInterval(function () {
         updateProgressUi();
         updatePauseButton();
         if (infoPanelVisible) updateInfoPanel();
+        if (mediaInfoOpen) updateMediaInfoPanel();
       }, 500);
     }
     updatePauseButton();
@@ -1706,8 +1764,9 @@ function playerScreen(root, params, navigate) {
       subtitleBurnIn: burnFlags.burnIn,
       subtitleAdvancedBurn: burnFlags.advancedBurn,
       quality: sessionQualityForPlay(),
-      forceTranscode: params.forceTranscode || (session && session.forceTranscode),
-      transcodeProtocol: protocol || (session && session.transcodeProtocol) || 'hls'
+      forceTranscode: params.forceTranscode || (streamChange != null && session && session.forceTranscode),
+      transcodeProtocol: protocol || (session && session.transcodeProtocol) || 'hls',
+      mediaIndex: currentVersion && currentVersion.mediaIndex != null ? currentVersion.mediaIndex : 0
     };
     if (session && session.playbackSessionId) {
       opts.playbackSessionId = session.playbackSessionId;
@@ -1838,6 +1897,7 @@ function playerScreen(root, params, navigate) {
           syncSubtitleDelayControls();
         }
         if (infoPanelVisible) updateInfoPanel();
+        if (mediaInfoOpen) updateMediaInfoPanel();
         return result;
       });
     });
@@ -1973,6 +2033,7 @@ function playerScreen(root, params, navigate) {
         syncSubtitleDelayControls();
       }
       if (infoPanelVisible) updateInfoPanel();
+      if (mediaInfoOpen) updateMediaInfoPanel();
       clearHlsFallbackAfterHlsTranscodeStart(
         fallbackState,
         result.mode,
@@ -2117,6 +2178,158 @@ function playerScreen(root, params, navigate) {
     onOverlayActivity();
   });
 
+  var mediaInfoModal = document.getElementById('player-media-info-modal');
+  var btnMediaInfo = document.getElementById('btn-media-info');
+  var mediaInfoOpen = false;
+
+  function openMediaInfo() {
+    if (!mediaInfoModal) return;
+    mediaInfoOpen = true;
+    closeMenu();
+    setOverlayVisible(true);
+    clearOverlayHideTimer();
+    mediaInfoModal.hidden = false;
+    updateMediaInfoPanel();
+    syncPlayerChromeFocusable();
+    var closeBtn = document.getElementById('btn-media-info-close');
+    if (closeBtn) {
+      try { closeBtn.focus(); } catch (err) { /* ignore */ }
+    }
+  }
+
+  function closeMediaInfo() {
+    if (!mediaInfoModal) return;
+    mediaInfoOpen = false;
+    mediaInfoModal.hidden = true;
+    syncPlayerChromeFocusable();
+    if (btnMediaInfo) {
+      try { btnMediaInfo.focus(); } catch (err) { /* ignore */ }
+    }
+    scheduleOverlayHide();
+  }
+
+  function decisionLabel(d) {
+    if (!d) return '—';
+    if (d === 'directplay') return 'Direct Play';
+    if (d === 'copy') return 'Direct Stream (copy)';
+    if (d === 'transcode') return 'Transcode';
+    return d;
+  }
+
+  function deliveryModeLabel(mode) {
+    if (mode === 'direct') return 'Progressive file (no server processing)';
+    if (mode === 'direct-stream') return 'HLS remux (copy, repackaged)';
+    if (mode === 'transcode-hls') return 'Transcode → HLS';
+    if (mode === 'transcode-http') return 'Transcode → HTTP progressive';
+    return mode || '—';
+  }
+
+  function escapeHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function streamDecisionFor(info, kind) {
+    if (!info || !info.streams) return null;
+    for (var i = 0; i < info.streams.length; i++) {
+      if (info.streams[i].kind === kind) return info.streams[i];
+    }
+    return null;
+  }
+
+  function videoDeliveryText(info, stats) {
+    var decision = info && info.videoDecision;
+    // What the user is actually seeing right now (live from the element).
+    var rendered = (stats && stats.videoWidth && stats.videoHeight)
+      ? stats.videoWidth + '×' + stats.videoHeight
+      : null;
+    var label = decisionLabel(decision || (playbackMode === 'direct' ? 'directplay' : null));
+    if (rendered) label += ' · ' + rendered;
+    return label;
+  }
+
+  function audioDeliveryText(info, ver) {
+    var decision = info && info.audioDecision;
+    if (decision === 'transcode') {
+      // Show the target codec we asked PMS to convert to, if known.
+      var tgt = audioTranscodeTarget(getDeviceCapabilities(getState().deviceInfo || {}), ver.audioCodec);
+      return tgt ? 'Transcode → ' + tgt.toUpperCase() : 'Transcode';
+    }
+    return decisionLabel(decision || (playbackMode === 'direct' ? 'directplay' : null));
+  }
+
+  function updateMediaInfoPanel() {
+    var body = document.getElementById('player-media-info-body');
+    if (!body) return;
+    var ver = currentVersion || {};
+    var info = session && session.decisionInfo;
+    var stats = player.getPlaybackStats ? player.getPlaybackStats() : {};
+    var rows = [];
+
+    // --- Playback mode (live) ---
+    rows.push({ label: 'Playback', src: null, dst: deliveryModeLabel(stats.mode || playbackMode) });
+
+    // --- Video: source codec/profile/resolution → decision + rendered res ---
+    var vStream = streamDecisionFor(info, 'video');
+    var srcVideo = [
+      (vStream && vStream.codec) || ver.videoCodec,
+      ver.videoProfile && ver.videoProfile.toLowerCase() !== String(ver.videoCodec).toLowerCase()
+        ? ver.videoProfile.toUpperCase() : null,
+      ver.videoResolution
+    ].filter(Boolean).join(' · ');
+    rows.push({ label: 'Video', src: srcVideo || '—', dst: videoDeliveryText(info, stats) });
+
+    // --- Audio: source codec → decision (+ transcode target) ---
+    var aStream = streamDecisionFor(info, 'audio');
+    var srcAudio = (aStream && aStream.codec) || ver.audioCodec || '—';
+    rows.push({ label: 'Audio', src: srcAudio, dst: audioDeliveryText(info, ver) });
+
+    // --- Container ---
+    var containerDst = stats.mode === 'direct'
+      ? 'File (unchanged)'
+      : stats.mode === 'direct-stream'
+        ? 'Remuxed (HLS/TS)'
+        : (stats.mode || playbackMode) ? 'Transcoded (MP4/TS)' : '—';
+    rows.push({ label: 'Container', src: ver.container || '—', dst: containerDst });
+
+    // --- Subtitles (only if applicable) ---
+    var sub = findSubtitleTrack(subtitleTracks.concat(graphicalSubtitleTracks), selectedSubtitleId);
+    if (selectedSubtitleId == null) {
+      rows.push({ label: 'Subtitles', src: null, dst: 'Off' });
+    } else if (sub) {
+      var subDst = sub.graphical
+        ? 'Burned in (transcode)'
+        : (canUseClientSubtitles(stats.mode || playbackMode, sub) ? 'Client overlay' : 'Server transcode');
+      rows.push({ label: 'Subtitles', src: sub.title, dst: subDst });
+    }
+
+    // --- Transcode reason (only when PMS gave one) ---
+    if (info && info.transcodeReason) {
+      rows.push({ label: 'Reason', src: null, dst: info.transcodeReason });
+    }
+
+    body.innerHTML = rows.map(function (r) {
+      return '<div class="pmi-row">' +
+        '<span class="pmi-label">' + escapeHtml(r.label) + '</span>' +
+        (r.src != null ? '<span class="pmi-src">' + escapeHtml(r.src) + '</span><span class="pmi-arrow">→</span>' : '') +
+        '<span class="pmi-dst' + (r.src == null ? ' pmi-dst--full' : '') + '">' + escapeHtml(r.dst) + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  if (btnMediaInfo) {
+    btnMediaInfo.addEventListener('click', function () {
+      if (mediaInfoOpen) closeMediaInfo(); else openMediaInfo();
+    });
+  }
+  var btnMediaInfoClose = document.getElementById('btn-media-info-close');
+  if (btnMediaInfoClose) {
+    btnMediaInfoClose.addEventListener('click', function () {
+      closeMediaInfo();
+    });
+  }
+
   var btnSubDelayMinus = document.getElementById('btn-sub-delay-minus');
   var btnSubDelayPlus = document.getElementById('btn-sub-delay-plus');
   if (btnSubDelayMinus) {
@@ -2219,6 +2432,69 @@ function playerScreen(root, params, navigate) {
       commitSeekBarScrub(e);
     }
   });
+  // Point-and-click seek: tap anywhere on the timeline to jump there absolutely.
+  seekBar.addEventListener('click', function (e) {
+    // Ignore keyboard/remote OK activations (detail === 0) — those commit the
+    // scrub via the Enter handler; only handle real pointer taps here.
+    if (!e.detail) return;
+    var track = seekBar.querySelector('.player-seek-track') || seekBar;
+    var rect = track.getBoundingClientRect();
+    if (!rect.width) return;
+    var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    scrubPreviewMs = Math.round(ratio * getDurationMs());
+    updateSeekUi(true);
+    commitSeekBarScrub(e);
+  });
+
+  // D-pad bridge between the top-right media-info button and the bottom taskbar.
+  // The button lives outside .player-bottom (top-right corner) so the generic
+  // zone nav can't reach it. We wire it spatially: it sits directly above the
+  // settings-column pills (quality/audio/subtitles).
+  //   • UP from the settings column → media-info button
+  //   • DOWN (or LEFT) from the button → nearest pill below it
+  // Capture phase so this runs before attachFocusNav's bubble-phase handler.
+  function nearestControlBelowButton() {
+    if (!btnMediaInfo) return null;
+    var bRect = btnMediaInfo.getBoundingClientRect();
+    var bMidX = bRect.left + bRect.width / 2;
+    var candidates = getFocusables(overlay.querySelector('.player-bottom') || overlay);
+    var best = null;
+    var bestDist = Infinity;
+    candidates.forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      if (!r.width || r.top < bRect.bottom) return; // must be below the button
+      var dist = Math.abs((r.left + r.width / 2) - bMidX);
+      if (dist < bestDist) { bestDist = dist; best = el; }
+    });
+    return best;
+  }
+
+  overlay.addEventListener('keydown', function (e) {
+    var key = e.keyCode;
+    if (key !== 38 && key !== 40 && key !== 37 && key !== 39) return;
+    if (menuOpen || mediaInfoOpen || infoPanelVisible) return;
+    if (!btnMediaInfo || btnMediaInfo.hidden) return;
+    var active = document.activeElement;
+
+    if (active === btnMediaInfo) {
+      // Leave the button toward the controls below; swallow UP/RIGHT (nothing there).
+      if (key === 40 || key === 37) {
+        var target = nearestControlBelowButton();
+        if (target) { target.focus(); scrollFocusedIntoView(target); }
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+
+    // UP from the settings column → media-info button.
+    if (key === 38 && active && active.closest &&
+        active.closest('.player-settings-col')) {
+      btnMediaInfo.focus();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
 
   overlay.addEventListener('keydown', function (e) {
     if (e.keyCode === 13) {
@@ -2234,6 +2510,7 @@ function playerScreen(root, params, navigate) {
   overlay.addEventListener('pointerdown', onOverlayActivity);
   overlay.addEventListener('pointermove', onOverlayActivity);
   document.addEventListener('keydown', onTrackModalKeyDown, true);
+  document.addEventListener('keydown', onMediaInfoModalKeyDown, true);
   document.addEventListener('keydown', handlePlayerBack, true);
 
   function handlePlayerEnter(e) {
@@ -2419,6 +2696,7 @@ function playerScreen(root, params, navigate) {
         detachRemote();
         detachFocus();
         document.removeEventListener('keydown', onTrackModalKeyDown, true);
+        document.removeEventListener('keydown', onMediaInfoModalKeyDown, true);
         document.removeEventListener('keydown', handlePlayerBack, true);
         document.removeEventListener('keydown', handlePlayerEnter, true);
         document.removeEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);

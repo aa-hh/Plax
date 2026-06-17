@@ -20,7 +20,7 @@ var state = {
     connectionOrder: ['local', 'remote', 'relay']
   },
   playbackPrefs: {
-    quality: 'auto',
+    quality: 'original',
     maxBitrate: 20000,
     directPlay: true,
     directStream: true,
@@ -29,7 +29,7 @@ var state = {
     subtitleBackground: true
   },
   settings: {},
-  networkProbe: null
+  deviceInfo: null
 };
 
 function getState() {

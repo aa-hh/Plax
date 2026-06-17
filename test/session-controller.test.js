@@ -732,6 +732,35 @@ test('buildDecisionRequestParams omits transcodeSessionId before PMS session exi
   assert.equal(q.subtitleSize, undefined);
 });
 
+test('buildDecisionRequestParams sets subtitles=none when no subtitle selected', function () {
+  // Root-cause guard: with no subtitle chosen, the param must be present as
+  // 'none' so PMS cannot auto-select + burn a forced subtitle (which would
+  // force a full video transcode and disable Direct Play).
+  var session = baseSession({ playbackStrategy: 'direct', subtitleStreamId: null });
+  var q = buildDecisionRequestParams(mockServer, partKey, session, 'hls');
+  assert.equal(q.subtitles, 'none');
+  // none is a value, not a new key — must not emit burn/soft-sub params.
+  assert.equal(q.subtitleStreamID, undefined);
+  assert.equal(q.skipSubtitles, undefined);
+  assert.equal(q['X-Plex-Subtitle-Stream'], undefined);
+});
+
+test('buildDecisionRequestParams sets subtitles=none on webOS 5+ when no subtitle selected', function () {
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'OLED55C9PUA', version: '5.2.0' });
+    }
+  };
+  setPlexDeviceInfo({ modelName: 'OLED55C9PUA', version: '5.2.0' });
+  setState({ deviceInfo: { versionMajor: 5 } });
+
+  var session = baseSession({ playbackStrategy: 'direct', subtitleStreamId: null });
+  var q = buildDecisionRequestParams(mockServer, partKey, session, 'hls');
+  assert.equal(q.subtitles, 'none');
+});
+
 test('buildFirstDecisionUrl on webOS 4 uses capability probe flags', function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
@@ -749,7 +778,9 @@ test('buildFirstDecisionUrl on webOS 4 uses capability probe flags', function ()
   assert.equal(q.directStream, undefined);
   assert.equal(q.directStreamAudio, undefined);
   assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
-  assert.equal(q.protocol, undefined);
+  // webOS 4 pins the decision to protocol=hls so PMS commits the transcode
+  // session to the mpegts target (not the http/mp4 one → fMP4 base/header 404).
+  assert.equal(q.protocol, 'hls');
   assert.equal(q.transcodeSessionId, undefined);
 });
 
@@ -857,7 +888,7 @@ test('resolveStreamUrl prefers HTTP MP4 remux for MKV Dolby Vision copy', async 
   assert.ok(/\/transcode\/universal\/start\?/.test(result.url));
 });
 
-test('resolveStreamUrl on webOS 4 routes segmented transcode to progressive HTTP (fMP4 HLS init segment 404s)', async function () {
+test('resolveStreamUrl on webOS 4 routes forced transcode to mpegts HLS (hls.js), WAN-safe params', async function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
     platform: { tv: true },
@@ -866,6 +897,9 @@ test('resolveStreamUrl on webOS 4 routes segmented transcode to progressive HTTP
     }
   };
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  // The webOS4 start URL builds its profile from getState().deviceInfo, so the
+  // store must reflect a webOS4 device for the mpegts transcode target to appear.
+  setState({ deviceInfo: { uhd: true, hdr10: true, dolbyVision: false, versionMajor: 4, version: '4.4.0', model: 'OLED55B8LLA' } });
 
   var probedStart = false;
   globalThis.fetch = function (url) {
@@ -883,8 +917,7 @@ test('resolveStreamUrl on webOS 4 routes segmented transcode to progressive HTTP
         headers: { get: function () { return 'application/xml'; } }
       });
     }
-    // start.m3u8 must NOT be fetched as an XHR probe on webOS 4 — the native
-    // <video> player loads it instead (the path the official app uses).
+    // start.m3u8 must NOT be XHR-probed on webOS 4 — hls.js loads it directly.
     probedStart = true;
     return Promise.resolve({
       ok: false,
@@ -894,9 +927,59 @@ test('resolveStreamUrl on webOS 4 routes segmented transcode to progressive HTTP
     });
   };
 
+  // Verified by probing PMS directly: mpegts HLS yields a clean .ts playlist
+  // (no fMP4 /base/header init segment) and the segments fetch 200, while
+  // progressive HTTP returns a 0-byte body. So a forced transcode rides mpegts
+  // HLS via hls.js. The start URL still carries the WAN-400-safe minimal param
+  // set (no hasMDE / location=wan / X-Plex-* identity) per applyWebOsHls...().
   var session = baseSession({ forceTranscode: true, transcodeSessionId: undefined });
   var result = await resolveStreamUrl(session);
-  assert.equal(result.mode, 'transcode-http');
-  assert.ok(result.url.indexOf('start.m3u8') < 0, 'webOS 4 transcode must not use segmented HLS');
-  assert.equal(probedStart, false, 'progressive HTTP start should not be XHR-probed on webOS 4');
+  assert.equal(result.mode, 'transcode-hls');
+  assert.ok(/start\.m3u8/.test(result.url), 'webOS 4 forced transcode must use HLS for hls.js');
+  assert.equal(result.url.indexOf('protocol=hls') >= 0, true, 'HLS start must set protocol=hls');
+  assert.equal(result.url.indexOf('hasMDE=') < 0, true, 'WAN-400-triggering hasMDE must be stripped');
+  assert.ok(
+    decodeURIComponent(result.url).indexOf('container=mpegts') >= 0,
+    'webOS 4 transcode profile-extra must request mpegts'
+  );
+  assert.equal(probedStart, false, 'native HLS playlist should not be XHR-probed on webOS 4');
+});
+
+test('resolveStreamUrl on webOS 4 reroutes direct-stream (copy) to progressive HTTP (fMP4 init segment 404s)', async function () {
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+    }
+  };
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+
+  globalThis.fetch = function (url) {
+    if (String(url).indexOf('/decision') >= 0) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: function () {
+          return [
+            '<MediaContainer resourceSession="plex-copy-session">',
+            '<Video><Media protocol="hls"><Part decision="copy" protocol="hls"/></Media></Video>',
+            '</MediaContainer>'
+          ].join('');
+        },
+        headers: { get: function () { return 'application/xml'; } }
+      });
+    }
+    return Promise.resolve({
+      ok: false,
+      status: 400,
+      text: function () { return '<html>400 Bad Request</html>'; },
+      headers: { get: function () { return 'text/html'; } }
+    });
+  };
+
+  var session = baseSession({ transcodeSessionId: undefined });
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'direct-stream');
+  assert.ok(result.url.indexOf('start.m3u8') < 0, 'webOS 4 copy/remux must use progressive HTTP');
 });

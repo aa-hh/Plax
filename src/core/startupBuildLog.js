@@ -6,12 +6,23 @@ function nonEmptyText(value, fallback) {
   return trimmed || fallback;
 }
 
+function formatBuildNumber(value) {
+  var parsed = Number(value);
+  if (!isFinite(parsed)) return 'unknown-build';
+  if (parsed < 1) return 'unknown-build';
+  return String(Math.floor(parsed));
+}
+
 function formatStartupBuildLine(runtimeBuild) {
   var metadata = runtimeBuild || null;
+  var buildNumber = metadata ? formatBuildNumber(metadata.buildNumber) : 'unknown-build';
   var builtAt = metadata ? nonEmptyText(metadata.builtAt, 'unknown-time') : 'unknown-time';
   var commit = metadata ? nonEmptyText(metadata.gitCommit, 'no-git') : 'no-git';
   var summary = metadata ? nonEmptyText(metadata.summary, 'unknown-change-set') : 'build-metadata-missing';
-  return '[XPlay Lite] startup-build builtAt=' + builtAt + ' commit=' + commit + ' summary=' + summary;
+  return '[XPlay Lite] startup-build buildNumber=' + buildNumber +
+    ' builtAt=' + builtAt +
+    ' commit=' + commit +
+    ' summary=' + summary;
 }
 
 function logStartupBuild(globalObject) {

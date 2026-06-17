@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import {
   createPlaybackFallbackState,
   resetPlaybackFallbackFlags,
-  resetRebufferDownshiftForEpisode,
   isLadderFallbackStreamChange,
   applyRestartPlaybackFallbackFlags,
   decideErrorFallback,
@@ -28,22 +27,11 @@ test('resetPlaybackFallbackFlags clears all tried flags', function () {
   var state = createPlaybackFallbackState();
   state.directStreamFallbackTried = true;
   state.httpFallbackTried = true;
-  state.rebufferDownshiftTried = true;
   resetPlaybackFallbackFlags(state);
   assert.equal(state.directStreamFallbackTried, false);
   assert.equal(state.fullTranscodeFallbackTried, false);
   assert.equal(state.hlsFallbackTried, false);
   assert.equal(state.httpFallbackTried, false);
-  assert.equal(state.rebufferDownshiftTried, false);
-});
-
-test('resetRebufferDownshiftForEpisode clears downshift only', function () {
-  var state = createPlaybackFallbackState();
-  state.rebufferDownshiftTried = true;
-  state.httpFallbackTried = true;
-  resetRebufferDownshiftForEpisode(state);
-  assert.equal(state.rebufferDownshiftTried, false);
-  assert.equal(state.httpFallbackTried, true);
 });
 
 test('applyRestartPlaybackFallbackFlags: manual restart resets ladder flags', function () {
@@ -140,6 +128,58 @@ test('direct-no-subs is not offered when remux was a regular fallback', function
   );
 });
 
+test('subtitle burn-in never reverts to a sub-dropping direct mode', function () {
+  var state = createPlaybackFallbackState();
+
+  /* On a direct-stream error the normal ladder would try direct-stream first;
+   * with burn-in active it must skip straight to a burn-capable transcode and
+   * never offer direct / direct-stream / direct-no-subs. */
+  var step1 = decideErrorFallback(state, {
+    playbackMode: 'direct',
+    subtitleBurnIn: true,
+    codecUnsupported: false,
+    isHls: false
+  });
+  assert.deepEqual(step1, { action: 'full-transcode', codecUnsupported: false });
+  assert.notEqual(step1.action, 'direct-stream');
+  assert.notEqual(step1.action, 'direct-no-subs');
+
+  /* Next failure escalates to the terminal transcode path (http-transcode),
+   * still preserving the burn. */
+  var step2 = decideErrorFallback(state, {
+    playbackMode: 'transcode-hls',
+    subtitleBurnIn: true,
+    codecUnsupported: false,
+    isHls: true
+  });
+  assert.deepEqual(step2, { action: 'http-transcode' });
+  assert.equal(state.httpFallbackTried, true);
+
+  /* Once http-transcode has been tried, terminate — never loop, never drop subs. */
+  var step3 = decideErrorFallback(state, {
+    playbackMode: 'transcode-http',
+    subtitleBurnIn: true,
+    codecUnsupported: false,
+    isHls: false
+  });
+  assert.deepEqual(step3, { action: 'terminal' });
+});
+
+test('subtitle burn-in: enteredRemuxForSubtitlesOnly cannot trigger direct-no-subs', function () {
+  var state = createPlaybackFallbackState();
+  /* Even if the remux-for-subs flag is set, a burn-in session must not drop
+   * the chosen subtitle by reverting to direct-no-subs. */
+  state.enteredRemuxForSubtitlesOnly = true;
+  var step = decideErrorFallback(state, {
+    playbackMode: 'direct-stream',
+    subtitleBurnIn: true,
+    codecUnsupported: false,
+    isHls: true
+  });
+  assert.equal(step.action, 'full-transcode');
+  assert.notEqual(step.action, 'direct-no-subs');
+});
+
 test('decideErrorFallback: skips HLS→HTTP when already on transcode-http', function () {
   var state = createPlaybackFallbackState();
   state.directStreamFallbackTried = true;
@@ -150,36 +190,10 @@ test('decideErrorFallback: skips HLS→HTTP when already on transcode-http', fun
   );
 });
 
-test('decideRebufferFallback: quality downshift before HTTP on HLS transcode', function () {
+test('decideRebufferFallback: switches HLS transcode to HTTP without downgrading quality', function () {
   var state = createPlaybackFallbackState();
   assert.deepEqual(
-    decideRebufferFallback(state, {
-      transcodeProtocol: 'hls',
-      onHlsTranscode: true,
-      nextLowerQuality: '720'
-    }),
-    { action: 'quality-downshift', nextQuality: '720' }
-  );
-  assert.equal(state.rebufferDownshiftTried, true);
-  assert.deepEqual(
-    decideRebufferFallback(state, {
-      transcodeProtocol: 'hls',
-      onHlsTranscode: true,
-      nextLowerQuality: '480'
-    }),
-    { action: 'http-transcode' }
-  );
-  assert.equal(state.httpFallbackTried, true);
-});
-
-test('decideRebufferFallback: switches to HTTP when no downshift available', function () {
-  var state = createPlaybackFallbackState();
-  assert.deepEqual(
-    decideRebufferFallback(state, {
-      transcodeProtocol: 'hls',
-      onHlsTranscode: true,
-      nextLowerQuality: null
-    }),
+    decideRebufferFallback(state, { transcodeProtocol: 'hls' }),
     { action: 'http-transcode' }
   );
   assert.equal(state.httpFallbackTried, true);
@@ -202,9 +216,7 @@ test('decideRebufferFallback: HLS remux stalls escalate to full transcode before
   assert.deepEqual(
     decideRebufferFallback(state, {
       playbackMode: 'direct-stream',
-      transcodeProtocol: 'hls',
-      onHlsTranscode: true,
-      nextLowerQuality: null
+      transcodeProtocol: 'hls'
     }),
     { action: 'full-transcode' }
   );
@@ -212,9 +224,7 @@ test('decideRebufferFallback: HLS remux stalls escalate to full transcode before
   assert.deepEqual(
     decideRebufferFallback(state, {
       playbackMode: 'direct-stream',
-      transcodeProtocol: 'hls',
-      onHlsTranscode: true,
-      nextLowerQuality: null
+      transcodeProtocol: 'hls'
     }),
     { action: 'http-transcode' }
   );
@@ -222,7 +232,6 @@ test('decideRebufferFallback: HLS remux stalls escalate to full transcode before
 
 test('decideRebufferFallback: skips HTTP when PMS committed to HLS delivery', function () {
   var state = createPlaybackFallbackState();
-  state.rebufferDownshiftTried = true;
   assert.deepEqual(
     decideRebufferFallback(state, {
       transcodeProtocol: 'hls',

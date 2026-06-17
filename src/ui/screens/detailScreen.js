@@ -18,8 +18,7 @@ import { extractVersions, pickBestVersion } from '../../playback/versionSelector
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
 import {
   parseSubtitleStreams,
-  pickDefaultSubtitleTrack,
-  subtitleDisplayTitle
+  subtitleMenuOptionLabel
 } from '../../playback/tracks/subtitleTracks.js';
 import { probePlayback } from '../../playback/capabilityProbe.js';
 import {
@@ -758,15 +757,11 @@ function detailScreen(root, params, navigate) {
   }
 
   function pickDefaultSubtitleIfNeeded(subs) {
-    // Auto-select TEXT subs only (pickDefaultSubtitleTrack skips graphical).
-    // Text subs render client-side and keep Direct Play; image subs are never
-    // auto-enabled because they'd force a burn-in transcode.
+    // No automatic default subtitle, ever. A subtitle applies only on explicit
+    // user selection. We only clear a stale selection that no longer exists in
+    // the current version's stream list; otherwise leave it at "Off" (null).
     if (selectedSubtitle != null && !trackExists(subs, selectedSubtitle)) {
       selectedSubtitle = null;
-    }
-    if (selectedSubtitle == null && subs.length) {
-      var picked = pickDefaultSubtitleTrack(subs);
-      selectedSubtitle = picked ? picked.id : null;
     }
   }
 
@@ -1286,8 +1281,8 @@ function detailScreen(root, params, navigate) {
   }
 
   function subtitleOptionLabel(track) {
-    var label = subtitleDisplayTitle(track);
-    return track.graphical ? label + ' (image)' : label;
+    var label = subtitleMenuOptionLabel(track);
+    return track.graphical ? label + ' (image — transcode)' : label;
   }
 
   function trackExists(tracks, id) {
@@ -1325,12 +1320,10 @@ function detailScreen(root, params, navigate) {
       });
     }
 
+    // No automatic default subtitle: only clear a stale selection that no
+    // longer exists; never auto-pick one. Default stays "Off" (null).
     if (selectedSubtitle != null && !trackExists(subs, selectedSubtitle)) {
       selectedSubtitle = null;
-    }
-    if (selectedSubtitle == null && subs.length) {
-      var pickedSub = pickDefaultSubtitleTrack(subs);
-      selectedSubtitle = pickedSub ? pickedSub.id : null;
     }
 
     var subOptions = [{ id: null, label: 'Off', data: null }].concat(subs.map(function (s) {

@@ -100,7 +100,7 @@ test('plexClientQuery includes platform version and model', function () {
 });
 
 test('buildPlaybackUrl transcode query carries full Plex client identity', function () {
-  setPlexDeviceInfo({ modelName: 'OLED55B9PUA', version: '4.9.0' });
+  setPlexDeviceInfo({ modelName: 'OLED55B9PUA', version: '5.4.0' });
 
   var server = {
     connectionUri: 'https://plex.example.com:32400',
@@ -113,6 +113,7 @@ test('buildPlaybackUrl transcode query carries full Plex client identity', funct
       server: server,
       forceTranscode: true,
       sessionId: 'sess-1',
+      transcodeSessionId: 'plex-transcode-sess-1',
       mediaIndex: 0,
       partIndex: 0
     },
@@ -121,7 +122,7 @@ test('buildPlaybackUrl transcode query carries full Plex client identity', funct
   var u = new URL(url);
   assert.equal(u.searchParams.get('X-Plex-Product'), PMS_PRODUCT);
   assert.equal(u.searchParams.get('X-Plex-Platform'), PMS_PLATFORM);
-  assert.equal(u.searchParams.get('X-Plex-Platform-Version'), '4.9.0');
+  assert.equal(u.searchParams.get('X-Plex-Platform-Version'), '5.4.0');
   assert.equal(u.searchParams.get('X-Plex-Model'), 'OLED55B9PUA');
   assert.equal(u.searchParams.get('X-Plex-Client-Identifier'), 'test-client-uuid-1234');
 });

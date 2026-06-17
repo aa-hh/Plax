@@ -85,35 +85,23 @@ function subtitleFormatLabel(track) {
   return '';
 }
 
-function subtitleMenuOptionLabel(track) {
+/** Embedded/External source token from the track's delivery; '' if unknown. */
+function subtitleSourceLabel(track) {
   if (!track) return '';
-  var title = subtitleDisplayTitle(track);
-  var type = subtitleFormatLabel(track);
-  return type ? title + ' · ' + type : title;
+  var delivery = String(track.delivery || '').toLowerCase();
+  if (delivery === 'sidecar' || delivery === 'ondemand') return 'External';
+  if (delivery === 'embedded') return 'Embedded';
+  return '';
 }
 
-/** Plex-selected track, else single forced track, else first non-SDH, else first. */
-function pickDefaultSubtitleTrack(tracks) {
-  if (!tracks || !tracks.length) return null;
-  // Never AUTO-enable an image-based subtitle (PGS/VOBSUB). Image subs can't be
-  // soft-delivered — Plex must burn them into the video, which forces a full
-  // transcode and disables Direct Play (directPlayDecisionCode 3000). Plex for
-  // Kodi / the native app render PGS as a client-side overlay; we can't, so
-  // auto-selecting one needlessly transcodes everything. Text subs soft-deliver
-  // as sidecars and keep Direct Play intact. The user can still pick a graphical
-  // track explicitly from the subtitle menu and accept the burn-in transcode.
-  var candidates = tracks.filter(function (t) { return !t.graphical; });
-  if (!candidates.length) return null;
-  var i;
-  for (i = 0; i < candidates.length; i++) {
-    if (candidates[i].selected) return candidates[i];
-  }
-  var forced = candidates.filter(function (t) { return t.forced; });
-  if (forced.length === 1) return forced[0];
-  for (i = 0; i < candidates.length; i++) {
-    if (!candidates[i].hearingImpaired) return candidates[i];
-  }
-  return candidates[0];
+function subtitleMenuOptionLabel(track) {
+  if (!track) return '';
+  var label = subtitleDisplayTitle(track);
+  var type = subtitleFormatLabel(track);
+  if (type) label += ' · ' + type;
+  var source = subtitleSourceLabel(track);
+  if (source) label += ' · ' + source;
+  return label;
 }
 
 function findSubtitleTrack(tracks, streamId) {
@@ -754,6 +742,6 @@ export {
   protocolForPlaybackMode,
   subtitleDisplayTitle,
   subtitleFormatLabel,
-  subtitleMenuOptionLabel,
-  pickDefaultSubtitleTrack
+  subtitleSourceLabel,
+  subtitleMenuOptionLabel
 };

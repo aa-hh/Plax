@@ -6,6 +6,7 @@ var path = require('path');
 var cp = require('child_process');
 
 var TRACK_ROOTS = ['src', 'index.html', 'appinfo.json', 'build/rollup.config.js'];
+var BUILD_SEQUENCE_FILE = '.build-seq.json';
 
 var AREA_RULES = [
   { re: /profilePicker|profile-picker/i, area: 'profile-picker' },
@@ -198,9 +199,40 @@ function writeLastStamp(projectRoot, data) {
   );
 }
 
+function readBuildSequence(projectRoot) {
+  var seqPath = path.join(projectRoot, BUILD_SEQUENCE_FILE);
+  if (!fs.existsSync(seqPath)) {
+    return { buildNumber: 0 };
+  }
+  try {
+    var raw = JSON.parse(fs.readFileSync(seqPath, 'utf8'));
+    var parsed = Number(raw && raw.buildNumber);
+    if (!isFinite(parsed) || parsed < 0) {
+      return { buildNumber: 0 };
+    }
+    return { buildNumber: Math.floor(parsed) };
+  } catch (_) {
+    return { buildNumber: 0 };
+  }
+}
+
+function allocateBuildNumber(projectRoot) {
+  var seqPath = path.join(projectRoot, BUILD_SEQUENCE_FILE);
+  var current = readBuildSequence(projectRoot);
+  var next = current.buildNumber + 1;
+  fs.writeFileSync(
+    seqPath,
+    JSON.stringify({
+      buildNumber: next,
+      updatedAt: new Date().toISOString()
+    }, null, 2) + '\n'
+  );
+  return next;
+}
+
 function formatStampLine(stamp) {
   if (!stamp) return 'Build: (no stamp — run npm run build)';
-  var parts = ['Build @ ' + stamp.builtAt];
+  var parts = ['Build #' + (stamp.buildNumber || '?') + ' @ ' + stamp.builtAt];
   if (stamp.gitCommit) {
     parts.push(stamp.gitCommit + (stamp.gitDirty ? '*' : ''));
     if (stamp.gitBranch) parts.push('on ' + stamp.gitBranch);
@@ -245,8 +277,10 @@ function createBuildStamp(projectRoot) {
   var initialBuild = !prevFingerprints;
   var meta = summarizeChanges(diff, fingerprints, { initialBuild: initialBuild });
   var git = getGitInfo(projectRoot);
+  var buildNumber = allocateBuildNumber(projectRoot);
 
   var stamp = {
+    buildNumber: buildNumber,
     builtAt: new Date().toISOString(),
     since: prevRecord && prevRecord.builtAt ? prevRecord.builtAt : null,
     initialBuild: meta.initialBuild,
@@ -272,6 +306,7 @@ function createBuildStamp(projectRoot) {
 module.exports = {
   createBuildStamp: createBuildStamp,
   readLastStamp: readLastStamp,
+  readBuildSequence: readBuildSequence,
   formatStampLine: formatStampLine,
   formatStampDetail: formatStampDetail,
   collectFingerprints: collectFingerprints,
