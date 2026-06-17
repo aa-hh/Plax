@@ -1772,6 +1772,25 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   min-width: 148px;
 }
 
+/* Up Next button (D): a .btn that stacks a small muted "Up Next" label over the
+   next-episode title. Inherits the unified .btn base (target height + W1 ring);
+   we just override layout to two lines, left-aligned, and the secondary colours. */
+.detail-up-next-btn {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+}
+
+.detail-up-next-btn__label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.75em;
+  color: var(--text-muted);
+}
+
 .detail-episode-summary {
   margin: var(--space-3) 0 0;
   font-size: var(--font-body);
