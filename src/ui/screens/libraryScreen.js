@@ -65,7 +65,7 @@ function libraryScreen(root, params, navigate) {
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
 
-  var hubNavHost = document.getElementById('browsing-hub-nav-host');
+  var hubNavHost = screen.querySelector('#browsing-hub-nav-host');
   var hubNav = mountBrowsingHubNav(hubNavHost, {
     navigate: navigate,
     fromRoute: 'library',

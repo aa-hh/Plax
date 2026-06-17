@@ -41,7 +41,7 @@ function watchlistScreen(root, params, navigate) {
   var detachFocus = attachFocusNav(screen);
   var destroyed = false;
 
-  var hubNav = mountBrowsingHubNav(document.getElementById('browsing-hub-nav-host'), {
+  var hubNav = mountBrowsingHubNav(screen.querySelector('#browsing-hub-nav-host'), {
     navigate: navigate,
     activeHubId: 'watchlist',
     fromRoute: 'watchlist'

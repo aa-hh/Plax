@@ -37,8 +37,8 @@ function homeScreen(root, params, navigate) {
   var destroyed = false;
   var renderToken = 0;
   var activeHubId = (params && params.hub) || 'home';
-  var hubNavHost = document.getElementById('browsing-hub-nav-host');
-  var hubTitleEl = document.getElementById('home-hub-title');
+  var hubNavHost = screen.querySelector('#browsing-hub-nav-host');
+  var hubTitleEl = screen.querySelector('#home-hub-title');
   var hubNav = mountBrowsingHubNav(hubNavHost, {
     navigate: navigate,
     activeHubId: activeHubId,

@@ -3,7 +3,7 @@ import { clearAuth, getOwnerAuthToken } from '../../core/storage.js';
 import { renderNetworkSettings } from '../../settings/networkSettings.js';
 import { renderPlaybackSettings } from '../../settings/playbackSettings.js';
 import { fetchHomeUsers } from '../../plex/users/homeUsers.js';
-import { focusFirst, attachFocusNav } from '../focus.js';
+import { focusFirst, getFocusables, attachFocusNav } from '../focus.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { VERSION } from '../../plex/client.js';
 import { isPerfEnabled } from '../../perf/resourceMonitor.js';
@@ -182,7 +182,7 @@ function settingsScreen(root, params, navigate) {
 
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
-  var hubNav = mountBrowsingHubNav(document.getElementById('browsing-hub-nav-host'), {
+  var hubNav = mountBrowsingHubNav(screen.querySelector('#browsing-hub-nav-host'), {
     navigate: navigate,
     activeRoute: 'settings',
     fromRoute: 'settings'
@@ -462,7 +462,14 @@ function settingsScreen(root, params, navigate) {
     navigate('pairing', {});
   });
 
-  if (!hubNav.focusSidebar()) focusFirst(screen);
+  // Land focus on the first settings control (top-leftmost), not the sidebar
+  // icon the user just clicked. LEFT returns to the sidebar from here.
+  var settingsMain = screen.querySelector('.settings-main');
+  if (settingsMain && getFocusables(settingsMain).length) {
+    focusFirst(settingsMain);
+  } else if (!hubNav.focusSidebar()) {
+    focusFirst(screen);
+  }
   return {
     destroy: function () {
       if (activeModalClose) activeModalClose();

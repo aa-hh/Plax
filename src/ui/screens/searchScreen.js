@@ -57,7 +57,7 @@ function searchScreen(root, params, navigate) {
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
 
-  mountBrowsingHubNav(document.getElementById('browsing-hub-nav-host'), {
+  mountBrowsingHubNav(screen.querySelector('#browsing-hub-nav-host'), {
     navigate: navigate,
     activeRoute: 'search',
     fromRoute: 'search'
