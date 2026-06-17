@@ -2305,7 +2305,9 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 6px var(--space-4);
+  /* Room for the focus grow (scale + 7px ring) so episode chips aren't
+     clipped top/bottom by overflow-y: hidden under html.caps-motion. */
+  padding: var(--space-5) var(--space-4);
 }
 
 .detail-modal-list--episodes > * + * {
