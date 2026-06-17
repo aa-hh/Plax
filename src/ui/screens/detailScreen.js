@@ -523,6 +523,48 @@ function detailScreen(root, params, navigate) {
     navigate('player', playParams(offset));
   }
 
+  /**
+   * Pick the episode to play when Play is pressed on a season: the first
+   * episode that isn't fully watched (resuming if it's in progress), else the
+   * first episode. Mirrors Plex "On Deck".
+   */
+  function resolveSeasonPlayTarget(episodes) {
+    if (!episodes || !episodes.length) return null;
+    for (var i = 0; i < episodes.length; i++) {
+      var ep = episodes[i];
+      var watched = ep.viewCount != null && Number(ep.viewCount) > 0;
+      if (!watched) {
+        return { episode: ep, offset: ep.viewOffset > 0 ? ep.viewOffset : 0 };
+      }
+    }
+    // All watched → start the season over from episode 1.
+    return { episode: episodes[0], offset: 0 };
+  }
+
+  /**
+   * Play a season: resolve the target episode + queue the season so the player
+   * autoplays the rest. Falls back to the season metadata only if episodes
+   * can't be loaded.
+   */
+  function playSeason(seasonItem) {
+    var seasonKey = seasonItem.ratingKey;
+    ensureSeasonEpisodesLoaded(seasonKey).then(function (episodes) {
+      var target = resolveSeasonPlayTarget(episodes);
+      if (!target) {
+        navigateToPlayer(0);
+        return;
+      }
+      navigate('player', {
+        ratingKey: target.episode.ratingKey,
+        queueSeasonKey: seasonKey,
+        offset: target.offset || 0,
+        _detail: activeDetailRoute
+      });
+    }).catch(function () {
+      navigateToPlayer(0);
+    });
+  }
+
   function offerResumeChoiceOrPlay(defaultOffset) {
     if (!metadata) return;
     if (shouldOfferResumeChoice(metadata.viewOffset, metadata.duration)) {
@@ -1141,9 +1183,19 @@ function detailScreen(root, params, navigate) {
     }
 
     screen.querySelector('#btn-start').addEventListener('click', function () {
+      // A season has no playable part of its own — resolve an episode + queue
+      // the season instead of handing the season container to the player.
+      if (item.type === 'season') {
+        playSeason(item);
+        return;
+      }
       offerResumeChoiceOrPlay(0);
     });
     screen.querySelector('#btn-play').addEventListener('click', function () {
+      if (item.type === 'season') {
+        playSeason(item);
+        return;
+      }
       navigateToPlayer(0);
     });
     screen.querySelector('#btn-resume').addEventListener('click', function () {

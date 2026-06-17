@@ -56,11 +56,16 @@
   --font-card-meta: 14px;
   --font-meta: 22px;
   --font-small: 19px;
-  --row-poster-w: 156px;
-  --row-poster-h: 234px;
+  /* Unified poster scale (all 2:3) — see tv-ui-contract.md (Workstream B) */
+  --row-poster-w: 180px;   /* standard: shelves, related rails, search */
+  --row-poster-h: 270px;
   --row-card-gap: 16px;
-  --grid-poster-w: 176px;
-  --grid-poster-h: 264px;
+  --grid-poster-w: 180px;  /* library grid — matches standard */
+  --grid-poster-h: 270px;
+  --poster-detail-w: 300px; /* detail hero poster */
+  --poster-detail-h: 450px;
+  --poster-ep-w: 300px;     /* episode card (16:9) */
+  --poster-ep-h: 169px;
   --sidebar-w: 240px;
   --library-sidebar-w: 280px;
   /* sidebar width + space-7 gutter (280 + 28) — precomputed for webOS 4 */
@@ -68,9 +73,16 @@
   --detail-top-gap: var(--space-6);
   --detail-margin-x: var(--space-8);
   --detail-margin-y: var(--space-4);
+  /* Unified focus language + 10-foot targets — see tv-ui-contract.md (Workstream A) */
   --focus-w: 3px;
-  /* Space for outline + box-shadow outside poster (≥ prior 10px row padding) */
-  --focus-ring-pad: 10px;
+  --target-min: 52px;
+  --focus-glow: rgba(240, 181, 51, 0.95);  /* bright inner gold ring */
+  --focus-halo: rgba(0, 0, 0, 0.65);       /* dark outer halo: reads over bright posters */
+  --focus-shadow: 0 0 0 3px var(--focus-glow), 0 0 0 7px var(--focus-halo);
+  --focus-scale: 1.06;       /* applied only under html.caps-motion (newer webOS) */
+  --focus-motion-dur: 0.16s;
+  /* Space for focus ring + (motion) scale outside poster */
+  --focus-ring-pad: 12px;
   /* Precomputed gutter halves — avoid calc() division on webOS 4 Chromium */
   --profile-picker-gap-half: 12px;
   --media-grid-gap-y-half: 12px;
