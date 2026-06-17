@@ -382,11 +382,17 @@ function buildDecisionRetryUrl(server, partKey, session, flagOverrides) {
 }
 
 function buildFirstDecisionUrl(server, partKey, session, protocol) {
-  return buildDecisionRetryUrl(server, partKey, session, {
-    directPlay: '1',
-    directStream: '1',
-    directStreamAudio: '1'
-  });
+  // The first decision is optimistic — directPlay=1 — so PMS direct-plays when
+  // it can and tells us why when it can't (burn, codec, etc. still resolve to a
+  // transcode server-side). The ONE exception is an explicit quality cap:
+  // directPlay=1 bypasses maxVideoBitrate, so PMS replies "Direct play OK" and
+  // never builds a transcode session → start.m3u8 400s / buffers forever. For a
+  // requiresServerTranscode quality we must send directPlay=0 up front so PMS
+  // commits a real (mpegts) transcode session honoring the bitrate/resolution.
+  var flags = requiresServerTranscode(sessionQualityKey(session))
+    ? { directPlay: '0', directStream: '0', directStreamAudio: '0' }
+    : { directPlay: '1', directStream: '1', directStreamAudio: '1' };
+  return buildDecisionRetryUrl(server, partKey, session, flags);
 }
 
 /**

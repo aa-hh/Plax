@@ -784,6 +784,21 @@ test('buildFirstDecisionUrl on webOS 4 uses capability probe flags', function ()
   assert.equal(q.transcodeSessionId, undefined);
 });
 
+test('buildFirstDecisionUrl sends directPlay=0 for a manual quality cap', function () {
+  // directPlay=1 lets PMS bypass maxVideoBitrate and reply "Direct play OK", so
+  // a manual quality pick must request directPlay=0 to force a real transcode
+  // session at the capped bitrate (otherwise start.m3u8 buffers forever).
+  var session = baseSession({ quality: '720' });
+  var q = parseQuery(buildFirstDecisionUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.directPlay, '0');
+});
+
+test('buildFirstDecisionUrl stays optimistic (directPlay=1) for original quality', function () {
+  var session = baseSession({ quality: 'original' });
+  var q = parseQuery(buildFirstDecisionUrl(mockServer, partKey, session, 'hls'));
+  assert.equal(q.directPlay, '1');
+});
+
 test('buildPlaybackUrl uses resourceSession from decision on start URL', function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
