@@ -231,6 +231,15 @@ function playerScreen(root, params, navigate) {
     '<span class="player-skip-intro-prompt-hint">OK</span>' +
     '</button>' +
     '<div class="player-bottom">' +
+    // Meta header sits full-width ABOVE the scrubber and controls so a long
+    // title can never collide with the transport cluster.
+    '<div class="player-meta-header">' +
+    '<h1 class="player-now-playing-title" id="player-title-primary">Loading…</h1>' +
+    '<p class="player-now-playing-subtitle" id="player-title-secondary" hidden></p>' +
+    '<p class="player-status" id="player-status" hidden></p>' +
+    '<button type="button" class="btn player-retry-btn" id="btn-playback-retry" hidden tabindex="0">Retry</button>' +
+    '<p class="player-next-up" id="player-next-up" hidden></p>' +
+    '</div>' +
     '<div class="player-seek-row" data-focus-zone="player-seek">' +
     '<span class="player-time player-time--elapsed" id="player-time-elapsed" aria-hidden="true">0:00</span>' +
     '<div class="player-seek-wrap">' +
@@ -245,30 +254,19 @@ function playerScreen(root, params, navigate) {
     '</div>' +
     '<span class="player-time player-time--total" id="player-time-total" aria-hidden="true">0:00</span>' +
     '</div>' +
-    '<div class="player-control-bar">' +
-    '<div class="player-meta-col">' +
-    '<h1 class="player-now-playing-title" id="player-title-primary">Loading…</h1>' +
-    '<p class="player-now-playing-subtitle" id="player-title-secondary" hidden></p>' +
-    '<p class="player-status" id="player-status" hidden></p>' +
-    '<button type="button" class="btn player-retry-btn" id="btn-playback-retry" hidden tabindex="0">Retry</button>' +
-    '<p class="player-next-up" id="player-next-up" hidden></p>' +
-    '</div>' +
-    '<div class="player-taskbar" data-focus-zone="player-taskbar" data-focus-mode="sequential" data-focus-sequential-axis="horizontal">' +
-    '<div class="player-transport-col">' +
-    '<div class="player-transport-wing player-transport-wing--left">' +
+    // Controls live in one horizontal sequential focus zone: LEFT/RIGHT walks
+    // the whole chain in source order (transport cluster, then settings). The
+    // transport/settings split below is purely visual (two centered rows).
+    '<div class="player-controls-row" data-focus-zone="player-taskbar" data-focus-mode="sequential" data-focus-sequential-axis="horizontal">' +
+    '<div class="player-transport">' +
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-prev" tabindex="0" aria-label="Previous in queue">' + ICON_PREV + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-rewind" tabindex="0" aria-label="Rewind 10 seconds">' + ICON_REWIND + '</button>' +
-    '</div>' +
-    '<div class="player-transport-center">' +
     '<button type="button" class="player-control-pill player-control-pill--icon player-control-pill--play" id="btn-pause" tabindex="0" aria-label="Pause">' + ICON_PAUSE + '</button>' +
-    '</div>' +
-    '<div class="player-transport-wing player-transport-wing--right">' +
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-forward" tabindex="0" aria-label="Forward 30 seconds">' + ICON_FORWARD + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-next" tabindex="0" aria-label="Next in queue">' + ICON_NEXT + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon player-control-pill--danger" id="btn-stop" tabindex="0" aria-label="Stop">' + ICON_STOP + '</button>' +
     '</div>' +
-    '</div>' +
-    '<div class="player-settings-col">' +
+    '<div class="player-settings">' +
     '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-player-quality" tabindex="0" aria-haspopup="dialog" aria-label="Quality">' +
     '<span class="player-stream-active-mark" id="mark-quality" hidden></span>' +
     ICON_QUALITY +
@@ -281,7 +279,6 @@ function playerScreen(root, params, navigate) {
     '<span class="player-stream-active-mark" id="mark-subtitles"></span>' +
     ICON_SUBTITLE +
     '</button>' +
-    '</div>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -2487,9 +2484,9 @@ function playerScreen(root, params, navigate) {
       return;
     }
 
-    // UP from the settings column → media-info button.
+    // UP from the settings group → media-info button.
     if (key === 38 && active && active.closest &&
-        active.closest('.player-settings-col')) {
+        active.closest('.player-settings')) {
       btnMediaInfo.focus();
       e.preventDefault();
       e.stopImmediatePropagation();
