@@ -10,6 +10,7 @@ import {
   hydrateFocusedNeighborhood,
   primeVisiblePosters
 } from '../posterImages.js';
+import { schedulePrefetch, abortPrefetch } from '../../core/idlePrefetch.js';
 
 function homeScreen(root, params, navigate) {
   var state = getState();
@@ -94,13 +95,29 @@ function homeScreen(root, params, navigate) {
     }, 80);
   });
 
+  function pinContinueWatchingFirst(rows) {
+    if (!rows || !rows.length) return rows;
+    var pinned = [];
+    var rest = [];
+    for (var i = 0; i < rows.length; i++) {
+      var id = rows[i].hubIdentifier || '';
+      if (id.indexOf('continue') !== -1 || id.indexOf('ondeck') !== -1 || id.indexOf('resume') !== -1) {
+        pinned.push(rows[i]);
+      } else {
+        rest.push(rows[i]);
+      }
+    }
+    return pinned.concat(rest);
+  }
+
   function renderRowsIntoFeed(rows, append) {
     var token = renderToken;
     var el = document.getElementById('home-feed');
     if (!el || destroyed || token !== renderToken) return;
     if (!rows || !rows.length) return;
+    var sorted = pinContinueWatchingFirst(rows);
     if (!append) el.innerHTML = '';
-    rows.forEach(function (row) {
+    sorted.forEach(function (row) {
       renderHubRow(el, row, navigate, {
         cols: 12,
         visibleCount: 20,
@@ -110,6 +127,32 @@ function homeScreen(root, params, navigate) {
       });
     });
     primeVisiblePosters(el);
+    focusFirstFeedCardIfNeeded();
+    // After the visible rows are committed, warm the metadata for the
+    // top items so opening detail does not hit the network.
+    if (state.activeServer && rows && rows.length) {
+      try { schedulePrefetch(state.activeServer, rows, { perRow: 6, maxRows: 2 }); }
+      catch (e) { /* ignore */ }
+    }
+  }
+
+  function focusFirstFeedCardIfNeeded() {
+    if (destroyed) return;
+    var el = document.getElementById('home-feed');
+    if (!el) return;
+    var active = document.activeElement;
+    // If focus is already inside the feed, leave it alone.
+    if (active && el.contains(active)) return;
+    // If focus is on a sidebar item the user explicitly moved to, leave it alone.
+    var sidebar = screen.querySelector('.browsing-hub-nav-host');
+    if (sidebar && active && sidebar.contains(active) && active !== document.body) {
+      // Only override the initial body-focus state — not a deliberate sidebar landing.
+      var initialAuto = sidebar.getAttribute('data-initial-focus') === '1';
+      if (!initialAuto) return;
+      sidebar.removeAttribute('data-initial-focus');
+    }
+    var card = el.querySelector('.media-card, .row-item, [data-item-index="0"]');
+    if (card && card.focus) card.focus();
   }
 
   function loadHomeHub() {
@@ -219,6 +262,12 @@ function homeScreen(root, params, navigate) {
     loadHomeHub();
   }
 
+  // Initial focus goes to the first content card once the feed loads
+  // (see focusFirstFeedCardIfNeeded). Tag the sidebar as auto-focused so
+  // it can be displaced when content arrives — but never if the user
+  // explicitly moved into it.
+  var initialSidebar = screen.querySelector('.browsing-hub-nav-host');
+  if (initialSidebar) initialSidebar.setAttribute('data-initial-focus', '1');
   if (!hubNav.focusSidebar()) focusFirst(screen);
 
   return {
@@ -230,7 +279,11 @@ function homeScreen(root, params, navigate) {
         clearTimeout(posterFocusTimer);
         posterFocusTimer = null;
       }
+      try { abortPrefetch(); } catch (e) { /* ignore */ }
       detachFocus();
+    },
+    onSuspend: function () {
+      try { abortPrefetch(); } catch (e) { /* ignore */ }
     }
   };
 }

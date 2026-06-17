@@ -116,6 +116,9 @@ function mapLibraryItem(item, server) {
   var roles = parseTaggedChildren(children, 'Role').map(function (r) {
     return { id: r.id, tag: r.tag, role: r.role, thumb: r.thumb };
   });
+  var directors = parseTaggedChildren(children, 'Director').map(function (d) {
+    return { id: d.id, tag: d.tag };
+  });
   var collections = parseTaggedChildren(children, 'Collection').map(function (c) {
     return { id: c.id, tag: c.tag, title: c.title };
   });
@@ -161,6 +164,7 @@ function mapLibraryItem(item, server) {
     index: item.index,
     genres: genres,
     roles: roles,
+    directors: directors,
     collections: collections,
     media: media,
     markers: markers,

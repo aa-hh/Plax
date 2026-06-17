@@ -107,6 +107,7 @@ function appendHubButtons(navEl, items, activeId, onSelect) {
     btn.setAttribute('data-hub-id', item.id);
     btn.dataset.iconKind = item.iconKind;
     btn.tabIndex = 0;
+    btn.setAttribute('aria-label', item.label);
     if (item.id === activeId) btn.classList.add('active');
 
     var filledBookmark = item.iconKind === 'watchlist' && item.id === activeId;

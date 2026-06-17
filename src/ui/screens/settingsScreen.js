@@ -7,8 +7,9 @@ import { focusFirst, attachFocusNav } from '../focus.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { VERSION } from '../../plex/client.js';
 import { isPerfEnabled } from '../../perf/resourceMonitor.js';
-import { isTvDebugEnabled, getLogSinkUrl, setLogSinkUrl } from '../../utils/tvDebug.js';
+import { isTvDebugEnabled, getLogSinkUrl, setLogSinkUrl, LOG_SINK_STORAGE_KEY } from '../../utils/tvDebug.js';
 import * as cache from '../../core/cache.js';
+import { invalidateRetention } from '../../core/router.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
 import {
   listWatchlists,
@@ -16,7 +17,6 @@ import {
   renameWatchlist,
   deleteWatchlist
 } from '../../watchlists/store.js';
-import { getLogSinkUrl, setLogSinkUrl, LOG_SINK_STORAGE_KEY } from '../../utils/tvDebug.js';
 
 /**
  * TV-safe text input modal. Opens a full-screen overlay with an <input>
@@ -32,6 +32,8 @@ import { getLogSinkUrl, setLogSinkUrl, LOG_SINK_STORAGE_KEY } from '../../utils/
  * @param {Function} opts.onConfirm  - Called with the entered string on confirm
  * @param {Element} [opts.returnFocus] - Element to re-focus after the modal closes
  */
+var activeModalClose = null;
+
 function openTextInputModal(opts) {
   var title = opts.title || 'Enter value';
   var defaultValue = opts.defaultValue || '';
@@ -73,6 +75,7 @@ function openTextInputModal(opts) {
   input.value = defaultValue;
 
   function close() {
+    activeModalClose = null;
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     document.removeEventListener('keydown', onKey, true);
     if (returnFocus && typeof returnFocus.focus === 'function') {
@@ -125,6 +128,7 @@ function openTextInputModal(opts) {
   }
 
   document.addEventListener('keydown', onKey, true);
+  activeModalClose = close;
 
   confirmBtn.addEventListener('click', confirm);
   cancelBtn.addEventListener('click', close);
@@ -277,9 +281,14 @@ function settingsScreen(root, params, navigate) {
   aboutSection.innerHTML =
     '<div class="settings-row"><label>Design Review</label>' +
     '<button class="btn" id="btn-design-review" tabindex="0">Open</button></div>' +
-    '<div class="settings-row"><label>Performance HUD</label>' +
+    '<div class="settings-row"><label for="perf-hud-select">Performance HUD</label>' +
     '<select id="perf-hud-select"><option value="0">Off</option><option value="1">On</option></select></div>' +
-    '<div class="settings-row"><label>Debug log overlay</label>' +
+    '<div class="settings-row"><label>Perf trace</label>' +
+    '<button class="btn" id="btn-perf-export" tabindex="0">Send to log</button>' +
+    '<button class="btn" id="btn-perf-clear" tabindex="0">Clear</button>' +
+    '<span class="settings-muted" id="perf-trace-status" style="margin-left:12px"></span>' +
+    '</div>' +
+    '<div class="settings-row"><label for="debug-log-select">Debug log overlay</label>' +
     '<select id="debug-log-select"><option value="0">Off</option><option value="1">On</option></select></div>' +
     '<div class="settings-row settings-row--stacked">' +
     '<label for="log-sink-url">Log sink URL</label>' +
@@ -328,14 +337,120 @@ function settingsScreen(root, params, navigate) {
       ' — relaunch to apply fully.', false);
   });
 
+  var perfStatusEl = document.getElementById('perf-trace-status');
+  function refreshPerfStatus() {
+    if (!perfStatusEl || !window.__xplayPerf) return;
+    var snap = window.__xplayPerf.getSnapshot();
+    perfStatusEl.textContent = snap.markCount + ' marks · ' + snap.sampleCount + ' samples';
+  }
+  refreshPerfStatus();
+
+  var perfExporting = false;
+  document.getElementById('btn-perf-export').addEventListener('click', function () {
+    if (perfExporting) return; // guard against D-pad/Enter repeat firing duplicate traces
+    if (!window.__xplayPerf) {
+      setStatus('Perf telemetry not initialised.', true);
+      return;
+    }
+    var data = window.__xplayPerf.exportData();
+    if (!data.marks.length && !data.samples.length) {
+      setStatus('No perf data captured yet — turn HUD on and use the app first.', true);
+      return;
+    }
+    var sinkUrl = getLogSinkUrl();
+    if (!sinkUrl) {
+      setStatus('Set a Log sink URL below first (your Mac running npm run log:receive).', true);
+      return;
+    }
+    perfExporting = true;
+    setStatus('Sending perf trace…', false);
+    sendPerfTraceToSink(sinkUrl, data).then(function () {
+      setStatus('Perf trace sent (' + data.marks.length + ' marks, ' +
+        data.samples.length + ' samples) → ' + sinkUrl, false);
+    })['catch'](function (err) {
+      setStatus('Could not reach log sink: ' + (err && err.message || err), true);
+    })['finally'](function () {
+      perfExporting = false;
+    });
+  });
+
+  document.getElementById('btn-perf-clear').addEventListener('click', function () {
+    if (window.__xplayPerf) window.__xplayPerf.clear();
+    refreshPerfStatus();
+    setStatus('Perf trace buffer cleared.', false);
+  });
+
   renderDeveloperSettings(document.getElementById('developer-section'));
 
   document.getElementById('btn-back').addEventListener('click', function () {
     navigate(params._from || 'library', {});
   });
+
+  function sendPerfTraceToSink(sinkUrl, data) {
+    // POST the trace to the existing log-receiver (scripts/log-receiver.cjs).
+    // The receiver stringifies `detail` naively (objects become
+    // "[object Object]"), so we embed the JSON payload directly in `message`,
+    // which it preserves verbatim. One header + N chunks of marks/samples,
+    // each line a self-contained JSON object for easy grep/parse.
+    var traceId = 'trace-' + Date.now();
+    var marks = data.marks || [];
+    var samples = data.samples || [];
+    var chunkSize = 50;
+    var records = [];
+    function payloadLine(obj) {
+      return { level: 'info', tag: 'perf-trace', message: JSON.stringify(obj) };
+    }
+    records.push(payloadLine({
+      kind: 'header',
+      traceId: traceId,
+      markCount: marks.length,
+      sampleCount: samples.length,
+      userAgent: (typeof navigator !== 'undefined' && navigator.userAgent) || ''
+    }));
+    for (var i = 0; i < marks.length; i += chunkSize) {
+      records.push(payloadLine({
+        kind: 'marks',
+        traceId: traceId,
+        range: [i, Math.min(marks.length, i + chunkSize)],
+        marks: marks.slice(i, i + chunkSize)
+      }));
+    }
+    for (var j = 0; j < samples.length; j += chunkSize) {
+      records.push(payloadLine({
+        kind: 'samples',
+        traceId: traceId,
+        range: [j, Math.min(samples.length, j + chunkSize)],
+        samples: samples.slice(j, j + chunkSize)
+      }));
+    }
+    var failures = 0;
+    var sent = 0;
+    function postOne(record) {
+      return fetch(sinkUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record)
+      }).then(function (res) {
+        if (!res || !res.ok) failures += 1;
+        sent += 1;
+      })['catch'](function () { failures += 1; sent += 1; });
+    }
+    // Serialise sends so the receiver writes records in order.
+    var chain = Promise.resolve();
+    records.forEach(function (rec) {
+      chain = chain.then(function () { return postOne(rec); });
+    });
+    return chain.then(function () {
+      if (failures > 0 && sent === failures) {
+        throw new Error('all ' + sent + ' POSTs failed');
+      }
+    });
+  }
+
   document.getElementById('btn-signout').addEventListener('click', function () {
     clearAuth();
     cache.invalidateAll();
+    invalidateRetention();
     setState({
       authToken: null,
       ownerAuthToken: null,
@@ -348,7 +463,12 @@ function settingsScreen(root, params, navigate) {
   });
 
   if (!hubNav.focusSidebar()) focusFirst(screen);
-  return { destroy: function () { detachFocus(); } };
+  return {
+    destroy: function () {
+      if (activeModalClose) activeModalClose();
+      detachFocus();
+    }
+  };
 }
 
 function renderWatchlistsSettings(container, user, navigate) {

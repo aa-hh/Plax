@@ -1,4 +1,4 @@
-import { getState, subscribe } from '../../core/store.js';
+import { getState } from '../../core/store.js';
 import {
   getMetadata,
   getChildren,
@@ -40,14 +40,6 @@ import {
   buildUltraBlurColorGradient,
   loadUltraBlurBackdrop
 } from '../../plex/ultrablur.js';
-import {
-  startNetworkProbeIfNeeded,
-  cancelNetworkProbe,
-  refineRecommendationForItem,
-  isCacheFresh,
-  getCachedProbeResult,
-  probeResultToStore
-} from '../../playback/networkProbe.js';
 import { buildPlayerParamsFromMetadata } from '../../playback/hubDirectPlay.js';
 import {
   shouldOfferResumeChoice,
@@ -87,7 +79,6 @@ function detailScreen(root, params, navigate) {
     deviceInfo = info;
     if (metadata) {
       updateDirectPlayNotice();
-      updateNetworkQualityUI();
     }
   });
 
@@ -112,6 +103,20 @@ function detailScreen(root, params, navigate) {
     var h = Math.floor(mins / 60);
     var m = mins % 60;
     return m ? (h + 'h ' + m + 'm left') : (h + 'h left');
+  }
+
+  function formatTimeOffset(item) {
+    if (!item || !item.viewOffset) return '';
+    var totalSec = Math.floor(item.viewOffset / 1000);
+    var h = Math.floor(totalSec / 3600);
+    var m = Math.floor((totalSec % 3600) / 60);
+    var s = totalSec % 60;
+    var ss = s < 10 ? '0' + s : String(s);
+    if (h > 0) {
+      var mm = m < 10 ? '0' + m : String(m);
+      return h + ':' + mm + ':' + ss;
+    }
+    return m + ':' + ss;
   }
 
   function episodeCode(item) {
@@ -248,33 +253,6 @@ function detailScreen(root, params, navigate) {
     return item.grandparentTitle || item.parentTitle || 'Series';
   }
 
-  var DETAIL_FILE_SECTION_HTML =
-    '<section class="detail-file-section detail-file-section--episode" aria-labelledby="detail-file-heading">' +
-    '<h2 class="detail-file-heading" id="detail-file-heading">File details</h2>' +
-    '<button type="button" class="detail-file-row" id="detail-file-video" tabindex="0">' +
-    '<span class="detail-file-label">Video</span>' +
-    '<span class="detail-file-value" id="detail-file-video-value"></span>' +
-    '</button>' +
-    '<button type="button" class="detail-file-row" id="detail-file-audio" tabindex="0">' +
-    '<span class="detail-file-label">Audio</span>' +
-    '<span class="detail-file-value" id="detail-file-audio-value"></span>' +
-    '</button>' +
-    '<button type="button" class="detail-file-row" id="detail-file-subtitles" tabindex="0">' +
-    '<span class="detail-file-label">Subtitles</span>' +
-    '<span class="detail-file-value" id="detail-file-subtitles-value"></span>' +
-    '</button>' +
-    '<button type="button" class="detail-file-row" id="detail-file-quality" tabindex="0">' +
-    '<span class="detail-file-label">Quality</span>' +
-    '<span class="detail-file-value" id="detail-file-quality-value"></span>' +
-    '</button></section>';
-
-  function buildPlaybackColumnsHtml() {
-    return '<div class="detail-playback-columns" data-focus-zone="detail-playback-columns">' +
-      DETAIL_FILE_SECTION_HTML +
-      NETWORK_QUALITY_SECTION_HTML +
-      '</div>';
-  }
-
   function buildWatchlistActionHtml(item) {
     return supportsWatchlistBookmark(item) ? watchlistBookmarkButtonHtml(false) : '';
   }
@@ -323,43 +301,54 @@ function detailScreen(root, params, navigate) {
     return getProfile(key).label;
   }
 
-  function updateQualityRowLabel() {
-    var valueEl = screen.querySelector('#detail-file-quality-value');
-    if (valueEl) valueEl.textContent = qualityProfileLabel(getDetailQuality());
-    var currentEl = screen.querySelector('#detail-quality-current');
-    if (currentEl) {
-      currentEl.textContent = 'Playback quality: ' + qualityProfileLabel(getDetailQuality());
-    }
+  function updateQualityBtnLabel() {
+    var btn = screen.querySelector('#btn-quality');
+    if (btn) btn.textContent = 'Quality: ' + qualityProfileLabel(getDetailQuality());
   }
 
-  function wireQualityRow() {
-    var btn = screen.querySelector('#detail-file-quality');
+  function wireQualityBtn() {
+    var btn = screen.querySelector('#btn-quality');
     if (!btn || btn._xplayQualityWired) return;
     btn._xplayQualityWired = true;
+    updateQualityBtnLabel();
     btn.addEventListener('click', function () {
       openDetailModal('quality', 'Quality', listProfiles().map(function (p) {
         return { id: p.id, label: p.label };
       }), getDetailQuality(), function (id) {
         selectedQuality = id;
         setPlaybackPrefs({ quality: id });
-        updateQualityRowLabel();
+        updateQualityBtnLabel();
         updateDirectPlayNotice();
-        updateNetworkQualityUI();
         if (metadata) {
           currentProbe = probePlayback(metadata, selectedVersion, null, deviceInfo);
         }
-        prefetchItemNetworkProbe();
       });
     });
-    updateQualityRowLabel();
+  }
+
+  function wireSubtitleBtn(subs) {
+    var btn = screen.querySelector('#btn-subtitles');
+    if (!btn) return;
+    var subList = subs || [];
+    var subOptions = [{ id: null, label: 'Off', data: null }].concat(subList.map(function (s) {
+      return { id: s.id, label: subtitleOptionLabel(s), data: s };
+    }));
+    function refreshLabel() {
+      btn.textContent = 'Subtitles: ' + getSubtitleLabel(subList);
+    }
+    btn.disabled = !subList.length;
+    refreshLabel();
+    btn.addEventListener('click', function () {
+      openDetailModal('subtitles', 'Subtitles', subOptions, selectedSubtitle, function (id) {
+        selectedSubtitle = id;
+        refreshLabel();
+      });
+    });
   }
 
   function wirePlaybackDetailCommon(item) {
     syncSelectedQualityFromPrefs();
-    wireQualityRow();
-    wireNetworkQualitySection();
-    attachNetworkQualityObserver();
-    prefetchItemNetworkProbe();
+    wireQualityBtn();
     updateDirectPlayNotice();
 
     var btnDirectPlayToggle = screen.querySelector('#btn-directplay-toggle');
@@ -373,208 +362,10 @@ function detailScreen(root, params, navigate) {
     if (modalCancel) modalCancel.addEventListener('click', closeDetailModal);
   }
 
-  function wireEpisodePlaybackActions(item, versions) {
-    renderEpisodeFileRows(item, versions);
-
-    screen.querySelector('#btn-start').addEventListener('click', function () {
-      offerResumeChoiceOrPlay(0);
-    });
-    screen.querySelector('#btn-mark-watched').addEventListener('click', function () {
-      applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
-    });
-    screen.querySelector('#btn-mark-unwatched').addEventListener('click', function () {
-      applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
-    });
-    refreshWatchButtons(item);
-    wireWatchlistBookmark(screen, item);
-  }
-
   var seasonEpisodes = null;
   var seasonEpisodesLoading = false;
   var detailModalKind = null;
   var detailModalReturnFocus = null;
-  var unsubNetworkProbe = null;
-  var detailProbeRetest = false;
-  var detailItemProbeTesting = false;
-
-  var NETWORK_QUALITY_SECTION_HTML =
-    '<section class="detail-network-section" id="detail-network-section" aria-labelledby="detail-network-heading">' +
-    '<h2 class="detail-file-heading" id="detail-network-heading">Connection</h2>' +
-    '<p class="detail-quality-current" id="detail-quality-current"></p>' +
-    '<p class="detail-network-status" id="detail-network-status">Checking connection…</p>' +
-    '<div class="detail-network-recommend-row" id="detail-network-recommend-row" hidden>' +
-    '<p class="detail-network-recommend" id="detail-network-recommend"></p>' +
-    '<button type="button" class="btn detail-network-info-btn" id="btn-network-info" tabindex="0" ' +
-    'aria-label="Why this quality">ⓘ</button></div>' +
-    '<button type="button" class="btn detail-network-retest" id="btn-test-connection" tabindex="0">' +
-    'Test connection</button></section>';
-
-  function getRefinedNetworkProbe() {
-    var cache = getState().networkProbe;
-    if (metadata && selectedVersion && server) {
-      var itemRaw = getCachedProbeResult(server, metadata.ratingKey, selectedVersion.id);
-      if (itemRaw) {
-        var summary = (cache && cache.deviceSummary) || [];
-        var itemStore = probeResultToStore(itemRaw, server, summary);
-        return refineRecommendationForItem(itemStore, metadata, selectedVersion, deviceInfo);
-      }
-    }
-    if (!cache || !metadata) return cache;
-    if (cache.status !== 'done') return cache;
-    return refineRecommendationForItem(cache, metadata, selectedVersion, deviceInfo);
-  }
-
-  function networkStatusText(cache) {
-    if (!cache || cache.status === 'idle') {
-      return 'Connection not tested yet.';
-    }
-    if (cache.status === 'running' || cache.status === 'testing') {
-      return 'Testing connection…';
-    }
-    if (cache.status === 'error') {
-      return cache.error || 'Connection test failed.';
-    }
-    var mbps = cache.mbps != null ? cache.mbps : cache.measuredMbps;
-    if (mbps != null) {
-      return 'Measured ~' + mbps + ' Mbps to your Plex server.';
-    }
-    return 'Connection test complete.';
-  }
-
-  function buildNetworkInfoBullets(cache) {
-    var refined = getRefinedNetworkProbe();
-    var bullets = [];
-    if (refined && refined.measuredMbps != null) {
-      bullets.push('Measured link speed: ~' + refined.measuredMbps + ' Mbps to your Plex server.');
-    } else if (cache && cache.status === 'error') {
-      bullets.push('Link speed could not be measured: ' + (cache.error || 'test failed') + '.');
-    } else {
-      bullets.push('Link speed has not been measured yet.');
-    }
-    var summary = (cache && cache.deviceSummary) || [];
-    summary.forEach(function (line) { bullets.push(line); });
-    if (currentProbe && currentProbe.warnings && currentProbe.warnings.length) {
-      currentProbe.warnings.forEach(function (w) {
-        bullets.push('This file: ' + w);
-      });
-    }
-    if (refined && refined.reason) {
-      bullets.push('Recommendation: ' + refined.reason);
-    }
-    return bullets;
-  }
-
-  function openNetworkInfoModal() {
-    var modal = screen.querySelector('#detail-modal');
-    var list = screen.querySelector('#detail-modal-list');
-    var titleEl = screen.querySelector('#detail-modal-title');
-    var cancelBtn = screen.querySelector('#detail-modal-cancel');
-    if (!modal || !list) return;
-    var cache = getState().networkProbe;
-    detailModalKind = 'network-info';
-    detailModalReturnFocus = document.activeElement;
-    if (titleEl) titleEl.textContent = 'Why this quality?';
-    if (cancelBtn) cancelBtn.textContent = 'Close';
-    list.className = 'detail-modal-list detail-modal-list--info';
-    list.innerHTML = '';
-    buildNetworkInfoBullets(cache).forEach(function (line) {
-      var lineEl = document.createElement('p');
-      lineEl.className = 'detail-network-info-line';
-      lineEl.textContent = line;
-      list.appendChild(lineEl);
-    });
-    modal.hidden = false;
-    if (cancelBtn) cancelBtn.focus();
-    else focusFirst(screen.querySelector('#detail-modal-sheet') || modal);
-  }
-
-  function updateNetworkQualityUI() {
-    var section = screen.querySelector('#detail-network-section');
-    if (!section) return;
-    var statusEl = screen.querySelector('#detail-network-status');
-    var recRow = screen.querySelector('#detail-network-recommend-row');
-    var recEl = screen.querySelector('#detail-network-recommend');
-    var infoBtn = screen.querySelector('#btn-network-info');
-    var btn = screen.querySelector('#btn-test-connection');
-    var cache = getRefinedNetworkProbe();
-    var raw = getState().networkProbe;
-    var testing = detailItemProbeTesting ||
-      !!(raw && (raw.status === 'running' || raw.status === 'testing'));
-
-    if (statusEl) {
-      statusEl.textContent = networkStatusText(testing ? raw : cache);
-      statusEl.classList.toggle('detail-network-status--error', !!(raw && raw.status === 'error'));
-      statusEl.classList.toggle('detail-network-status--testing', testing);
-    }
-
-    updateQualityRowLabel();
-
-    var showRec = cache && cache.status === 'done' && cache.recommendedLabel &&
-      getDetailQuality() === 'auto';
-    if (recRow) recRow.hidden = !showRec;
-    if (recEl && showRec) {
-      recEl.innerHTML = '<strong>Suggested for this connection:</strong> ' +
-        escapeHtml(cache.recommendedLabel);
-    }
-    if (infoBtn) infoBtn.disabled = !showRec;
-
-    if (btn) {
-      btn.disabled = testing;
-      btn.textContent = testing ? 'Testing…' : 'Test connection';
-    }
-  }
-
-  function wireNetworkQualitySection() {
-    var btn = screen.querySelector('#btn-test-connection');
-    var infoBtn = screen.querySelector('#btn-network-info');
-    if (btn && !btn._xplayNetworkWired) {
-      btn._xplayNetworkWired = true;
-      btn.addEventListener('click', function () {
-        if (!server) return;
-        detailProbeRetest = true;
-        var probeOpts = { force: true, deviceInfo: deviceInfo };
-        if (metadata && selectedVersion) {
-          probeOpts.item = metadata;
-          probeOpts.version = selectedVersion;
-        }
-        detailItemProbeTesting = true;
-        updateNetworkQualityUI();
-        startNetworkProbeIfNeeded(server, probeOpts).finally(function () {
-          if (destroyed) return;
-          detailItemProbeTesting = false;
-          updateNetworkQualityUI();
-        });
-      });
-    }
-    if (infoBtn && !infoBtn._xplayNetworkWired) {
-      infoBtn._xplayNetworkWired = true;
-      infoBtn.addEventListener('click', openNetworkInfoModal);
-    }
-    updateNetworkQualityUI();
-  }
-
-  function attachNetworkQualityObserver() {
-    if (unsubNetworkProbe) return;
-    unsubNetworkProbe = subscribe('change', function () {
-      updateNetworkQualityUI();
-    });
-  }
-
-  function prefetchItemNetworkProbe() {
-    if (getDetailQuality() !== 'auto' || !server || !metadata || !selectedVersion) return;
-    if (getCachedProbeResult(server, metadata.ratingKey, selectedVersion.id)) return;
-    startNetworkProbeIfNeeded(server, {
-      item: metadata,
-      version: selectedVersion,
-      deviceInfo: deviceInfo
-    });
-  }
-
-  function buildAutoQualityHintHtml() {
-    if (getDetailQuality() !== 'auto') return '';
-    return '<p class="direct-play-auto-hint">Auto tries progressive direct play first, then HLS remux ' +
-      '(stream copy, not full transcode), then server transcode if needed.</p>';
-  }
 
   function buildNoticeHtml(probe) {
     if (!probe || !probe.warnings.length) return '';
@@ -614,7 +405,7 @@ function detailScreen(root, params, navigate) {
     var disclosure = screen.querySelector('#direct-play-disclosure');
     var body = screen.querySelector('#direct-play-body');
     var toggle = screen.querySelector('#btn-directplay-toggle');
-    var html = buildAutoQualityHintHtml() + buildNoticeHtml(probe);
+    var html = buildNoticeHtml(probe);
     if (!html) {
       if (disclosure) disclosure.hidden = true;
       return;
@@ -829,17 +620,6 @@ function detailScreen(root, params, navigate) {
     return route;
   }
 
-  function getVideoLabel() {
-    if (!selectedVersion) return 'Default';
-    return versionLabel(selectedVersion);
-  }
-
-  function getAudioLabel(tracks) {
-    if (!tracks || !tracks.length) return 'Default';
-    var match = tracks.filter(function (a) { return String(a.id) === String(selectedAudio); })[0];
-    return (match && match.title) || tracks[0].title || 'Default';
-  }
-
   function getSubtitleLabel(tracks) {
     if (selectedSubtitle == null) return 'Off';
     var match = tracks.filter(function (s) { return String(s.id) === String(selectedSubtitle); })[0];
@@ -881,7 +661,6 @@ function detailScreen(root, params, navigate) {
         btn.addEventListener('click', function () {
           onSelect(opt.id, opt);
           closeDetailModal();
-          updateEpisodeFileRowLabels();
         });
         list.appendChild(btn);
       });
@@ -899,87 +678,6 @@ function detailScreen(root, params, navigate) {
       e.stopPropagation();
       closeDetailModal();
     }
-  }
-
-  function updateEpisodeFileRowLabels() {
-    if (!metadata || metadata.type !== 'episode') return;
-    var media = getActiveMedia(metadata);
-    var audio = parseAudioStreams(media);
-    var subs = parseSubtitleStreams(media, { includeGraphical: true });
-    var videoVal = screen.querySelector('#detail-file-video-value');
-    var audioVal = screen.querySelector('#detail-file-audio-value');
-    var subVal = screen.querySelector('#detail-file-subtitles-value');
-    if (videoVal) videoVal.textContent = getVideoLabel();
-    if (audioVal) audioVal.textContent = getAudioLabel(audio);
-    if (subVal) subVal.textContent = getSubtitleLabel(subs);
-    updateDirectPlayNotice();
-  }
-
-  function renderEpisodeFileRows(item, versions) {
-    var media = getActiveMedia(item);
-    var audio = parseAudioStreams(media);
-    var subs = parseSubtitleStreams(media, { includeGraphical: true });
-
-    if (audio.length) {
-      if (!trackExists(audio, selectedAudio)) selectedAudio = null;
-      if (!selectedAudio) {
-        var defaultAudio = audio.filter(function (a) { return a.selected; })[0] || audio[0];
-        selectedAudio = defaultAudio.id;
-      }
-    }
-    if (selectedSubtitle != null && !trackExists(subs, selectedSubtitle)) {
-      selectedSubtitle = null;
-    }
-    if (selectedSubtitle == null && subs.length) {
-      var pickedSub = pickDefaultSubtitleTrack(subs);
-      selectedSubtitle = pickedSub ? pickedSub.id : null;
-    }
-
-    var videoBtn = screen.querySelector('#detail-file-video');
-    if (videoBtn) {
-      videoBtn.addEventListener('click', function () {
-        if (!versions || versions.length < 2) return;
-        openDetailModal('video', 'Video', versions.map(function (v) {
-          return { id: v.id, label: versionLabel(v), data: v };
-        }), selectedVersion ? selectedVersion.id : null, function (id, opt) {
-          selectedVersion = opt.data;
-          if (metadata) renderPlaybackTracks(metadata);
-          updateEpisodeFileRowLabels();
-          updateNetworkQualityUI();
-        });
-      });
-      videoBtn.disabled = !versions || versions.length < 2;
-    }
-
-    var audioBtn = screen.querySelector('#detail-file-audio');
-    if (audioBtn && audio.length) {
-      audioBtn.disabled = false;
-      audioBtn.addEventListener('click', function () {
-        openDetailModal('audio', 'Audio', audio.map(function (a) {
-          return { id: a.id, label: a.title, data: a };
-        }), selectedAudio, function (id) {
-          selectedAudio = id;
-        });
-      });
-    } else if (audioBtn) {
-      audioBtn.disabled = true;
-    }
-
-    var subBtn = screen.querySelector('#detail-file-subtitles');
-    if (subBtn) {
-      var subOptions = [{ id: null, label: 'Off', data: null }].concat(subs.map(function (s) {
-        return { id: s.id, label: subtitleOptionLabel(s), data: s };
-      }));
-      subBtn.disabled = !subs.length;
-      subBtn.addEventListener('click', function () {
-        openDetailModal('subtitles', 'Subtitles', subOptions, selectedSubtitle, function (id) {
-          selectedSubtitle = id;
-        });
-      });
-    }
-    updateEpisodeFileRowLabels();
-    updateQualityRowLabel();
-    updateNetworkQualityUI();
   }
 
   function ensureSeasonEpisodesLoaded(seasonKey) {
@@ -1036,6 +734,69 @@ function detailScreen(root, params, navigate) {
     });
   }
 
+  function pickDefaultSubtitleIfNeeded(subs) {
+    if (selectedSubtitle != null && !trackExists(subs, selectedSubtitle)) {
+      selectedSubtitle = null;
+    }
+    if (selectedSubtitle == null && subs.length) {
+      var picked = pickDefaultSubtitleTrack(subs);
+      selectedSubtitle = picked ? picked.id : null;
+    }
+  }
+
+  function pickDefaultAudioIfNeeded(audio) {
+    if (!audio.length) return;
+    if (!trackExists(audio, selectedAudio)) selectedAudio = null;
+    if (!selectedAudio) {
+      var defAudio = audio.filter(function (a) { return a.selected; })[0] || audio[0];
+      selectedAudio = defAudio.id;
+    }
+  }
+
+  function buildPlaybackActionsHtml(item) {
+    return '<div class="detail-primary-actions" data-focus-zone="detail-primary-actions">' +
+      '<button class="btn btn-primary detail-play-btn" id="btn-start" tabindex="0">' +
+      (item.viewOffset ? 'Resume from ' + formatTimeOffset(item) : 'Play') + '</button>' +
+      '<button class="btn" id="btn-subtitles" tabindex="0">Subtitles</button>' +
+      '<button class="btn" id="btn-quality" tabindex="0">Quality</button>' +
+      buildWatchlistActionHtml(item) +
+      '</div>' +
+      '<div class="detail-secondary-actions" data-focus-zone="detail-secondary-actions">' +
+      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
+      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      '</div>';
+  }
+
+  function buildDetailModalHtml() {
+    return '<div class="detail-modal" id="detail-modal" hidden>' +
+      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">' +
+      '<p class="detail-modal-title" id="detail-modal-title"></p>' +
+      '<div class="detail-modal-list" id="detail-modal-list"></div>' +
+      '<div class="detail-modal-footer">' +
+      '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
+      '</div></div></div>';
+  }
+
+  function wirePlaybackActions(item) {
+    screen.querySelector('#btn-start').addEventListener('click', function () {
+      offerResumeChoiceOrPlay(0);
+    });
+    var btnWatched = screen.querySelector('#btn-mark-watched');
+    var btnUnwatched = screen.querySelector('#btn-mark-unwatched');
+    if (btnWatched) {
+      btnWatched.addEventListener('click', function () {
+        applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
+      });
+    }
+    if (btnUnwatched) {
+      btnUnwatched.addEventListener('click', function () {
+        applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
+      });
+    }
+    refreshWatchButtons(item);
+    if (supportsWatchlistBookmark(item)) wireWatchlistBookmark(screen, item);
+  }
+
   function renderEpisodeDetail(item) {
     metadata = item;
     activeDetailRoute = buildActiveDetailRoute(item);
@@ -1044,17 +805,21 @@ function detailScreen(root, params, navigate) {
     selectedVersion = pickBestVersion(versions, getState().playbackPrefs);
     currentProbe = probePlayback(item, selectedVersion, null, deviceInfo);
 
+    var media = getActiveMedia(item);
+    var audio = parseAudioStreams(media);
+    var subs = parseSubtitleStreams(media, { includeGraphical: true });
+    pickDefaultAudioIfNeeded(audio);
+    pickDefaultSubtitleIfNeeded(subs);
+
     var progressPct = getWatchProgressPercent(item);
     var progressHtml = item.viewOffset && item.duration
       ? '<div class="detail-episode-progress" aria-hidden="true">' +
         '<div class="detail-episode-progress-fill" style="width:' + progressPct + '%"></div></div>'
       : '';
-    var seriesTitle = item.grandparentTitle || 'Series';
+    var seriesTitle = item.grandparentTitle || '';
     var epCode = episodeCode(item);
     var primaryLine = '';
-    if (epCode) {
-      primaryLine += '<span class="detail-episode-code">' + escapeHtml(epCode) + '</span>';
-    }
+    if (epCode) primaryLine += '<span class="detail-episode-code">' + escapeHtml(epCode) + '</span>';
     if (item.viewOffset) {
       primaryLine += '<span class="detail-episode-remaining">' + escapeHtml(formatTimeRemaining(item)) + '</span>';
     }
@@ -1066,16 +831,15 @@ function detailScreen(root, params, navigate) {
     var imdb = formatImdbRating(item);
 
     screen.innerHTML = wrapDetailShell(
-      '<div class="detail-layout detail-layout--episode">' +
-      '<div class="detail-episode-panel">' +
+      '<div class="detail-layout detail-layout--episode-v2">' +
+      '<div class="detail-episode-v2-panel">' +
       buildDetailTopBar(buildEpisodeBreadcrumbTrail(item)) +
-      '<div class="detail-episode-main">' +
-      '<div class="detail-episode-art-wrap">' +
-      '<img class="detail-episode-art" id="detail-episode-art" alt="" />' +
+      '<div class="detail-episode-v2-art-wrap">' +
+      '<img class="detail-episode-v2-art" id="detail-episode-art" alt="" />' +
       progressHtml +
       '</div>' +
-      '<div class="detail-episode-copy">' +
-      '<p class="detail-series-heading">' + escapeHtml(seriesTitle) + '</p>' +
+      '<div class="detail-episode-v2-copy">' +
+      (seriesTitle ? '<p class="detail-series-heading">' + escapeHtml(seriesTitle) + '</p>' : '') +
       '<h1 class="detail-episode-title">' + escapeHtml(item.title || '') + '</h1>' +
       (primaryLine ? '<p class="detail-episode-line detail-episode-line--primary">' + primaryLine + '</p>' : '') +
       (secondaryParts.length
@@ -1083,28 +847,17 @@ function detailScreen(root, params, navigate) {
           escapeHtml(secondaryParts.join(' · ')) + '</p>'
         : '') +
       (imdb ? '<p class="detail-episode-line detail-episode-rating">' + escapeHtml(imdb) + '</p>' : '') +
-      '</div></div>' +
-      '<div class="detail-actions detail-episode-actions" data-focus-zone="detail-episode-actions" data-cols="4">' +
-      '<button class="btn btn-primary detail-play-btn" id="btn-start" tabindex="0">' +
-      (item.viewOffset ? 'Resume' : 'Play') + '</button>' +
-      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
-      buildWatchlistActionHtml(item) +
+      (item.summary ? '<p class="detail-episode-summary">' + escapeHtml(item.summary) + '</p>' : '') +
       '</div>' +
+      buildPlaybackActionsHtml(item) +
+      '<div id="detail-up-next"></div>' +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
       '</div>' +
-      buildPlaybackColumnsHtml() +
       '<p class="watch-status-msg" id="watch-status-msg"></p>' +
       '</div></div>' +
-      '<div class="detail-modal" id="detail-modal" hidden>' +
-      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true">' +
-      '<p class="detail-modal-title" id="detail-modal-title"></p>' +
-      '<div class="detail-modal-list" id="detail-modal-list"></div>' +
-      '<div class="detail-modal-footer">' +
-      '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
-      '</div></div></div>'
+      buildDetailModalHtml()
     );
 
     mountDetailHubNav();
@@ -1115,7 +868,8 @@ function detailScreen(root, params, navigate) {
     }
     applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
-    wireEpisodePlaybackActions(item, versions);
+    wireSubtitleBtn(subs);
+    wirePlaybackActions(item);
 
     var seasonCrumb = screen.querySelector('#detail-season-crumb');
     if (seasonCrumb && item.parentRatingKey) {
@@ -1123,9 +877,42 @@ function detailScreen(root, params, navigate) {
     } else if (seasonCrumb) {
       seasonCrumb.disabled = true;
     }
-    screen.querySelector('#btn-episode-picker').addEventListener('click', function () {
-      openEpisodePickerModal(item);
-    });
+    var episodePicker = screen.querySelector('#btn-episode-picker');
+    if (episodePicker) {
+      episodePicker.addEventListener('click', function () { openEpisodePickerModal(item); });
+    }
+
+    var seasonKey = item.parentRatingKey || params.seasonKey;
+    if (seasonKey && item.index != null) {
+      ensureSeasonEpisodesLoaded(seasonKey).then(function (episodes) {
+        if (destroyed) return;
+        var nextEp = null;
+        for (var i = 0; i < episodes.length; i++) {
+          if (episodes[i].index === item.index + 1) {
+            nextEp = episodes[i];
+            break;
+          }
+        }
+        if (!nextEp) return;
+        var upNextEl = screen.querySelector('#detail-up-next');
+        if (!upNextEl) return;
+        var nextLabel = 'S' + (nextEp.parentIndex != null ? nextEp.parentIndex : item.parentIndex) +
+          'E' + nextEp.index +
+          (nextEp.title ? ' — ' + nextEp.title : '');
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn detail-up-next-btn';
+        btn.tabIndex = 0;
+        btn.style.marginTop = '0.75em';
+        btn.style.color = 'var(--text-secondary)';
+        btn.innerHTML = '<span style="color:var(--text-muted);font-size:0.75em;display:block;margin-bottom:0.25em">Up Next</span>' +
+          escapeHtml(nextLabel);
+        btn.addEventListener('click', function () {
+          navigate('detail', buildEpisodeNavRoute(nextEp, seasonKey));
+        });
+        upNextEl.appendChild(btn);
+      }).catch(function () {});
+    }
 
     var playBtn = screen.querySelector('#btn-start');
     if (playBtn) playBtn.focus();
@@ -1139,10 +926,16 @@ function detailScreen(root, params, navigate) {
     selectedVersion = pickBestVersion(versions, getState().playbackPrefs);
     currentProbe = probePlayback(item, selectedVersion, null, deviceInfo);
 
+    var media = item.media && item.media[0] ? item.media[0] : {};
+    var audio = parseAudioStreams(media);
+    var subs = parseSubtitleStreams(media, { includeGraphical: true });
+    pickDefaultAudioIfNeeded(audio);
+    pickDefaultSubtitleIfNeeded(subs);
+
     var progressPct = getWatchProgressPercent(item);
     var progressHtml = item.viewOffset && item.duration
-      ? '<div class="detail-episode-progress" aria-hidden="true">' +
-        '<div class="detail-episode-progress-fill" style="width:' + progressPct + '%"></div></div>'
+      ? '<div class="detail-progress-bar" aria-hidden="true">' +
+        '<div class="detail-progress-fill" style="width:' + progressPct + '%"></div></div>'
       : '';
     var metaParts = [item.year, formatDuration(item.duration), item.contentRating].filter(Boolean);
     if (item.genres && item.genres.length) {
@@ -1150,59 +943,63 @@ function detailScreen(root, params, navigate) {
     }
     var imdb = formatImdbRating(item);
 
+    var castMetaParts = [];
+    if (item.directors && item.directors.length) {
+      var dirNames = item.directors.slice(0, 2).map(function (d) { return d.tag; }).join(', ');
+      castMetaParts.push('Directed by ' + dirNames);
+    }
+    if (item.roles && item.roles.length) {
+      var castNames = item.roles.slice(0, 5).map(function (r) { return r.tag; }).join(', ');
+      castMetaParts.push('Cast: ' + castNames);
+    }
+    if (item.studio) {
+      castMetaParts.push(item.studio);
+    }
+
     screen.innerHTML = wrapDetailShell(
-      '<div class="detail-layout detail-layout--episode detail-layout--movie">' +
-      '<div class="detail-episode-panel">' +
-      buildDetailTopBar(buildFilmBreadcrumbTrail()) +
-      '<div class="detail-episode-main">' +
-      '<div class="detail-episode-art-wrap">' +
-      '<img class="detail-episode-art" id="detail-episode-art" alt="" />' +
+      '<div class="detail-layout detail-layout--movie-v2">' +
+      '<div class="detail-movie-hero">' +
+      '<div class="detail-movie-poster-wrap">' +
+      '<img class="detail-poster detail-movie-poster" id="detail-poster" alt="" />' +
       progressHtml +
       '</div>' +
-      '<div class="detail-episode-copy">' +
-      '<h1 class="detail-episode-title">' + escapeHtml(item.title || '') + '</h1>' +
+      '<div class="detail-movie-info">' +
+      buildDetailTopBar(buildFilmBreadcrumbTrail()) +
+      '<h1 class="detail-movie-title">' + escapeHtml(item.title || '') + '</h1>' +
       (metaParts.length
-        ? '<p class="detail-episode-line detail-episode-line--secondary">' +
-          escapeHtml(metaParts.join(' · ')) + '</p>'
+        ? '<p class="detail-meta">' + escapeHtml(metaParts.join(' · ')) + '</p>'
         : '') +
-      (imdb ? '<p class="detail-episode-line detail-episode-rating">' + escapeHtml(imdb) + '</p>' : '') +
+      (imdb ? '<p class="detail-meta detail-imdb">' + escapeHtml(imdb) + '</p>' : '') +
+      (castMetaParts.length
+        ? '<p class="detail-meta detail-cast-meta" style="color:var(--text-secondary)">' +
+          escapeHtml(castMetaParts.join(' · ')) + '</p>'
+        : '') +
       (item.summary
-        ? '<p class="detail-episode-summary">' + escapeHtml(item.summary) + '</p>'
+        ? '<p class="detail-summary detail-movie-summary">' + escapeHtml(item.summary) + '</p>'
         : '') +
-      '</div></div>' +
-      '<div class="detail-actions detail-episode-actions" data-focus-zone="detail-episode-actions" data-cols="4">' +
-      '<button class="btn btn-primary detail-play-btn" id="btn-start" tabindex="0">' +
-      (item.viewOffset ? 'Resume' : 'Play') + '</button>' +
-      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
-      buildWatchlistActionHtml(item) +
-      '</div>' +
+      buildPlaybackActionsHtml(item) +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
       '</div>' +
-      buildPlaybackColumnsHtml() +
       '<p class="watch-status-msg" id="watch-status-msg"></p>' +
-      '</div>' +
+      '</div></div>' +
       '<div class="detail-rails detail-rails--movie" id="detail-rails" data-focus-zone="detail-rails"></div>' +
-      '<div class="detail-modal" id="detail-modal" hidden>' +
-      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true">' +
-      '<p class="detail-modal-title" id="detail-modal-title"></p>' +
-      '<div class="detail-modal-list" id="detail-modal-list"></div>' +
-      '<div class="detail-modal-footer">' +
-      '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
-      '</div></div></div>'
+      '</div>' +
+      buildDetailModalHtml()
     );
 
     mountDetailHubNav();
 
-    var art = screen.querySelector('#detail-episode-art');
-    if (art) bindPosterImage(art, item.thumb || '', { priority: true });
+    var poster = screen.querySelector('#detail-poster');
+    if (poster) bindPosterImage(poster, item.thumb || '', { priority: true });
     applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
-    wireEpisodePlaybackActions(item, versions);
+    wireSubtitleBtn(subs);
+    wirePlaybackActions(item);
 
-    screen.querySelector('#detail-library-crumb').addEventListener('click', navigateToMovieLibrary);
+    var libCrumb = screen.querySelector('#detail-library-crumb');
+    if (libCrumb) libCrumb.addEventListener('click', navigateToMovieLibrary);
     loadRelatedHubs(item.ratingKey);
 
     var playBtn = screen.querySelector('#btn-start');
@@ -1271,7 +1068,7 @@ function detailScreen(root, params, navigate) {
     screen.innerHTML = wrapDetailShell(
       '<div class="' + layoutClass + '">' + layoutBody + '</div>' +
       '<div class="detail-modal" id="detail-modal" hidden>' +
-      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true">' +
+      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">' +
       '<p class="detail-modal-title" id="detail-modal-title"></p>' +
       '<div class="detail-modal-list" id="detail-modal-list"></div>' +
       '<div class="detail-modal-footer">' +
@@ -1476,7 +1273,6 @@ function detailScreen(root, params, navigate) {
       selectedVersion = opt.data;
       if (metadata) renderPlaybackTracks(metadata);
       updateDirectPlayNotice();
-      updateNetworkQualityUI();
     });
   }
 
@@ -1604,13 +1400,6 @@ function detailScreen(root, params, navigate) {
       seasonsLoadGen += 1;
       episodesLoadGen += 1;
       relatedHubsLoadGen += 1;
-      if (detailProbeRetest || detailItemProbeTesting) {
-        cancelNetworkProbe();
-      }
-      if (unsubNetworkProbe) {
-        unsubNetworkProbe();
-        unsubNetworkProbe = null;
-      }
       screen.removeEventListener('keydown', onDetailModalKeyDown, true);
       detachFocus();
     }

@@ -14,7 +14,8 @@ function createLoadingIndicator(options) {
 
   var loader = document.createElement('div');
   loader.className = 'xplay-loader';
-  loader.setAttribute('role', 'progressbar');
+  loader.setAttribute('role', 'status');
+  loader.setAttribute('aria-live', 'polite');
   loader.setAttribute('aria-label', label || 'Loading');
   loader.innerHTML =
     '<span class="xplay-loader-dot"></span>' +

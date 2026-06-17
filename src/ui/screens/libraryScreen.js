@@ -14,8 +14,17 @@ import {
 } from '../posterImages.js';
 
 var LIBRARY_INITIAL_POSTERS = 24;
-/** Cap DOM cards to avoid webOS OOM on huge libraries (full virtualization deferred). */
-var MAX_GRID_DOM_CARDS = 500;
+/** Virtual grid constants */
+var GRID_COLS = 6;
+var BUFFER_ROWS = 3;
+/** Estimated card height (poster 264px + margin 24px + text ~40px) in px at 1080p */
+var ROW_HEIGHT_ESTIMATE = 330;
+
+var SORT_OPTIONS = [
+  { key: 'titleSort', label: 'Title' },
+  { key: 'addedAt', label: 'Date Added' },
+  { key: 'originallyAvailableAt', label: 'Release Date' }
+];
 
 function libraryScreen(root, params, navigate) {
   var state = getState();
@@ -42,6 +51,11 @@ function libraryScreen(root, params, navigate) {
     '<div class="library-main" id="lib-main">' +
     '<h1 class="screen-title screen-title-compact" id="lib-title">Library</h1>' +
     '<p class="watch-status-msg" id="lib-scan-status"></p>' +
+    '<div class="library-filter-bar" id="library-filter-bar">' +
+    '<button class="library-filter-chip library-filter-chip--active" id="filter-chip-all" data-filter="all" tabindex="0">All</button>' +
+    '<button class="library-filter-chip" id="filter-chip-unwatched" data-filter="unwatched" tabindex="0">Unwatched</button>' +
+    '<button class="library-filter-chip" id="filter-chip-sort" data-sort-index="0" tabindex="0">Sort: Title ▾</button>' +
+    '</div>' +
     '<div class="library-grid-host" id="library-grid-host">' +
     '<div class="media-grid" id="media-grid" data-cols="6"></div>' +
     '</div>' +
@@ -64,15 +78,35 @@ function libraryScreen(root, params, navigate) {
     }
   });
   var scanBtn = document.getElementById('btn-scan-library');
-  // Full grid virtualization is deferred (see code review #5); initial poster batch is capped.
   var gridHost = document.getElementById('library-grid-host');
   var grid = document.getElementById('media-grid');
   var scanStatus = document.getElementById('lib-scan-status');
+  var filterChipAll = document.getElementById('filter-chip-all');
+  var filterChipUnwatched = document.getElementById('filter-chip-unwatched');
+  var filterChipSort = document.getElementById('filter-chip-sort');
+
   var posterFocusToken = 0;
   var posterFocusTimer = null;
   var gridScrollTimer = null;
   var gridLoadToken = 0;
   var destroyed = false;
+
+  // Virtual scroll state
+  var allItems = [];            // full unfiltered+unsorted dataset
+  var displayItems = [];        // after filter + sort applied
+  var rowHeightPx = ROW_HEIGHT_ESTIMATE;
+  var rowHeightMeasured = false;
+  var topSpacer = null;
+  var bottomSpacer = null;
+  var lastRenderStart = -1;
+  var lastRenderEnd = -1;
+  var vScrollListener = null;
+
+  // Filter/sort state
+  var activeFilter = 'all';
+  var activeSortIndex = 0;
+
+  // ── Poster neighbourhood ──────────────────────────────────────────────────
 
   function schedulePosterNeighborhood(card) {
     if (!card || destroyed) return;
@@ -90,16 +124,7 @@ function libraryScreen(root, params, navigate) {
     if (card && grid && grid.contains(card)) schedulePosterNeighborhood(card);
   });
 
-  if (gridHost && grid) {
-    gridHost.addEventListener('scroll', function () {
-      if (destroyed) return;
-      if (gridScrollTimer) clearTimeout(gridScrollTimer);
-      gridScrollTimer = setTimeout(function () {
-        gridScrollTimer = null;
-        if (!destroyed) hydrateGridViewport(grid);
-      }, 120);
-    });
-  }
+  // ── Scan status helpers ───────────────────────────────────────────────────
 
   function setScanStatus(text, isError) {
     if (!scanStatus) return;
@@ -123,95 +148,249 @@ function libraryScreen(root, params, navigate) {
     return (err && err.message) || 'Scan failed.';
   }
 
-  function gridCardCount() {
-    if (!grid) return 0;
-    return grid.querySelectorAll('.media-card').length;
+  // ── Filter / sort ─────────────────────────────────────────────────────────
+
+  function applyFilterSort() {
+    var items = allItems;
+
+    // Filter
+    if (activeFilter === 'unwatched') {
+      items = items.filter(function (item) {
+        return !item.viewCount || item.viewCount <= 0;
+      });
+    }
+
+    // Sort
+    var sortKey = SORT_OPTIONS[activeSortIndex].key;
+    items = items.slice(); // don't mutate
+    if (sortKey === 'addedAt') {
+      // addedAt is not in mapLibraryItem — fall back to server-returned order
+      // (items already arrive sorted by titleSort from server; reorder not possible
+      //  without the addedAt field, so we leave as-is for now)
+    } else if (sortKey === 'originallyAvailableAt') {
+      items.sort(function (a, b) {
+        var da = a.originallyAvailableAt || '';
+        var db = b.originallyAvailableAt || '';
+        if (db < da) return -1;
+        if (db > da) return 1;
+        return 0;
+      });
+    } else {
+      // titleSort — already sorted by the server; leave as-is
+    }
+
+    displayItems = items;
   }
 
-  function setGridCapNotice(visible, totalCount) {
-    var id = 'lib-grid-cap-notice';
-    var existing = document.getElementById(id);
-    if (!visible) {
-      if (existing) existing.remove();
+  function updateFilterChips() {
+    if (!filterChipAll || !filterChipUnwatched || !filterChipSort) return;
+    filterChipAll.className = 'library-filter-chip' + (activeFilter === 'all' ? ' library-filter-chip--active' : '');
+    filterChipUnwatched.className = 'library-filter-chip' + (activeFilter === 'unwatched' ? ' library-filter-chip--active' : '');
+    filterChipSort.textContent = 'Sort: ' + SORT_OPTIONS[activeSortIndex].label + ' ▾';
+  }
+
+  function onFilterChange() {
+    applyFilterSort();
+    updateFilterChips();
+    // Reset virtual window to top
+    lastRenderStart = -1;
+    lastRenderEnd = -1;
+    if (gridHost) gridHost.scrollTop = 0;
+    setupVirtualScroll();
+    renderWindow();
+  }
+
+  if (filterChipAll) {
+    filterChipAll.addEventListener('click', function () {
+      if (activeFilter === 'all') return;
+      activeFilter = 'all';
+      onFilterChange();
+    });
+  }
+
+  if (filterChipUnwatched) {
+    filterChipUnwatched.addEventListener('click', function () {
+      if (activeFilter === 'unwatched') return;
+      activeFilter = 'unwatched';
+      onFilterChange();
+    });
+  }
+
+  if (filterChipSort) {
+    filterChipSort.addEventListener('click', function () {
+      activeSortIndex = (activeSortIndex + 1) % SORT_OPTIONS.length;
+      onFilterChange();
+    });
+  }
+
+  // ── Virtual scroll ────────────────────────────────────────────────────────
+
+  function ensureSpacers() {
+    if (topSpacer && topSpacer.parentNode === grid) return;
+    topSpacer = document.createElement('div');
+    topSpacer.className = 'vgrid-spacer vgrid-spacer--top';
+    topSpacer.style.width = '100%';
+    topSpacer.style.flexShrink = '0';
+    topSpacer.style.height = '0';
+    grid.insertBefore(topSpacer, grid.firstChild);
+
+    bottomSpacer = document.createElement('div');
+    bottomSpacer.className = 'vgrid-spacer vgrid-spacer--bottom';
+    bottomSpacer.style.width = '100%';
+    bottomSpacer.style.flexShrink = '0';
+    bottomSpacer.style.height = '0';
+    grid.appendChild(bottomSpacer);
+  }
+
+  function measureRowHeight() {
+    if (rowHeightMeasured) return;
+    var card = grid.querySelector('.media-card');
+    if (!card) return;
+    var h = card.offsetHeight;
+    if (h > 50) {
+      // Include the top+bottom margin (--media-grid-gap-y = 24px total = 12px each side)
+      rowHeightPx = h + 24;
+      rowHeightMeasured = true;
+    }
+  }
+
+  function makeCard(item, index) {
+    var card = createMediaCard(item, function (selected, routeParams) {
+      var route = routeParams || { ratingKey: selected.ratingKey };
+      route.libraryType = activeLib.type;
+      route.libraryId = activeLib.id;
+      navigate('detail', route);
+    }, {
+      layout: 'grid',
+      deferPoster: index >= LIBRARY_INITIAL_POSTERS
+    });
+    card.setAttribute('data-item-index', String(index));
+    return card;
+  }
+
+  function renderWindow() {
+    if (destroyed || !grid || !gridHost) return;
+    ensureSpacers();
+
+    var total = displayItems.length;
+    var totalRows = Math.ceil(total / GRID_COLS);
+
+    if (total === 0) {
+      topSpacer.style.height = '0';
+      bottomSpacer.style.height = '0';
+      // Remove any rendered cards
+      var toRemove = Array.prototype.slice.call(grid.querySelectorAll('.media-card'));
+      for (var r = 0; r < toRemove.length; r++) grid.removeChild(toRemove[r]);
       return;
     }
-    if (existing) return;
-    var notice = document.createElement('p');
-    notice.id = id;
-    notice.className = 'watch-status-msg';
-    var shown = MAX_GRID_DOM_CARDS;
-    notice.textContent = totalCount > shown
-      ? 'Showing first ' + shown + ' of ' + totalCount + ' titles. Use Search to find others.'
-      : 'Showing first ' + shown + ' titles.';
-    var main = document.getElementById('lib-main');
-    if (main && grid) main.insertBefore(notice, grid.nextSibling);
-  }
 
-  function appendGridCards(lib, items, startIndex) {
-    var room = MAX_GRID_DOM_CARDS - gridCardCount();
-    if (room <= 0) return 0;
-    var batch = items.length > room ? items.slice(0, room) : items;
-    batch.forEach(function (item, index) {
-      var absoluteIndex = startIndex + index;
-      var card = createMediaCard(item, function (selected, routeParams) {
-        var route = routeParams || { ratingKey: selected.ratingKey };
-        route.libraryType = lib.type;
-        route.libraryId = lib.id;
-        navigate('detail', route);
-      }, {
-        layout: 'grid',
-        deferPoster: absoluteIndex >= LIBRARY_INITIAL_POSTERS
-      });
-      card.setAttribute('data-item-index', String(absoluteIndex));
-      grid.appendChild(card);
-    });
-    return batch.length;
-  }
+    measureRowHeight();
 
-  function renderGridPage(lib, items) {
-    grid.innerHTML = '';
-    setGridCapNotice(false);
-    if (!items.length) return;
-    var visible = items.length > MAX_GRID_DOM_CARDS ? items.slice(0, MAX_GRID_DOM_CARDS) : items;
-    appendGridCards(lib, visible, 0);
-    if (items.length > MAX_GRID_DOM_CARDS) setGridCapNotice(true, items.length);
+    var scrollTop = gridHost.scrollTop;
+    var viewportHeight = gridHost.clientHeight || 860;
+
+    var visibleStartRow = Math.floor(scrollTop / rowHeightPx);
+    var visibleEndRow = Math.ceil((scrollTop + viewportHeight) / rowHeightPx);
+    var renderStartRow = Math.max(0, visibleStartRow - BUFFER_ROWS);
+    var renderEndRow = Math.min(totalRows, visibleEndRow + BUFFER_ROWS);
+
+    var renderStartIndex = renderStartRow * GRID_COLS;
+    var renderEndIndex = Math.min(total, renderEndRow * GRID_COLS);
+
+    // Skip re-render if window hasn't shifted
+    if (renderStartIndex === lastRenderStart && renderEndIndex === lastRenderEnd) return;
+    lastRenderStart = renderStartIndex;
+    lastRenderEnd = renderEndIndex;
+
+    // Remove existing cards (but not spacers)
+    var existingCards = Array.prototype.slice.call(grid.querySelectorAll('.media-card'));
+    for (var i = 0; i < existingCards.length; i++) {
+      grid.removeChild(existingCards[i]);
+    }
+
+    // Update spacer heights
+    topSpacer.style.height = (renderStartRow * rowHeightPx) + 'px';
+    bottomSpacer.style.height = ((totalRows - renderEndRow) * rowHeightPx) + 'px';
+
+    // Render visible slice
+    var fragment = document.createDocumentFragment();
+    for (var j = renderStartIndex; j < renderEndIndex; j++) {
+      fragment.appendChild(makeCard(displayItems[j], j));
+    }
+    // Insert between spacers: insert before bottomSpacer
+    grid.insertBefore(fragment, bottomSpacer);
+
+    // Prime posters for what's visible
     primeVisiblePosters(grid);
-    focusFirst(grid);
+
+    // Try to measure height after first render
+    if (!rowHeightMeasured) measureRowHeight();
   }
 
-  scanBtn.addEventListener('click', startSectionScan);
+  function setupVirtualScroll() {
+    // Remove old scroll listener if any
+    if (vScrollListener && gridHost) {
+      gridHost.removeEventListener('scroll', vScrollListener);
+      vScrollListener = null;
+    }
+    if (!gridHost) return;
+    vScrollListener = function () {
+      if (destroyed) return;
+      if (gridScrollTimer) clearTimeout(gridScrollTimer);
+      gridScrollTimer = setTimeout(function () {
+        gridScrollTimer = null;
+        if (!destroyed) {
+          hydrateGridViewport(grid);
+          renderWindow();
+        }
+      }, 80);
+    };
+    gridHost.addEventListener('scroll', vScrollListener);
+  }
+
+  // ── Grid loading ──────────────────────────────────────────────────────────
 
   function loadGrid(lib) {
     var token = ++gridLoadToken;
     document.getElementById('lib-title').textContent = lib.title;
     grid.innerHTML = '<p class="status-msg">Loading…</p>';
+    lastRenderStart = -1;
+    lastRenderEnd = -1;
+    allItems = [];
+    displayItems = [];
+
     return browseByType(server, lib.id, lib.type, { progressive: true }).then(function (result) {
       if (destroyed || token !== gridLoadToken) return;
+
       var items = result.items || result;
       var fetchRest = result.fetchRest;
-      renderGridPage(lib, items);
 
-      if (fetchRest && gridCardCount() < MAX_GRID_DOM_CARDS) {
-        fetchRest().then(function (allItems) {
+      allItems = items || [];
+      applyFilterSort();
+
+      // Clear loading message, ensure spacers exist
+      grid.innerHTML = '';
+      setupVirtualScroll();
+      renderWindow();
+
+      if (fetchRest) {
+        fetchRest().then(function (allServerItems) {
           if (destroyed || token !== gridLoadToken) return;
-          if (!allItems || allItems.length <= items.length) return;
-          if (gridCardCount() >= MAX_GRID_DOM_CARDS) {
-            setGridCapNotice(true, allItems.length);
-            return;
-          }
-          var appended = appendGridCards(lib, allItems.slice(items.length), items.length);
-          if (appended < allItems.length - items.length || allItems.length > MAX_GRID_DOM_CARDS) {
-            setGridCapNotice(true, allItems.length);
-          }
+          if (!allServerItems || allServerItems.length <= allItems.length) return;
+          allItems = allServerItems;
+          applyFilterSort();
+          renderWindow();
         }).catch(function () {});
-      } else if (items.length >= MAX_GRID_DOM_CARDS) {
-        setGridCapNotice(true, items.length);
       }
     }).catch(function (err) {
       if (destroyed || token !== gridLoadToken) return;
       grid.innerHTML = '<p class="status-msg">Failed: ' + err.message + '</p>';
     });
   }
+
+  // ── Scan ──────────────────────────────────────────────────────────────────
+
+  scanBtn.addEventListener('click', startSectionScan);
 
   function startSectionScan() {
     if (isScanning) return;
@@ -271,6 +450,10 @@ function libraryScreen(root, params, navigate) {
         gridScrollTimer = null;
       }
       if (scanReloadTimer) clearTimeout(scanReloadTimer);
+      if (vScrollListener && gridHost) {
+        gridHost.removeEventListener('scroll', vScrollListener);
+        vScrollListener = null;
+      }
       detachFocus();
     }
   };

@@ -46,7 +46,7 @@ function searchScreen(root, params, navigate) {
     '<div class="home-main search-main">' +
     '<h1 class="screen-title screen-title-compact">Search</h1>' +
     '<div class="search-input-row">' +
-    '<input id="search-input" class="search-input" type="search" tabindex="0" ' +
+    '<input id="search-input" class="search-input" type="search" tabindex="0" aria-label="Search" ' +
     'placeholder="Search movies, shows, episodes" ' +
     'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />' +
     '</div>' +

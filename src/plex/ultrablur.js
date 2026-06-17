@@ -2,8 +2,8 @@ import { fetchPlexJson, serverUrl, getServerToken } from './client.js';
 import { buildQuery } from '../utils/fetch.js';
 import * as cache from '../core/cache.js';
 
-var DEFAULT_WIDTH = 1920;
-var DEFAULT_HEIGHT = 1080;
+var DEFAULT_WIDTH = 1280;
+var DEFAULT_HEIGHT = 720;
 
 function serverScope(server) {
   if (!server) return 'noserver';

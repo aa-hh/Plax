@@ -113,6 +113,41 @@ function createTextRow(className, textContent) {
   return row;
 }
 
+/**
+ * Precompiled card skeleton. Building thousands of cards on a B8 is dominated
+ * by createElement + property assignment; cloneNode(true) on a fragment whose
+ * structure was parsed once is several times faster on Chromium 53. We keep
+ * the optional pieces (progress bar, badge) out of the template and append
+ * them only when needed — most cards have neither.
+ */
+var cardTemplate = null;
+function getCardTemplate() {
+  if (cardTemplate) return cardTemplate;
+  var card = document.createElement('div');
+  card.className = 'media-card card row-item';
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+
+  var posterWrap = document.createElement('div');
+  posterWrap.className = 'card-poster-wrap';
+  var img = document.createElement('img');
+  img.className = 'poster';
+  img.decoding = 'async';
+  img.loading = 'lazy';
+  posterWrap.appendChild(img);
+
+  var text = document.createElement('div');
+  text.className = 'card-text';
+  var titleEl = document.createElement('div');
+  titleEl.className = 'card-title';
+  text.appendChild(titleEl);
+
+  card.appendChild(posterWrap);
+  card.appendChild(text);
+  cardTemplate = card;
+  return cardTemplate;
+}
+
 function resolveCardThumb(item, options) {
   options = options || {};
   if (
@@ -141,26 +176,17 @@ function createMediaCard(item, onSelect, options) {
   }
   var sizedThumb = sizedPosterUrl(thumb, thumbWidth, thumbHeight);
 
-  var card = document.createElement('div');
-  card.className = 'media-card card row-item' + (options.layout === 'episode' ? ' media-card--episode' : '');
-  card.setAttribute('data-rating-key', item.ratingKey || '');
-  card.setAttribute('data-thumb', sizedThumb);
-  card.tabIndex = 0;
-  card.setAttribute('role', 'button');
+  var card = getCardTemplate().cloneNode(true);
+  if (options.layout === 'episode') {
+    card.className = 'media-card card row-item media-card--episode';
+  }
+  if (item.ratingKey) card.setAttribute('data-rating-key', item.ratingKey);
+  if (sizedThumb) card.setAttribute('data-thumb', sizedThumb);
   card.setAttribute('aria-label', [lines.title, lines.subtitle, lines.meta].filter(Boolean).join(', '));
 
-  var status = getWatchStatus(item);
-  var badgeText = status === 'watched' ? '✓' : '';
-  var badgeClass = 'badge-watched';
-
-  var posterWrap = document.createElement('div');
-  posterWrap.className = 'card-poster-wrap';
-
-  var img = document.createElement('img');
-  img.className = 'poster';
+  var posterWrap = card.firstChild;
+  var img = posterWrap.firstChild;
   img.alt = lines.title;
-  img.decoding = 'async';
-  img.loading = 'lazy';
   if (options.layout === 'episode') {
     img.width = POSTER_WIDTH_EPISODE;
     img.height = POSTER_HEIGHT_EPISODE;
@@ -181,46 +207,45 @@ function createMediaCard(item, onSelect, options) {
     }
   }
 
-  posterWrap.appendChild(img);
-
+  var status = getWatchStatus(item);
   if (status === 'progress' && item.duration) {
     var pct = getWatchProgressPercent(item);
     var bar = document.createElement('div');
     bar.className = 'card-progress';
-    bar.setAttribute('aria-hidden', 'true');
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', '100');
+    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+    bar.setAttribute('aria-label', 'Watch progress');
     var fill = document.createElement('div');
     fill.className = 'card-progress-fill';
     fill.style.width = pct + '%';
     bar.appendChild(fill);
     posterWrap.appendChild(bar);
   }
-
-  if (badgeText) {
+  if (status === 'watched') {
     var badge = document.createElement('span');
-    badge.className = 'badge ' + badgeClass;
+    badge.className = 'badge badge-watched';
     badge.setAttribute('aria-label', 'Seen');
-    badge.textContent = badgeText;
+    badge.textContent = '✓';
     posterWrap.appendChild(badge);
   }
 
-  var text = document.createElement('div');
-  text.className = 'card-text';
-
-  var titleEl = createTextRow('card-title', lines.title);
-  if (titleEl) text.appendChild(titleEl);
-
+  var text = card.lastChild;
+  var titleEl = text.firstChild;
+  titleEl.textContent = lines.title;
   if (lines.subtitle) {
-    var subEl = createTextRow('card-subtitle', lines.subtitle);
+    var subEl = document.createElement('div');
+    subEl.className = 'card-subtitle';
+    subEl.textContent = lines.subtitle;
     text.appendChild(subEl);
   }
-
   if (lines.meta) {
-    var metaEl = createTextRow('card-meta', lines.meta);
+    var metaEl = document.createElement('div');
+    metaEl.className = 'card-meta';
+    metaEl.textContent = lines.meta;
     text.appendChild(metaEl);
   }
-
-  card.appendChild(posterWrap);
-  card.appendChild(text);
 
   function activate() {
     if (onSelect) onSelect(item, primaryTarget);

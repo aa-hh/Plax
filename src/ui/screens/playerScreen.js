@@ -226,7 +226,7 @@ function playerScreen(root, params, navigate) {
     '<div class="player-scrub-preview-thumb" id="player-scrub-preview-thumb"></div>' +
     '<span class="player-scrub-preview-time" id="player-scrub-preview-time">0:00</span>' +
     '</div>' +
-    '<button type="button" class="player-seek-bar" id="player-seek" tabindex="0" aria-label="Seek">' +
+    '<button type="button" class="player-seek-bar" id="player-seek" tabindex="0" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">' +
     '<span class="player-seek-track"><span class="player-seek-played" id="progress-fill"></span>' +
     '<span class="player-seek-thumb" id="seek-thumb"></span></span>' +
     '</button>' +
@@ -2325,8 +2325,21 @@ function playerScreen(root, params, navigate) {
     setOverlayVisible(false);
   }
 
+  // Wake controls on any pointer activity (Magic Remote pointer mode generates
+  // synthetic mousemove events that may be below the motion-sensor threshold).
+  var lastPointerWakeAt = 0;
+  function onPointerWake() {
+    var now = Date.now();
+    if (now - lastPointerWakeAt < 80) return;
+    lastPointerWakeAt = now;
+    setOverlayVisible(true);
+    clearOverlayHideTimer();
+  }
+
   document.addEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);
   document.addEventListener(MOTION_CURSOR_HIDE_EVENT, onMotionCursorHide);
+  document.addEventListener('mousemove', onPointerWake);
+  document.addEventListener('mousedown', onPointerWake);
 
   player.onEnded(onPlaybackEnded);
 
@@ -2469,6 +2482,8 @@ function playerScreen(root, params, navigate) {
         document.removeEventListener('keydown', handlePlayerEnter, true);
         document.removeEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);
         document.removeEventListener(MOTION_CURSOR_HIDE_EVENT, onMotionCursorHide);
+        document.removeEventListener('mousemove', onPointerWake);
+        document.removeEventListener('mousedown', onPointerWake);
         overlay.remove();
       }
 
