@@ -4,6 +4,8 @@
  * Main: Left/Right within zones; Left at edge returns to sidebar; Up/Down between zones.
  */
 
+import { isPerfEnabled, mark as perfMark } from '../perf/resourceMonitor.js';
+
 var focusableSelector = 'button, [tabindex], .btn, .card, .nav-item, .library-item, .browsing-hub-item, .row-item, .season-chip, .episode-chip, .detail-setting-chip, .detail-breadcrumb, .detail-breadcrumb-trail__btn, .detail-episode-picker, .detail-link, .detail-file-row, .detail-modal-option, .detail-modal-cancel, .detail-watchlist-btn, .watchlist-row-link, .user-chip, .profile-card, .pin-pad-btn, select, .player-seek-bar, .player-control-pill, .player-stream-pill, .player-menu-option, input.search-input, .search-input';
 
 var ARROW_LEFT = 37;
@@ -34,9 +36,13 @@ function isNavFocusable(el) {
 }
 
 var focusableCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+var zonesCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 
 function invalidateFocusableCache() {
+  // getZones() reads layout via getFocusables() per zone, so the two caches
+  // must invalidate together.
   if (focusableCache) focusableCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  if (zonesCache) zonesCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 }
 
 function getFocusables(container) {
@@ -129,6 +135,15 @@ function collectSettingsZones(container, zones) {
 }
 
 function getZones(container) {
+  if (zonesCache && zonesCache.has(container)) {
+    return zonesCache.get(container);
+  }
+  var zones = computeZones(container);
+  if (zonesCache) zonesCache.set(container, zones);
+  return zones;
+}
+
+function computeZones(container) {
   var zones = [];
   var librarySidebar = container.querySelector('[data-focus-zone="library-sidebar"]');
   if (librarySidebar) {
@@ -502,6 +517,13 @@ function focusInAdjacentZone(zones, fromIdx, direction, active, listIndex) {
   var fromZone = zones[fromIdx];
   var i = fromIdx + step;
   while (i >= 0 && i < zones.length) {
+    // The browsing hub nav (home-screen sidebar) is only reachable via ARROW_LEFT from
+    // the left edge, not UP/DOWN. The library sidebar (data-focus-zone="library-sidebar")
+    // is a distinct zone element and IS reachable via UP/DOWN from the grid below it.
+    var z = zones[i];
+    var isHubNavOnly = z && z.classList && z.classList.contains('browsing-hub-nav-host') &&
+                       !(z.getAttribute && z.getAttribute('data-focus-zone') === 'library-sidebar');
+    if (isHubNavOnly) { i += step; continue; }
     var pref = adjacentZonePreferredIndex(active, listIndex, fromZone, zones[i], direction);
     if (focusInZone(zones[i], pref)) return true;
     i += step;
@@ -509,9 +531,59 @@ function focusInAdjacentZone(zones, fromIdx, direction, active, listIndex) {
   return false;
 }
 
+// When the user clicks a focusable with the Magic Remote pointer, we don't
+// want the row/page to snap-center the card before navigation kicks in.
+// Track recent pointer interactions and skip the scroll-into-view for them.
+var recentPointerAt = 0;
+function notePointerInteraction() { recentPointerAt = Date.now(); }
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('mousedown', notePointerInteraction, true);
+  document.addEventListener('click', notePointerInteraction, true);
+}
+
+function scrollNearestVertical(el) {
+  if (!el) return;
+  var parent = el.parentElement;
+  while (parent && parent !== document.documentElement) {
+    var style;
+    try { style = window.getComputedStyle(parent); } catch (e) { parent = parent.parentElement; continue; }
+    var oy = style.overflowY;
+    if (oy === 'auto' || oy === 'scroll') {
+      var pRect = parent.getBoundingClientRect();
+      var eRect = el.getBoundingClientRect();
+      if (eRect.top < pRect.top) {
+        parent.scrollTop -= (pRect.top - eRect.top);
+      } else if (eRect.bottom > pRect.bottom) {
+        parent.scrollTop += (eRect.bottom - pRect.bottom);
+      }
+      return;
+    }
+    parent = parent.parentElement;
+  }
+}
+
 function scrollFocusedIntoView(el) {
-  if (!el || typeof el.scrollIntoView !== 'function') return;
-  el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (!el) return;
+  // If focus arrived via a magic-remote click, don't snap-scroll — let the
+  // click handler (navigation) run without a jarring visual shift.
+  if (Date.now() - recentPointerAt < 300) return;
+  // Chrome 53 (webOS 4) ignores scrollIntoViewOptions — implement manually.
+
+  // Horizontal carousel: center the focused card inside its row-scroll.
+  var rowScroll = el.closest ? el.closest('.row-scroll') : null;
+  if (rowScroll) {
+    var cardLeft = el.offsetLeft;
+    var cardWidth = el.offsetWidth || 172;
+    var containerWidth = rowScroll.offsetWidth;
+    var target = cardLeft - Math.floor((containerWidth - cardWidth) / 2);
+    rowScroll.scrollLeft = target < 0 ? 0 : target;
+    // Ensure the row itself is vertically visible.
+    scrollNearestVertical(rowScroll);
+    return;
+  }
+
+  // Everything else: nearest vertical scroll (don't move if already visible).
+  scrollNearestVertical(el);
 }
 
 function focusSearchInput(container) {
@@ -671,6 +743,30 @@ function handleKeyNav(container, e) {
   if (isSidebarZone(zone)) {
     if (key === ARROW_RIGHT) {
       e.preventDefault();
+      // Spatial navigation: find the focusable in main content closest in Y to the active sidebar item.
+      var sidebarRect = active.getBoundingClientRect ? active.getBoundingClientRect() : null;
+      if (sidebarRect) {
+        var sidebarMidY = sidebarRect.top + (sidebarRect.height / 2);
+        var bestEl = null;
+        var bestDist = Infinity;
+        var zi, fi, fList, fRect, fMidY, dist;
+        for (zi = zIdx + 1; zi < zones.length; zi++) {
+          fList = getFocusables(zones[zi]);
+          for (fi = 0; fi < fList.length; fi++) {
+            fRect = fList[fi].getBoundingClientRect ? fList[fi].getBoundingClientRect() : null;
+            if (!fRect || fRect.width === 0) continue;
+            fMidY = fRect.top + (fRect.height / 2);
+            dist = fMidY < sidebarMidY ? sidebarMidY - fMidY : fMidY - sidebarMidY;
+            if (dist < bestDist) { bestDist = dist; bestEl = fList[fi]; }
+          }
+        }
+        if (bestEl) {
+          bestEl.focus();
+          scrollFocusedIntoView(bestEl);
+          return true;
+        }
+      }
+      // Fallback: first item of next zone.
       var enterIdx = isSettingsScreen(container) ? 0 : idx;
       if (focusFirstInNextZone(zones, zIdx + 1, enterIdx)) return true;
       return false;
@@ -779,7 +875,28 @@ function handleKeyNav(container, e) {
 function attachFocusNav(container) {
   function onKey(e) {
     if ([ARROW_LEFT, ARROW_UP, ARROW_RIGHT, ARROW_DOWN].indexOf(e.keyCode) >= 0) {
+      var perfOn = isPerfEnabled();
+      var keydownT = 0;
+      var beforeEl = null;
+      if (perfOn) {
+        keydownT = (typeof performance !== 'undefined' && performance.now)
+          ? performance.now() : Date.now();
+        perfMark('input:keydown', { keyCode: e.keyCode });
+        beforeEl = document.activeElement;
+      }
       handleKeyNav(container, e);
+      if (perfOn && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () {
+          var after = document.activeElement;
+          var now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now() : Date.now();
+          perfMark('input:focusCommitted', {
+            keyCode: e.keyCode,
+            moved: after !== beforeEl,
+            ms: Math.round(now - keydownT)
+          });
+        });
+      }
     }
   }
   function onFocusIn(ev) {

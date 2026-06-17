@@ -81,12 +81,27 @@ function showResumeOrStartModal(options) {
   }
 
   function onKeyDown(e) {
-    if (e.keyCode === 461 || e.key === 'Backspace' || e.key === 'GoBack' ||
-        e.keyCode === 27 || e.keyCode === 8) {
+    var key = e.keyCode;
+    // Back / cancel
+    if (key === 461 || e.key === 'Backspace' || e.key === 'GoBack' || key === 27 || key === 8) {
       e.preventDefault();
       e.stopPropagation();
       teardown();
       if (onCancel) onCancel();
+      return;
+    }
+    // D-pad UP/DOWN: navigate between buttons in the modal.
+    // The overlay lives in document.body outside the screen container, so
+    // attachFocusNav never sees these events — handle them here instead.
+    if (key === 38 || key === 40) { // ARROW_UP / ARROW_DOWN
+      e.preventDefault();
+      e.stopPropagation();
+      var allBtns = Array.prototype.slice.call(overlay.querySelectorAll('button'));
+      var active = document.activeElement;
+      var cur = allBtns.indexOf(active);
+      if (cur < 0) cur = 0;
+      var next = cur + (key === 40 ? 1 : -1);
+      if (next >= 0 && next < allBtns.length) allBtns[next].focus();
     }
   }
 
