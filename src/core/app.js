@@ -172,8 +172,22 @@ function boot() {
     }
     if (isPerfEnabled()) mark('boot:version-gate-ok');
     tvLog('boot', 'version-gate', { major: gate.major, allowed: true });
+    applyMotionCapabilityClass(gate.major, gate.reason);
     startApp(gate.major);
   });
+}
+
+/**
+ * Gate focus motion (scale lift on focus) by device capability. Newer webOS
+ * (major >= 5), the simulator / unknown stub (major === 0), and the dev browser
+ * get the class; webOS 4 keeps the strengthened static focus ring only — its
+ * engine can't run the transition without scroll/focus latency. Mirrors the
+ * document.body.classList.toggle pattern in motionCursor.js.
+ */
+function applyMotionCapabilityClass(major, reason) {
+  var motionCapable = major >= 5 || major === 0 || reason === 'dev-browser';
+  document.documentElement.classList.toggle('caps-motion', motionCapable);
+  tvLog('boot', 'motion-capability', { major: major, reason: reason || null, capsMotion: motionCapable });
 }
 
 if (document.readyState === 'loading') {

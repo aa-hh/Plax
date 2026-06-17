@@ -80,9 +80,14 @@ function runVersionGate() {
   return checkMinimumWebOS().then(function (result) {
     if (!result.ok) {
       showUnsupported(result.message);
-      return { allowed: false, major: result.major || 0 };
+      return { allowed: false, major: result.major || 0, reason: result.reason || null };
     }
-    return { allowed: true, major: result.major || 0, device: result.device || null };
+    return {
+      allowed: true,
+      major: result.major || 0,
+      device: result.device || null,
+      reason: result.reason || null
+    };
   });
 }
 
