@@ -1,15 +1,18 @@
 import { buildQuery } from '../utils/fetch.js';
 
+/**
+ * Minimal /decision query allow-list, modeled on plex-for-kodi's getDecisionPath:
+ * send hasMDE + a client profile name + directPlay + buffer/subtitle hints, and
+ * OMIT protocol / directStream / directStreamAudio / fastSeek / incomplete-segments
+ * / autoAdjustQuality on the decision (those belong on start.m3u8 only). PMS over
+ * WAN returns a bare HTTP 400 when the decision carries the streaming-only flags.
+ */
 var DECISION_QUERY_KEYS = [
   'path',
   'mediaIndex',
   'partIndex',
-  'fastSeek',
   'hasMDE',
   'directPlay',
-  'directStream',
-  'directStreamAudio',
-  'autoAdjustQuality',
   'mediaBufferSize',
   'session',
   'skipSubtitles',
@@ -26,8 +29,8 @@ var DECISION_QUERY_KEYS = [
   'maxVideoBitrate',
   'videoResolution',
   'protocol',
-  'X-Plex-Incomplete-Segments',
-  'autoAdjustSubtitle'
+  'X-Plex-Client-Profile-Name',
+  'X-Plex-Client-Profile-Extra'
 ];
 
 function buildMinimalDecisionParams(fullParams, metadataPath) {

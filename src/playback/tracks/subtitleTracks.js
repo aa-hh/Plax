@@ -331,6 +331,8 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
     params.fastSeek = '1';
     params.autoAdjustQuality = '0';
     params.mediaBufferSize = '102400';
+    // Mirror the playback decision: PMS's MDE 400s without a client profile.
+    params['X-Plex-Client-Profile-Name'] = 'Generic';
   } else {
     params.subtitles = options.subtitles || 'sidecar';
     if (!subtitleEndpoint) params.fastSeek = '1';

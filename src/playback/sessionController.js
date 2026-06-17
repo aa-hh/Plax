@@ -206,6 +206,21 @@ function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrid
     directPlay: '1',
     directStream: '1',
     directStreamAudio: '1',
+    // plex-for-kodi sends these on every decision; PMS's MDE 400s without a
+    // client profile, and wants the buffer hint to size the transcode session.
+    mediaBufferSize: '102400',
+    // Telling PMS our delivery protocol up front + supplying an explicit HLS
+    // transcode target is what makes the Generic profile produce a valid
+    // decision. Without these PMS returns size=0 with transcodeDecisionCode
+    // 4005 ("No conversion profile found for protocol http"), which then
+    // 400s start.m3u8 because there's no session to start.
+    protocol: 'hls',
+    'X-Plex-Client-Profile-Name': 'Generic',
+    'X-Plex-Client-Profile-Extra': [
+      'add-transcode-target(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec=h264&audioCodec=aac,ac3,mp3)',
+      'add-transcode-target-audio-codec(type=videoProfile&context=streaming&protocol=hls&audioCodec=aac)',
+      'add-direct-play-profile(type=videoProfile&container=mp4,m4v,mov&videoCodec=h264&audioCodec=aac,ac3,mp3)'
+    ].join('+'),
     location: plexLocationForServer(server)
   }, flagOverrides || {}));
   assignDecisionSessionParams(params, session);
@@ -324,16 +339,6 @@ function resolveStrategyFromDecision(parsed, session, requestProtocol) {
   };
 }
 
-function decisionFailureError(err) {
-  var status = err && err.status ? err.status : 0;
-  var failErr = new Error(
-    'Plex /decision failed' + (status ? ' (HTTP ' + status + ')' : '') +
-    '. Check remote access or try 720p quality.'
-  );
-  failErr.status = status || undefined;
-  return failErr;
-}
-
 function buildDecisionRetryUrl(server, partKey, session, flagOverrides) {
   return buildUniversalDecisionUrl(
     server.connectionUri,
@@ -367,6 +372,9 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
   }
 
   function handleDecisionBody(body) {
+    tvLog('session', 'decision response body', {
+      body: String(body || '').replace(/\s+/g, ' ').slice(0, 800)
+    });
     var parsed = parseTranscodeDecision(body, session);
     if (session) {
       if (parsed.resourceSession) {
@@ -401,6 +409,9 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
   }
 
   function logDecisionFailure(err, decisionUrl) {
+    var body = err && err.body
+      ? String(err.body).replace(/\s+/g, ' ').slice(0, 300)
+      : '';
     console.warn(
       '[playback] decision failed for ' + redactPlexUrl(decisionUrl) +
         decisionErrorDetails(err) + ': ' +
@@ -408,19 +419,37 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
     );
     tvLog('session', 'decision failed', {
       url: redactPlexUrl(decisionUrl),
-      error: err && err.message ? err.message : String(err)
+      status: err && err.status ? err.status : 0,
+      error: err && err.message ? err.message : String(err),
+      body: body
     });
+  }
+
+  // A failed /decision must never dead-end playback: PMS issues no transcode
+  // session, so fall through to progressive HTTP transcode using the client
+  // session id (mirrors the missing-resourceSession branch in handleDecisionBody).
+  function fallbackToHttpTranscode(err) {
+    if (session) {
+      session.transcodeSessionId = session.playbackSessionId || session.sessionId;
+      session.playbackStrategy = 'http-transcode';
+      session.pmsDeliveryProtocol = 'http';
+      session.commitToHlsDelivery = false;
+    }
+    tvLog('session', 'decision failed → http-transcode fallback', {
+      status: err && err.status ? err.status : 0
+    });
+    return { strategy: 'http-transcode', protocol: 'http' };
   }
 
   return fetchDecision(url).then(handleDecisionBody).catch(function (err) {
     if (err && err.status === 400) {
       return tryDecision400Retries().catch(function (retryErr) {
         logDecisionFailure(retryErr || err, url);
-        throw decisionFailureError(retryErr || err);
+        return fallbackToHttpTranscode(retryErr || err);
       });
     }
     logDecisionFailure(err, url);
-    throw decisionFailureError(err);
+    return fallbackToHttpTranscode(err);
   });
 }
 
@@ -522,6 +551,7 @@ function probeHlsPlaylistOrReject(server, url, session) {
     tvError('session', 'start.m3u8 probe failed', {
       status: status,
       error: err && err.message ? err.message : String(err),
+      body: err && err.body ? String(err.body).replace(/\s+/g, ' ').slice(0, 300) : '',
       url: redactPlexUrl(url)
     });
     var out = new Error(message);
@@ -585,11 +615,40 @@ function resolveStreamUrl(session) {
           mode: mode
         };
       }
+      if (isWebOs4Tv()) {
+        // Do NOT pre-probe with XHR on webOS 4. The XHR probe (Accept: application/json
+        // + duplicated X-Plex-* headers) draws a spurious HTTP 400 from PMS that the
+        // native HLS player never hits — the official Plex app just points <video> at
+        // start.m3u8 and lets the TV fetch it. Hand the playlist straight to the native
+        // player; a genuine failure surfaces via the video-error fallback chain.
+        tvLog('session', 'webOS4 HLS: skip XHR probe, native player loads playlist', {
+          url: redactPlexUrl(playbackUrl)
+        });
+        return {
+          url: playbackUrl,
+          mode: mode
+        };
+      }
       return probeHlsPlaylistOrReject(server, playbackUrl, session).then(function () {
         return {
           url: playbackUrl,
           mode: mode
         };
+      }).catch(function (probeErr) {
+        // Native HLS start rejected (non-webOS-4) — fall through to progressive HTTP
+        // transcode rather than dead-ending.
+        tvLog('session', 'start.m3u8 failed → http-transcode fallback', {
+          status: probeErr && probeErr.status ? probeErr.status : 0
+        });
+        session.playbackStrategy = 'http-transcode';
+        session.pmsDeliveryProtocol = 'http';
+        session.commitToHlsDelivery = false;
+        session.transcodeSessionId = session.playbackSessionId || session.sessionId;
+        var httpUrl = buildPlaybackUrl(server, partKey, session, 'http', 'http-transcode');
+        tvLog('session', 'url transcode-http (hls fallback)', {
+          url: redactPlexUrl(httpUrl)
+        });
+        return { url: httpUrl, mode: 'transcode-http' };
       });
     } catch (buildErr) {
       tvError('session', 'build playback URL failed', buildErr && buildErr.message ? buildErr.message : buildErr);

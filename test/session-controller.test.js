@@ -148,7 +148,7 @@ test('buildPlaybackUrl HTTP targets universal start without m3u8', function () {
   assert.equal(httpQ['X-Plex-Client-Profile-Extra'], undefined);
 });
 
-test('buildPlaybackUrl HLS includes webOS profile extra only for Plex for LG', function () {
+test('buildPlaybackUrl HLS on webOS 4 uses Generic profile name, not a custom profile extra', function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
     platform: { tv: true },
@@ -161,7 +161,9 @@ test('buildPlaybackUrl HLS includes webOS profile extra only for Plex for LG', f
   var session = baseSession({ forceTranscode: true, playbackStrategy: 'transcode' });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
   assert.equal(q['X-Plex-Product'], PMS_PRODUCT);
-  assert.equal(q['X-Plex-Client-Profile-Extra'], WEBOS_HLS_TRANSCODE_FMP4_PROFILE_EXTRA);
+  // webOS 4: Generic profile (PMS 400s our custom append-transcode-target-codec).
+  assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
+  assert.equal(q['X-Plex-Client-Profile-Extra'], undefined);
   assert.equal(q.directPlay, '0');
   assert.equal(q.directStream, '0');
   assert.ok(q.path && q.path.indexOf('http') < 0);
@@ -382,7 +384,8 @@ test('resolveStreamUrl follows decision with subtitles=auto over HTTPS', async f
 
   assert.equal(decisionQuery.path, '/library/metadata/12345');
   assert.equal(decisionQuery.directPlay, '1');
-  assert.equal(decisionQuery.directStream, '1');
+  assert.equal(decisionQuery.directStream, undefined);
+  assert.equal(decisionQuery['X-Plex-Client-Profile-Name'], 'Generic');
   assert.equal(decisionQuery.subtitles, 'auto');
   assert.equal(decisionQuery['X-Plex-Incomplete-Segments'], undefined);
   assert.equal(decisionQuery.subtitleSize, undefined);
@@ -401,7 +404,7 @@ test('resolveStreamUrl follows decision with subtitles=auto over HTTPS', async f
   assert.equal(startQuery.session, 'plex-decision-session');
   assert.equal(startQuery.transcodeSessionId, 'plex-decision-session');
   assert.equal(startQuery.skipSubtitles, '1');
-  assert.equal(startQuery['X-Plex-Audio-Stream'], '1894443');
+  assert.equal(startQuery.audioStreamID, '1894443');
   assert.equal(startQuery['X-Plex-Token'], 'server-token-xyz');
 });
 
@@ -558,7 +561,7 @@ test('resolveStreamUrl decision includes burn params when subtitleBurnIn', async
   assert.equal(decisionQuery.subtitleStreamID, '1894297');
   assert.equal(decisionQuery.advancedSubtitles, 'burn');
   assert.equal(decisionQuery.directPlay, '1');
-  assert.equal(decisionQuery.directStream, '1');
+  assert.equal(decisionQuery.directStream, undefined);
   assert.equal(decisionQuery.subtitleSize, '100');
 });
 
@@ -621,7 +624,8 @@ test('buildDecisionRequestParams includes Plex transcode level params for 720p',
   var session = baseSession({ quality: '720', playbackStrategy: 'transcode' });
   var q = buildDecisionRequestParams(mockServer, partKey, session, 'hls');
   assert.equal(q.directPlay, '0');
-  assert.equal(q.directStream, '0');
+  // directStream/directStreamAudio are start.m3u8-only now (decision carries directPlay).
+  assert.equal(q.directStream, undefined);
   assert.equal(String(q.maxVideoBitrate), '4000');
   assert.equal(q.videoResolution, '1280x720');
   assert.equal(q.subtitleSize, undefined);
@@ -633,7 +637,23 @@ test('buildDecisionRequestParams forces transcode flags when quality=720 without
   var session = baseSession({ quality: '720', playbackStrategy: undefined });
   var q = buildDecisionRequestParams(mockServer, partKey, session, 'hls');
   assert.equal(q.directPlay, '0');
-  assert.equal(q.directStream, '0');
+  assert.equal(q.directStream, undefined);
+});
+
+test('buildDecisionRequestParams mirrors plex-for-kodi minimal shape', function () {
+  var session = baseSession({ quality: '720', playbackStrategy: 'transcode' });
+  var q = buildDecisionRequestParams(mockServer, partKey, session, 'hls');
+  // Present: MDE flag + client profile + buffer hint (what plex-for-kodi sends).
+  assert.equal(q.hasMDE, '1');
+  assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
+  assert.equal(q.mediaBufferSize, '102400');
+  // Absent: streaming-only flags that make PMS return a bare HTTP 400 over WAN.
+  assert.equal(q.protocol, undefined);
+  assert.equal(q.directStream, undefined);
+  assert.equal(q.directStreamAudio, undefined);
+  assert.equal(q.fastSeek, undefined);
+  assert.equal(q.autoAdjustQuality, undefined);
+  assert.equal(q['X-Plex-Incomplete-Segments'], undefined);
 });
 
 test('buildPlaybackUrl transcode with soft subs includes subtitleSize and skipSubtitles', function () {
@@ -708,7 +728,7 @@ test('buildDecisionRequestParams omits transcodeSessionId before PMS session exi
   assert.equal(q.session, 'client-playback-session-id');
   assert.equal(q.transcodeSessionId, undefined);
   assert.equal(q.directPlay, '0');
-  assert.equal(q.directStream, '1');
+  assert.equal(q.directStream, undefined);
   assert.equal(q.subtitleSize, undefined);
 });
 
@@ -725,8 +745,10 @@ test('buildFirstDecisionUrl on webOS 4 uses capability probe flags', function ()
   var session = baseSession({ playbackStrategy: 'direct-stream' });
   var q = parseQuery(buildFirstDecisionUrl(mockServer, partKey, session, 'hls'));
   assert.equal(q.directPlay, '1');
-  assert.equal(q.directStream, '1');
-  assert.equal(q.directStreamAudio, '1');
+  // directStream/directStreamAudio no longer sent on the decision (start.m3u8 only).
+  assert.equal(q.directStream, undefined);
+  assert.equal(q.directStreamAudio, undefined);
+  assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
   assert.equal(q.protocol, undefined);
   assert.equal(q.transcodeSessionId, undefined);
 });
@@ -751,7 +773,7 @@ test('buildPlaybackUrl uses resourceSession from decision on start URL', functio
   assert.notEqual(q.session, 'xplay-test-session');
 });
 
-test('resolveStreamUrl webOS 4 rejects when decision returns HTTP 400', async function () {
+test('resolveStreamUrl webOS 4 falls back to http-transcode when decision returns HTTP 400', async function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
     platform: { tv: true },
@@ -770,16 +792,16 @@ test('resolveStreamUrl webOS 4 rejects when decision returns HTTP 400', async fu
     });
   };
 
+  // A decision 400 must never dead-end playback — fall through to progressive
+  // HTTP transcode (the path that reached "first frame" on-device).
   var session = baseSession({ playbackStrategy: 'direct-stream', transcodeSessionId: undefined });
-  await assert.rejects(
-    function () { return resolveStreamUrl(session); },
-    function (err) {
-      return /decision failed/i.test(err.message);
-    }
-  );
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'transcode-http');
+  assert.equal(session.playbackStrategy, 'http-transcode');
+  assert.ok(result.url.indexOf('start.m3u8') < 0);
 });
 
-test('resolveStreamUrl rejects when start.m3u8 probe returns HTTP 400', async function () {
+test('resolveStreamUrl falls back to http-transcode when start.m3u8 probe returns HTTP 400', async function () {
   globalThis.fetch = function (url) {
     if (String(url).indexOf('/decision') >= 0) {
       return Promise.resolve({
@@ -803,11 +825,55 @@ test('resolveStreamUrl rejects when start.m3u8 probe returns HTTP 400', async fu
     });
   };
 
+  // A rejected HLS start must not dead-end — fall through to progressive HTTP
+  // transcode (the path that actually plays on webOS 4).
   var session = baseSession({ forceTranscode: true, transcodeSessionId: undefined });
-  await assert.rejects(
-    function () { return resolveStreamUrl(session); },
-    function (err) {
-      return /start\.m3u8 probe failed|rejected start\.m3u8/i.test(err.message);
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'transcode-http');
+  assert.equal(session.playbackStrategy, 'http-transcode');
+  assert.ok(result.url.indexOf('start.m3u8') < 0);
+});
+
+test('resolveStreamUrl on webOS 4 hands HLS start to native player without XHR pre-probe', async function () {
+  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.webOS = {
+    platform: { tv: true },
+    deviceInfo: function (cb) {
+      cb({ modelName: 'OLED55B8LLA', version: '4.4.0' });
     }
-  );
+  };
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+
+  var probedStart = false;
+  globalThis.fetch = function (url) {
+    if (String(url).indexOf('/decision') >= 0) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: function () {
+          return [
+            '<MediaContainer resourceSession="plex-probe-session">',
+            '<Video><Media protocol="hls"><Part decision="transcode" protocol="hls"/></Media></Video>',
+            '</MediaContainer>'
+          ].join('');
+        },
+        headers: { get: function () { return 'application/xml'; } }
+      });
+    }
+    // start.m3u8 must NOT be fetched as an XHR probe on webOS 4 — the native
+    // <video> player loads it instead (the path the official app uses).
+    probedStart = true;
+    return Promise.resolve({
+      ok: false,
+      status: 400,
+      text: function () { return '<html>400 Bad Request</html>'; },
+      headers: { get: function () { return 'text/html'; } }
+    });
+  };
+
+  var session = baseSession({ forceTranscode: true, transcodeSessionId: undefined });
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'transcode-hls');
+  assert.ok(result.url.indexOf('start.m3u8') >= 0);
+  assert.equal(probedStart, false, 'start.m3u8 should not be XHR-probed on webOS 4');
 });

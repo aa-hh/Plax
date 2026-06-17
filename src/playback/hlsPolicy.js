@@ -77,26 +77,81 @@ function applyWebOsHlsTranscodeParams(params, options) {
   params.protocol = 'hls';
   params.fastSeek = '1';
   params['X-Plex-Incomplete-Segments'] = '1';
+  if (isWebOs4Tv()) {
+    // webOS 4 (Chromium 53) over WAN: PMS 400s start.m3u8 when it carries the
+    // decision-only params. Mirror plex-for-kodi's minimal buildTranscodeHls set:
+    // keep only path, mediaIndex/partIndex, session, directPlay, directStream,
+    // videoResolution, maxVideoBitrate, offset, location, audioStreamID (if any),
+    // skipSubtitles/subtitleSize/burn-related, protocol, X-Plex-Client-Profile-Name.
+    params['X-Plex-Client-Profile-Name'] = 'Generic';
+    // PMS needs add-transcode-target directives to produce a valid HLS
+    // profile for the Generic client. Without them /decision returns size=0
+    // with "No conversion profile found for protocol http" and start.m3u8
+    // 400s. The variant playlist also needs CODECS for webOS 4 native HLS
+    // — supplying these targets makes PMS emit it. Mirrors the decision URL.
+    params['X-Plex-Client-Profile-Extra'] = [
+      'add-transcode-target(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec=h264&audioCodec=aac,ac3,mp3)',
+      'add-transcode-target-audio-codec(type=videoProfile&context=streaming&protocol=hls&audioCodec=aac)',
+      'add-direct-play-profile(type=videoProfile&container=mp4,m4v,mov&videoCodec=h264&audioCodec=aac,ac3,mp3)'
+    ].join('+');
+    delete params['X-Plex-Incomplete-Segments'];
+    delete params.hasMDE;
+    delete params.mediaBufferSize;
+    delete params.autoAdjustQuality;
+    delete params.directStreamAudio;
+    delete params.fastSeek;
+    delete params.transcodeSessionId;
+    delete params['X-Plex-Direct-Play'];
+    delete params['X-Plex-Direct-Stream'];
+    // plex-for-kodi sends directStream=1 on every transcode URL — PMS decides
+    // remux vs full-transcode from /decision metadata, not this flag. Sending
+    // directStream=0 over WAN to this PMS build triggers HTTP 400.
+    params.directStream = '1';
+    // plex-for-kodi does not include audioStreamID on the transcode URL; PMS
+    // reads the selected audio stream from /decision. Passing it here over WAN
+    // to this build triggers HTTP 400.
+    delete params.audioStreamID;
+    if (params.skipSubtitles === '1') {
+      delete params.subtitleSize;
+      delete params.audioBoost;
+    }
+    if (params.offset == null) params.offset = '0';
+    // plex-for-kodi only adds `location=lan` for local connections — never
+    // `location=wan`. Sending the explicit wan tag over WAN to this PMS build
+    // triggers HTTP 400.
+    if (params.location !== 'lan') delete params.location;
+    // plex-for-kodi puts X-Plex-Session-Id and X-Plex-Session-Identifier on
+    // every transcode URL so PMS can correlate start.m3u8 with the /decision
+    // call. Without these, this PMS build over WAN returns HTTP 400.
+    if (params.session) {
+      params['X-Plex-Session-Id'] = params.session;
+      params['X-Plex-Session-Identifier'] = params.session;
+    }
+    // plex-for-kodi only includes X-Plex-Token, X-Plex-Client-Identifier,
+    // X-Plex-Session-Id/Identifier, and X-Plex-Client-Profile-Name as query
+    // params on the transcode URL — Product/Version/Platform/Device go in HTTP
+    // headers. Our <video> element can't set headers, so they leak into the URL
+    // via plexClientQuery(). Stripping them mirrors plex-for-kodi's shape on
+    // start.m3u8 (the direct-play endpoint is more permissive and accepts them).
+    // Set to null (not delete) — serverUrl() merges plexClientQuery() with
+    // params, so delete would let the identity fields reappear from there.
+    // buildQuery() skips null-valued keys.
+    params['X-Plex-Product'] = null;
+    params['X-Plex-Version'] = null;
+    params['X-Plex-Platform'] = null;
+    params['X-Plex-Platform-Version'] = null;
+    params['X-Plex-Device'] = null;
+    params['X-Plex-Model'] = null;
+    params['X-Plex-Device-Name'] = null;
+    params['X-Plex-Device-Vendor'] = null;
+    return params;
+  }
   var profileExtra = resolveWebOsHlsProfileExtra(options);
   if (profileExtra) {
     params['X-Plex-Client-Profile-Extra'] = profileExtra;
   } else {
     delete params['X-Plex-Client-Profile-Extra'];
   }
-  return params;
-}
-
-/**
- * Params for GET /transcode/universal/decision only.
- * Omit incomplete-segments hint — some PMS builds return HTTP 400 when it is
- * combined with directStream=1 over WAN; start.m3u8 still receives it.
- */
-function applyDecisionRequestHlsParams(params) {
-  params = params || {};
-  params.protocol = 'hls';
-  params.fastSeek = '1';
-  delete params['X-Plex-Incomplete-Segments'];
-  delete params['X-Plex-Client-Profile-Extra'];
   return params;
 }
 
@@ -285,7 +340,6 @@ export {
   isWebOs4Tv,
   resolveWebOsHlsProfileExtra,
   applyWebOsHlsTranscodeParams,
-  applyDecisionRequestHlsParams,
   isSegmentedDeliveryProtocol,
   buildHttpTranscodeFallbackParams,
   isHlsUrl,

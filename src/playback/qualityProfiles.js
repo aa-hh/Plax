@@ -97,10 +97,6 @@ function nextLowerTranscodeProfileKey(key) {
 function applyProfileToParams(params, profileKey, prefs) {
   var profile = getProfile(profileKey);
   prefs = prefs || {};
-  if (profile.forceDirect && prefs.directPlay !== false) {
-    params['X-Plex-Direct-Play'] = '1';
-    params['X-Plex-Direct-Stream'] = '1';
-  }
   if (profile.maxVideoBitrate) {
     params['maxVideoBitrate'] = profile.maxVideoBitrate;
   }

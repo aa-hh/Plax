@@ -22,6 +22,7 @@ import { summarizeTranscodeUrl } from './plexPaths.js';
 import { addOnceEventListener } from '../utils/domUtils.js';
 import { getState } from '../core/store.js';
 import { tvLog, tvError } from '../utils/tvDebug.js';
+import { isPerfEnabled, mark as perfMark } from '../perf/resourceMonitor.js';
 
 var videoEl = null;
 var progressTimer = null;
@@ -33,6 +34,7 @@ var onRebufferTimeoutCb = null;
 var onFirstFrameCb = null;
 var onTimelineSyncFailureCb = null;
 var firstFrameFired = false;
+var playPressedAtMs = 0;
 var pendingSeekListener = null;
 var pendingSeekWrapper = null;
 var bufferingShown = false;
@@ -755,6 +757,13 @@ function applyPlaybackOffset(offsetMs) {
 function notifyFirstFrame() {
   if (firstFrameFired || !videoEl) return;
   firstFrameFired = true;
+  if (isPerfEnabled()) {
+    var nowMs = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+    perfMark('play:firstFrame', {
+      ms: playPressedAtMs ? Math.round(nowMs - playPressedAtMs) : null
+    });
+  }
   if (onFirstFrameCb) {
     try { onFirstFrameCb(); } catch (e) { console.error(e); }
   }
@@ -774,6 +783,13 @@ function play(url, session, options) {
   lastKnownPositionMs = offsetMs;
   initialPlayingTimelineSynced = false;
   firstFrameFired = false;
+  if (isPerfEnabled()) {
+    playPressedAtMs = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+    perfMark('play:pressed', { mode: mode, mseHls: shouldUseMseHls(url) });
+  } else {
+    playPressedAtMs = 0;
+  }
   lastPlaybackUrl = url;
   playbackModeRef = mode;
   logRuntimeBuildStampOnce();

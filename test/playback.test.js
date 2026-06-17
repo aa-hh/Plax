@@ -718,7 +718,9 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     var q = new URL(decision.url).searchParams;
     assert.equal(q.get('path'), '/library/metadata/33622');
     assert.equal(q.get('directPlay'), '0');
-    assert.equal(q.get('directStream'), '1');
+    // directStream is start.m3u8-only now; decision mirrors plex-for-kodi shape.
+    assert.equal(q.get('directStream'), null);
+    assert.equal(q.get('X-Plex-Client-Profile-Name'), 'Generic');
     assert.equal(q.get('subtitles'), null);
     assert.equal(q.get('copyts'), null);
     assert.equal(q.get('audioBoost'), null);

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import {
   applyWebOsHlsTranscodeParams,
-  applyDecisionRequestHlsParams,
   buildHttpTranscodeFallbackParams,
   extractHlsManifestDiagnostics,
   usesWebOsTvPmsProfile,
@@ -54,16 +53,20 @@ test.afterEach(function () {
   }
 });
 
-test('webOS 4 TV uses fMP4 profile extra instead of mpegts', function () {
+test('webOS 4 TV HLS start uses Generic profile name, not a custom profile extra', function () {
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
   assert.equal(isWebOs4Tv(), true);
 
+  // PMS returns HTTP 400 for our append-transcode-target-codec(container=mp4)
+  // directive on webOS 4 — request via the server-side Generic profile instead.
   var remux = applyWebOsHlsTranscodeParams({}, { strategy: 'direct-stream' });
-  assert.equal(remux['X-Plex-Client-Profile-Extra'], WEBOS_HLS_FMP4_PROFILE_EXTRA);
-  assert.ok(remux['X-Plex-Client-Profile-Extra'].indexOf('container=mp4') >= 0);
+  assert.equal(remux['X-Plex-Client-Profile-Name'], 'Generic');
+  assert.equal(remux['X-Plex-Client-Profile-Extra'], undefined);
+  assert.equal(remux.protocol, 'hls');
 
   var transcode = applyWebOsHlsTranscodeParams({}, { strategy: 'transcode' });
-  assert.equal(transcode['X-Plex-Client-Profile-Extra'], WEBOS_HLS_TRANSCODE_FMP4_PROFILE_EXTRA);
+  assert.equal(transcode['X-Plex-Client-Profile-Name'], 'Generic');
+  assert.equal(transcode['X-Plex-Client-Profile-Extra'], undefined);
 });
 
 test('webOS 5+ TV keeps mpegts profile extra', function () {
@@ -72,16 +75,6 @@ test('webOS 5+ TV keeps mpegts profile extra', function () {
 
   var params = applyWebOsHlsTranscodeParams({}, { strategy: 'direct-stream' });
   assert.equal(params['X-Plex-Client-Profile-Extra'], WEBOS_HLS_MPEGTS_PROFILE_EXTRA);
-});
-
-test('applyDecisionRequestHlsParams omits incomplete-segments and profile extra', function () {
-  var params = applyDecisionRequestHlsParams({
-    'X-Plex-Incomplete-Segments': '1',
-    'X-Plex-Client-Profile-Extra': WEBOS_HLS_FMP4_PROFILE_EXTRA
-  });
-  assert.equal(params.protocol, 'hls');
-  assert.equal(params['X-Plex-Incomplete-Segments'], undefined);
-  assert.equal(params['X-Plex-Client-Profile-Extra'], undefined);
 });
 
 test('applyWebOsHlsTranscodeParams includes profile extra for webOS simulator HLS', function () {

@@ -16,7 +16,7 @@ function parseAudioStreams(media) {
 
 function buildAudioTranscodeParam(streamId) {
   if (streamId == null) return {};
-  return { 'X-Plex-Auto-Audio-Stream': '0', 'X-Plex-Audio-Stream': String(streamId) };
+  return { audioStreamID: String(streamId) };
 }
 
 export { parseAudioStreams, buildAudioTranscodeParam };
