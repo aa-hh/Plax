@@ -5,7 +5,13 @@
 
 import { hydrateRowViewport } from '../posterImages.js';
 
-var ROW_SLOT_WIDTH = 172;
+// One card's horizontal advance: standard poster (--row-poster-w: 180px) +
+// inter-card gap (--row-card-gap: 16px). Used only to size the lead/trail
+// spacers that preserve scroll extent for off-window cards, so it just needs to
+// track the standard card footprint (was 172 for the old 156px poster). Home
+// rows run a slightly wider gap (20px), but the windowed slice is generous
+// enough that the small per-card delta never affects which cards are rendered.
+var ROW_SLOT_WIDTH = 196;
 
 function createVirtualRow(container, options) {
   var items = options.items || [];

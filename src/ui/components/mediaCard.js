@@ -187,15 +187,19 @@ function createMediaCard(item, onSelect, options) {
   var posterWrap = card.firstChild;
   var img = posterWrap.firstChild;
   img.alt = lines.title;
+  // Intrinsic-size hints only — CSS sizes the rendered poster from the
+  // --row-poster/--grid-poster tokens. Keep these aligned to the standard 2:3
+  // scale (180×270) so the aspect is correct during load and there is no
+  // pre-CSS layout jump (was 156×234 / 176×264 from the old poster sizes).
   if (options.layout === 'episode') {
     img.width = POSTER_WIDTH_EPISODE;
     img.height = POSTER_HEIGHT_EPISODE;
   } else if (options.layout === 'grid') {
-    img.width = 176;
-    img.height = 264;
+    img.width = POSTER_WIDTH_GRID;
+    img.height = 270;
   } else {
-    img.width = 156;
-    img.height = 234;
+    img.width = POSTER_WIDTH_ROW;
+    img.height = 270;
   }
   if (sizedThumb) {
     img.dataset.posterSrc = sizedThumb;
