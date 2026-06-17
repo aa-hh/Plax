@@ -138,14 +138,15 @@ test('Up from second row returns to same column', function () {
   assert.equal(document.activeElement.id, 'card-2');
 });
 
-test('Up from first grid row focuses sidebar', function () {
+test('Up from first grid row stays in grid (no sidebar jump)', function () {
   installMinimalDom();
   var screen = buildLibraryFixture(8);
   document.registerTree(screen);
 
   screen.querySelector('#card-3').focus();
   handleKeyNav(screen, keyEvent(ARROW_UP));
-  assert.ok(document.activeElement.className.indexOf('browsing-hub-item') >= 0);
+  // UP from the top row should not jump to the sidebar — focus stays in the grid
+  assert.ok(document.activeElement.className.indexOf('browsing-hub-item') < 0);
 });
 
 test('Left from first column focuses sidebar', function () {

@@ -45,6 +45,7 @@ import {
   shouldOfferResumeChoice,
   showResumeOrStartModal
 } from '../resumeChoice.js';
+import { prefetchDetailItems, abortPrefetch } from '../../core/idlePrefetch.js';
 
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
@@ -540,33 +541,32 @@ function detailScreen(root, params, navigate) {
     return screen.querySelector('.detail-home-main');
   }
 
-  function setDetailBackgroundImage(homeMain, imageUrl) {
-    if (!homeMain || !imageUrl) return;
-    homeMain.style.backgroundImage = DETAIL_BG_GRADIENT + ', url(' + imageUrl + ')';
-    homeMain.classList.add('detail-home-main--has-bg');
+  function setDetailBackgroundImage(imageUrl) {
+    if (!imageUrl) return;
+    screen.style.backgroundImage = DETAIL_BG_GRADIENT + ', url(' + imageUrl + ')';
+    screen.classList.add('screen--has-detail-bg');
   }
 
-  function setDetailBackgroundColors(homeMain, colors) {
+  function setDetailBackgroundColors(colors) {
     var gradient = buildUltraBlurColorGradient(colors);
-    if (!homeMain || !gradient) return;
-    homeMain.style.backgroundImage = DETAIL_BG_GRADIENT + ', ' + gradient;
-    homeMain.classList.add('detail-home-main--has-bg');
+    if (!gradient) return;
+    screen.style.backgroundImage = DETAIL_BG_GRADIENT + ', ' + gradient;
+    screen.classList.add('screen--has-detail-bg');
   }
 
   function applyDetailBackground(homeMain, server, item) {
-    if (!homeMain) return;
-    homeMain.classList.remove('detail-home-main--has-bg');
-    homeMain.style.backgroundImage = '';
+    screen.classList.remove('screen--has-detail-bg');
+    screen.style.backgroundImage = '';
 
     if (!item.artPath || !server) return;
 
     loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
       if (!backdrop) return;
       if (backdrop.imageUrl) {
-        setDetailBackgroundImage(homeMain, backdrop.imageUrl);
+        setDetailBackgroundImage(backdrop.imageUrl);
         return;
       }
-      if (backdrop.colors) setDetailBackgroundColors(homeMain, backdrop.colors);
+      if (backdrop.colors) setDetailBackgroundColors(backdrop.colors);
     });
   }
 
@@ -894,6 +894,11 @@ function detailScreen(root, params, navigate) {
           }
         }
         if (!nextEp) return;
+        // Warm the next episode's metadata so "Up Next" opens instantly.
+        if (server && nextEp.ratingKey) {
+          try { prefetchDetailItems(server, [nextEp], { max: 1 }); }
+          catch (e) { /* ignore */ }
+        }
         var upNextEl = screen.querySelector('#detail-up-next');
         if (!upNextEl) return;
         var nextLabel = 'S' + (nextEp.parentIndex != null ? nextEp.parentIndex : item.parentIndex) +
@@ -1349,9 +1354,19 @@ function detailScreen(root, params, navigate) {
       var hubOpts = metadata && metadata.type === 'show'
         ? { visibleCount: 12 }
         : undefined;
+      var relatedItems = [];
       rows.forEach(function (row) {
         renderHubRow(rails, row, navigate, hubOpts);
+        var items = (row && row.items) || [];
+        for (var i = 0; i < items.length && i < 4; i++) {
+          if (items[i] && items[i].ratingKey) relatedItems.push(items[i]);
+        }
       });
+      // Drilling into a related title should be instant: warm their metadata.
+      if (server && relatedItems.length) {
+        try { prefetchDetailItems(server, relatedItems, { max: 8 }); }
+        catch (e) { /* ignore */ }
+      }
     }).catch(function () {});
   }
 
@@ -1400,6 +1415,7 @@ function detailScreen(root, params, navigate) {
       seasonsLoadGen += 1;
       episodesLoadGen += 1;
       relatedHubsLoadGen += 1;
+      try { abortPrefetch(); } catch (e) { /* ignore */ }
       screen.removeEventListener('keydown', onDetailModalKeyDown, true);
       detachFocus();
     }

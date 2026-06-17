@@ -820,11 +820,6 @@ function handleKeyNav(container, e) {
       scrollFocusedIntoView(list[columnNext]);
       return true;
     }
-    if (key === ARROW_UP && isMediaGridZone(zone) && cols > 0 &&
-        Math.floor(idx / cols) === 0 && container.querySelector('.browsing-hub-nav-host')) {
-      e.preventDefault();
-      if (focusSidebar(container)) return true;
-    }
     if (key === ARROW_UP && isSettingsScreen(container) && isSettingsRowZone(zone) &&
         zIdx > 0 && isSidebarZone(zones[zIdx - 1])) {
       e.preventDefault();

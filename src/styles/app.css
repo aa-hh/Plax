@@ -268,13 +268,7 @@ html { min-width: 1280px; min-height: 720px; }
 }
 
 .browsing-hub-section__title {
-  margin: 0 0 var(--space-3);
-  padding: 0 10px;
-  font-size: var(--font-small);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  display: none;
 }
 
 .browsing-hub-section--system .browsing-hub-section__title:empty {
@@ -766,7 +760,10 @@ html { min-width: 1280px; min-height: 720px; }
   border-radius: var(--radius-lg);
   object-fit: cover;
   display: block;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  /* Cheap 1px hairline instead of a 22px-blur drop shadow: this shadow was
+     painted on EVERY poster in the grid and re-rasterized while scrolling —
+     large blur radii repaint poorly on Chromium 53 / weak TV GPU. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .card-poster-wrap {
@@ -1100,7 +1097,7 @@ html { min-width: 1280px; min-height: 720px; }
   margin-left: 40px;
 }
 
-.detail-home-main--has-bg {
+.screen--has-detail-bg {
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
