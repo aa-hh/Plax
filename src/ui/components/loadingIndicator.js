@@ -1,5 +1,5 @@
 /**
- * Reusable static loading indicator (splash, bootstrap, buffering).
+ * Reusable static loading indicator (bootstrap, inline loading states).
  * No CSS animations — middle dot highlighted for visual hierarchy.
  */
 

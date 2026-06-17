@@ -12,7 +12,6 @@ import { resolveStartupRoute } from './startupRouting.js';
 import { initPlatform } from '../platform/webos.js';
 import { runVersionGate } from '../platform/versionGate.js';
 import { resolveNetworkPrefs } from '../settings/networkPrefs.js';
-import { initSplash, setSplashStatus, hideSplash } from '../ui/splash.js';
 import { initResourceMonitor, isPerfEnabled, mark, startSampling } from '../perf/resourceMonitor.js';
 import { initPerfHud } from '../perf/perfHud.js';
 import { tvLog, initTvDebug } from '../utils/tvDebug.js';
@@ -56,20 +55,15 @@ function logEngineDiagnostics() {
 
 function startApp(platformMajor) {
   if (isPerfEnabled()) mark('boot:startApp');
-  setSplashStatus('Starting app…');
   var root = document.getElementById('app-root');
   if (!root) {
     console.error('app-root not found');
-    hideSplash();
     return;
   }
 
-  setSplashStatus('Initializing platform…');
   initPlatform();
   logEngineDiagnostics();
-  setSplashStatus('Preparing playback engine…');
   player.init();
-  setSplashStatus('Building app shell…');
   initRouter(root);
   if (isPerfEnabled()) {
     mark('boot:router-initialized');
@@ -122,20 +116,14 @@ function startApp(platformMajor) {
 
   var startupRoute = resolveStartupRoute(persisted, ownerToken);
   if (startupRoute.route === 'profile-picker') {
-    setSplashStatus('Restoring session…');
     // Plex.tv link is once per device (owner). Home profiles reuse that link via
     // a server-side switch — no second pairing for kids/guests.
     navigate(startupRoute.route, startupRoute.params);
     if (isPerfEnabled()) mark(startupRoute.mark);
   } else {
-    setSplashStatus('Waiting for sign-in…');
     navigate(startupRoute.route, startupRoute.params);
     if (isPerfEnabled()) mark(startupRoute.mark);
   }
-
-  requestAnimationFrame(function () {
-    hideSplash();
-  });
 
   logStartupBuild(typeof window !== 'undefined' ? window : null);
   if (typeof performance !== 'undefined') {
@@ -176,13 +164,10 @@ function boot() {
       }
     });
   }
-  initSplash();
-  setSplashStatus('Checking device…');
   runVersionGate().then(function (gate) {
     if (!gate.allowed) {
       if (isPerfEnabled()) mark('boot:blocked-version-gate');
       tvLog('boot', 'version-gate', { major: 0, allowed: false });
-      hideSplash();
       return;
     }
     if (isPerfEnabled()) mark('boot:version-gate-ok');

@@ -820,7 +820,7 @@ test('buildPlaybackUrl uses resourceSession from decision on start URL', functio
   assert.notEqual(q.session, 'xplay-test-session');
 });
 
-test('resolveStreamUrl webOS 4 falls back to http-transcode when decision returns HTTP 400', async function () {
+test('resolveStreamUrl webOS 4 coerces decision-400 http fallback to mpegts HLS', async function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
     platform: { tv: true },
@@ -829,6 +829,7 @@ test('resolveStreamUrl webOS 4 falls back to http-transcode when decision return
     }
   };
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  setState({ deviceInfo: { uhd: true, hdr10: true, dolbyVision: false, versionMajor: 4, version: '4.4.0', model: 'OLED55B8LLA' } });
 
   globalThis.fetch = function () {
     return Promise.resolve({
@@ -839,13 +840,14 @@ test('resolveStreamUrl webOS 4 falls back to http-transcode when decision return
     });
   };
 
-  // A decision 400 must never dead-end playback — fall through to progressive
-  // HTTP transcode (the path that reached "first frame" on-device).
+  // A decision 400 must never dead-end playback. The generic fallback chooses
+  // http-transcode, but progressive HTTP returns a 0-byte body on webOS 4 — so
+  // it is coerced to a mpegts HLS transcode (the only delivery this TV plays).
   var session = baseSession({ playbackStrategy: 'direct-stream', transcodeSessionId: undefined });
   var result = await resolveStreamUrl(session);
-  assert.equal(result.mode, 'transcode-http');
-  assert.equal(session.playbackStrategy, 'http-transcode');
-  assert.ok(result.url.indexOf('start.m3u8') < 0);
+  assert.equal(result.mode, 'transcode-hls');
+  assert.equal(session.playbackStrategy, 'transcode');
+  assert.ok(/start\.m3u8/.test(result.url));
 });
 
 test('resolveStreamUrl falls back to http-transcode when start.m3u8 probe returns HTTP 400', async function () {

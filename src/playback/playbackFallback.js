@@ -94,7 +94,9 @@ function decideBurnInErrorFallback(state, context) {
     tvLog('fallback', 'error → full-transcode (subtitle burn-in preserved)');
     return { action: 'full-transcode', codecUnsupported: codecUnsupported };
   }
-  if (!state.httpFallbackTried && !isPmsCommittedToHlsDelivery(context)) {
+  // webOS 4 progressive HTTP returns 0 bytes, so it can't preserve a burn-in
+  // either — skip straight to terminal once the HLS transcode is exhausted.
+  if (!isWebOs4Tv() && !state.httpFallbackTried && !isPmsCommittedToHlsDelivery(context)) {
     state.hlsFallbackTried = true;
     state.httpFallbackTried = true;
     tvLog('fallback', 'error → http-transcode (subtitle burn-in preserved)');
@@ -155,6 +157,12 @@ function decideErrorFallback(state, context) {
       codecUnsupported: codecUnsupported
     };
   }
+  // webOS 4: never fall to progressive HTTP transcode — PMS returns a 0-byte
+  // body on this build, so it can't rescue a failed HLS transcode. Go terminal.
+  if (isWebOs4Tv() && (playbackMode === 'transcode-hls' || isHls)) {
+    tvLog('fallback', 'error → terminal (webOS4: no http-transcode)');
+    return { action: 'terminal' };
+  }
   if (
     playbackMode === 'transcode-hls' &&
     isHls &&
@@ -195,6 +203,13 @@ function decideRebufferFallback(state, context) {
     state.fullTranscodeFallbackTried = true;
     tvLog('fallback', 'rebuffer → full-transcode');
     return { action: 'full-transcode' };
+  }
+  // webOS 4: progressive HTTP transcode returns a 0-byte body (PMS quirk on this
+  // build) — it never plays, so it is NOT a valid rebuffer escape. Stay on the
+  // mpegts HLS transcode and let it keep fetching segments rather than switching
+  // to a delivery that's guaranteed to stall.
+  if (isWebOs4Tv()) {
+    return { action: 'none' };
   }
   if (
     context.transcodeProtocol !== 'http' &&

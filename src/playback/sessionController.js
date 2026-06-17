@@ -681,6 +681,17 @@ function resolveStreamUrl(session) {
     try {
       var strategy = resolved.strategy;
       var protocol = resolved.protocol || requestProtocol;
+      // webOS 4: progressive HTTP transcode returns a 0-byte body, so http-transcode
+      // is never a usable delivery here. Coerce any http-transcode strategy back to a
+      // mpegts HLS transcode regardless of how it was reached (stale session state,
+      // inherited protocol, fallback). The transcode itself is identical; only the
+      // delivery changes to the one this hardware can actually play.
+      if (isWebOs4Tv() && strategy === 'http-transcode') {
+        strategy = 'transcode';
+        protocol = 'hls';
+        if (session) { session.playbackStrategy = 'transcode'; session.transcodeProtocol = 'hls'; }
+        tvError('session', 'webOS4: coerced http-transcode → mpegts HLS', {});
+      }
       if (strategy === 'direct') {
         var directUrl = buildDirectPlayUrl(server, partKey);
         tvLog('session', 'url direct play', { url: redactPlexUrl(directUrl) });

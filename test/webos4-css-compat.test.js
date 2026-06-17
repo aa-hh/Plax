@@ -117,7 +117,7 @@ test('webOS 4 CSS: profile picker margins avoid calc division', function () {
 });
 
 test('webOS 4 CSS: positioning overlays use explicit edges not inset', function () {
-  ['.splash-screen', '.loading-overlay', '.detail-modal', '.player-track-modal', '.poster-loading-overlay'].forEach(function (sel) {
+  ['.loading-overlay', '.detail-modal', '.player-track-modal', '.poster-loading-overlay'].forEach(function (sel) {
     var block = firstRule(sel);
     assert.doesNotMatch(block, /\binset\s*:/);
     assert.match(block, /top:\s*0/);

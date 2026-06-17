@@ -1,4 +1,5 @@
-import { createLoadingIndicator, setLoadingLabel } from './components/loadingIndicator.js';
+import { setLoadingLabel } from './components/loadingIndicator.js';
+import { createSpinner } from './components/spinner.js';
 
 var overlayEl = null;
 var loaderWrap = null;
@@ -18,7 +19,13 @@ function ensureOverlay() {
   }
   var inner = overlayEl.querySelector('.loading-overlay-inner');
   if (inner && !loaderWrap) {
-    loaderWrap = createLoadingIndicator({ size: 'large', label: 'Buffering…' });
+    loaderWrap = document.createElement('div');
+    loaderWrap.className = 'xplay-loader-wrap xplay-loader-large';
+    loaderWrap.appendChild(createSpinner({ size: 'large', label: 'Buffering…' }));
+    var label = document.createElement('p');
+    label.className = 'xplay-loader-label';
+    label.textContent = 'Buffering…';
+    loaderWrap.appendChild(label);
     inner.appendChild(loaderWrap);
   }
   return overlayEl;
