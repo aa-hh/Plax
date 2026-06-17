@@ -330,7 +330,7 @@ html.caps-motion #btn-test-connection:focus {
 }
 
 .screen-home {
-  padding-bottom: 32px;
+  padding-bottom: var(--space-8);
 }
 
 .library-screen {
@@ -1094,11 +1094,12 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .screen-home .home-feed .row-scroll {
-  padding-bottom: 12px;
+  padding-bottom: var(--space-3);
 }
 
+/* Home shelves share the standard card gap now that all posters are 180px. */
 .screen-home .home-feed .row-scroll > * + * {
-  margin-left: 20px;
+  margin-left: var(--row-card-gap);
 }
 
 /* Home hub rows: one poster width (On Deck compact vs promoted/section rails). */
@@ -1229,7 +1230,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .detail-layout > * + * {
-  margin-left: 40px;
+  margin-left: var(--space-9);
 }
 
 .screen--has-detail-bg {
@@ -1478,7 +1479,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .detail-movie-hero > * + * {
-  margin-left: 40px;
+  margin-left: var(--space-9);
 }
 
 .detail-movie-poster-wrap {
@@ -1745,7 +1746,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .detail-standard-hero > * + * {
-  margin-left: 40px;
+  margin-left: var(--space-9);
 }
 
 .detail-layout--season {
@@ -2295,7 +2296,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   bottom: 0;
   left: 0;
   right: 0;
-  padding: var(--space-7) var(--pad-screen-x) 36px;
+  padding: var(--space-7) var(--pad-screen-x) var(--space-9);
   background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 15, 0.92) 40%, rgba(10, 10, 15, 0.98) 100%);
   z-index: var(--z-player-overlay);
 }
