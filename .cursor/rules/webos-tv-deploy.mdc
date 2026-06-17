@@ -1,0 +1,35 @@
+---
+description: Rebuild TV IPK after src/ changes for webOS deploy
+globs: src/**/*
+alwaysApply: false
+---
+
+# webOS TV deploy (XPlay Lite)
+
+After any fix under `src/` (or build/scripts that affect the packaged app), **always produce a fresh installable IPK** before finishing the task.
+
+## Build (Node 20)
+
+```bash
+source ~/.nvm/nvm.sh && nvm use 20 && npm run package
+```
+
+Confirm output exists:
+
+```bash
+ls build/com.xplay.lite_*.ipk
+```
+
+Do **not** install from `dist/*.ipk` — use the `build/` artifact from `npm run package`.
+
+## Install on device
+
+```bash
+ares-install --device Alec-TV build/com.xplay.lite_0.1.0_all.ipk
+```
+
+(Adjust version segment if `package.json` version changes; glob `build/com.xplay.lite_*.ipk` to find the current file.)
+
+## When to skip
+
+Skip only for changes that cannot affect the TV bundle (e.g. docs-only, tests-only with no `src/` changes). If in doubt, run `npm run package`.

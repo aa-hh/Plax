@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   formatStartupBuildLine,
   logStartupBuild,
+  parseChromiumMajor,
   resetStartupBuildLogForTest
 } from '../src/core/startupBuildLog.js';
 
@@ -41,4 +42,17 @@ test('logStartupBuild emits exactly once per launch', function () {
   }
   assert.equal(lines.length, 1);
   assert.equal(lines[0], '[XPlay Lite] startup-build builtAt=t commit=c summary=s');
+});
+
+test('parseChromiumMajor reads the Chrome token from a webOS UA', function () {
+  // webOS 4.0 (2018 B8) ships Chromium 53; webOS 5.0 ships 68.
+  var webos4 = 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) ' +
+    'Chrome/53.0.2785.34 Safari/537.36 WebAppManager';
+  var webos5 = 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) ' +
+    'Chrome/68.0.3440.106 Safari/537.36 WebAppManager';
+  assert.equal(parseChromiumMajor(webos4), 53);
+  assert.equal(parseChromiumMajor(webos5), 68);
+  assert.equal(parseChromiumMajor('Chromium/87.0.4280.88'), 87);
+  assert.equal(parseChromiumMajor('no browser token here'), 0);
+  assert.equal(parseChromiumMajor(null), 0);
 });

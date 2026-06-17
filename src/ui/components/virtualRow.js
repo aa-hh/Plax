@@ -75,7 +75,9 @@ function createVirtualRow(container, options) {
       var card = scrollEl.querySelector('[data-item-index="' + activeIdx + '"]');
       if (card && card.focus) card.focus();
     }
-    hydrateRowViewport(scrollEl);
+    // Hydrate posters off the keydown tick — the focus change should commit
+    // visually first, image bytes can wait one task.
+    setTimeout(function () { hydrateRowViewport(scrollEl); }, 0);
   }
 
   function ensureWindowAround(index) {
@@ -98,9 +100,7 @@ function createVirtualRow(container, options) {
     var card = scrollEl.querySelector('[data-item-index="' + index + '"]');
     if (!card || !card.focus) return;
     card.focus();
-    if (typeof card.scrollIntoView === 'function') {
-      card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
+    // Scroll is handled by the attachFocusNav focusin → scrollFocusedIntoView path.
   }
 
   function onFocusIn(e) {

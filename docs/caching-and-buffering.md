@@ -1,12 +1,38 @@
 # Caching and Buffering
 
-Rules for in-app data caching and video buffer behaviour on **webOS TV 5.0+**.
+Rules for in-app data caching and video buffer behaviour on **webOS TV 4.0+**.
 Scoped to the LG performance budget (`docs/perf-budgets.md`) and platform
 constraints (`docs/webos-tv-spec-compliance.md`).
 
 > **No Service Worker.** webOS Service Worker support is inconsistent across
-> firmwares (especially 5.x and 6.x). All caching is in-memory or in
-> `localStorage` for the small persistent state.
+> firmwares (especially 5.x and 6.x). For persistence we use IndexedDB
+> (`src/core/persistentCache.js`) wrapped by `src/core/cache.js` as the warm
+> tier under the in-memory LRU; `localStorage` is reserved for the small
+> auth/identity blob.
+
+## Two-tier cache (Kodi-shaped)
+
+Reads consult the in-memory LRU first, then IndexedDB, then the network.
+Writes are write-through: a successful network response populates both tiers.
+On a cold boot the disk tier returns the previous session's data
+synchronously while a background SWR refresh runs.
+
+Per namespace TTLs:
+
+| Namespace   | Memory TTL | Disk TTL | Persist |
+| ----------- | ---------- | -------- | ------- |
+| libraries   | 15 min     | 24 h     | yes     |
+| hubs        | 60 sec     | 6 h      | yes     |
+| browse      | 2 min      | 6 h      | yes     |
+| metadata    | 5 min      | 7 d      | yes     |
+| children    | 5 min      | 7 d      | yes     |
+| search      | 30 sec     | —        | no      |
+| ultrablur   | 30 min     | 30 d     | yes     |
+| storyboard  | 30 min     | 30 d     | yes     |
+
+Disk writes are batched and flushed off the input path via `setTimeout(0)`,
+so a high keypress rate does not block on IDB. Poster bytes (and avatars)
+are persisted in a separate `blobs` store with an 80 MB LRU budget.
 
 ---
 

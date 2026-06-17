@@ -302,6 +302,16 @@ function libraryScreen(root, params, navigate) {
     lastRenderStart = renderStartIndex;
     lastRenderEnd = renderEndIndex;
 
+    // Preserve D-pad focus across the rebuild: on a TV the grid scrolls
+    // *because* focus moved, so the focused card node is about to be removed.
+    // Remember its item index and restore focus to the new node afterward
+    // (mirrors virtualRow.js). Without this, focus drops to <body> and D-pad
+    // navigation dies mid-scroll.
+    var active = document.activeElement;
+    var focusedIndex = (active && grid.contains(active) && active.getAttribute)
+      ? parseInt(active.getAttribute('data-item-index'), 10)
+      : NaN;
+
     // Remove existing cards (but not spacers)
     var existingCards = Array.prototype.slice.call(grid.querySelectorAll('.media-card'));
     for (var i = 0; i < existingCards.length; i++) {
@@ -319,6 +329,12 @@ function libraryScreen(root, params, navigate) {
     }
     // Insert between spacers: insert before bottomSpacer
     grid.insertBefore(fragment, bottomSpacer);
+
+    // Restore focus to the same item if it's still within the rendered window.
+    if (!isNaN(focusedIndex) && focusedIndex >= renderStartIndex && focusedIndex < renderEndIndex) {
+      var refocus = grid.querySelector('.media-card[data-item-index="' + focusedIndex + '"]');
+      if (refocus && refocus.focus) refocus.focus();
+    }
 
     // Prime posters for what's visible
     primeVisiblePosters(grid);

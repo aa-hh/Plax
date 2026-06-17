@@ -10,7 +10,11 @@ import {
   hydrateFocusedNeighborhood,
   primeVisiblePosters
 } from '../posterImages.js';
-import { schedulePrefetch, abortPrefetch } from '../../core/idlePrefetch.js';
+import {
+  schedulePrefetch,
+  prefetchLibraryBrowse,
+  abortPrefetch
+} from '../../core/idlePrefetch.js';
 
 function homeScreen(root, params, navigate) {
   var state = getState();
@@ -128,12 +132,26 @@ function homeScreen(root, params, navigate) {
     });
     primeVisiblePosters(el);
     focusFirstFeedCardIfNeeded();
-    // After the visible rows are committed, warm the metadata for the
-    // top items so opening detail does not hit the network.
+    // After the visible rows are committed, warm the metadata (and detail
+    // follow-ups) for the top items so opening detail does not hit the
+    // network, and warm the first library's grid so entering it is instant.
     if (state.activeServer && rows && rows.length) {
-      try { schedulePrefetch(state.activeServer, rows, { perRow: 6, maxRows: 2 }); }
-      catch (e) { /* ignore */ }
+      try {
+        schedulePrefetch(state.activeServer, rows, { perRow: 6, maxRows: 2 });
+        var firstLib = firstBrowsableLibrary();
+        if (firstLib) prefetchLibraryBrowse(state.activeServer, firstLib);
+      } catch (e) { /* ignore */ }
     }
+  }
+
+  // The first movie/show library in the sidebar — the most likely entry.
+  function firstBrowsableLibrary() {
+    var libs = state.libraries || [];
+    for (var i = 0; i < libs.length; i++) {
+      var t = libs[i] && libs[i].type;
+      if (t === 'movie' || t === 'show') return libs[i];
+    }
+    return libs.length ? libs[0] : null;
   }
 
   function focusFirstFeedCardIfNeeded() {

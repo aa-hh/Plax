@@ -27,8 +27,22 @@ function resetStartupBuildLogForTest() {
   startupBuildLogged = false;
 }
 
+/**
+ * Pull the Chromium major version out of a webOS user-agent string.
+ * webOS engine → Chromium: 4.0 ≈ 53, 4.5/5.0 ≈ 68, 6.0 ≈ 79, 22 ≈ 87.
+ * Returns 0 when no Chrome/Chromium token is present.
+ */
+function parseChromiumMajor(userAgent) {
+  if (typeof userAgent !== 'string') return 0;
+  var match = userAgent.match(/Chrom(?:e|ium)\/(\d+)/i);
+  if (!match) return 0;
+  var major = parseInt(match[1], 10);
+  return isNaN(major) ? 0 : major;
+}
+
 export {
   formatStartupBuildLine,
   logStartupBuild,
+  parseChromiumMajor,
   resetStartupBuildLogForTest
 };

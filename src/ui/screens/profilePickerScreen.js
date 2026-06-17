@@ -12,7 +12,10 @@ import { createPinEntry, isNumericKeyCode } from '../pinEntry.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 import { createSpinner } from '../components/spinner.js';
 import * as cache from '../../core/cache.js';
+import { invalidateRetention } from '../../core/router.js';
 import { tvLog } from '../../utils/tvDebug.js';
+import { isPerfEnabled, mark as perfMark } from '../../perf/resourceMonitor.js';
+import { prefetchAndPersistBlobs, resolvePosterSrc } from '../posterImages.js';
 
 var BACK_KEYCODE = 461;
 var ENTER_KEYCODE = 13;
@@ -53,9 +56,25 @@ function appendProfileAvatar(parent, user) {
   if (user.thumb) {
     avatar.classList.add('profile-card-avatar--img');
     var img = document.createElement('img');
-    img.src = user.thumb;
+    var perfOn = isPerfEnabled();
+    var requestedAt = 0;
+    if (perfOn) {
+      requestedAt = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now() : Date.now();
+      perfMark('userSelect:avatar-requested', { user: user.id || user.uuid || user.title });
+    }
+    img.src = resolvePosterSrc(user.thumb);
     img.alt = '';
-    img.loading = 'lazy';
+    img.addEventListener('load', function () {
+      if (perfOn) {
+        var now = (typeof performance !== 'undefined' && performance.now)
+          ? performance.now() : Date.now();
+        perfMark('userSelect:avatar-visible', {
+          user: user.id || user.uuid || user.title,
+          ms: Math.round(now - requestedAt)
+        });
+      }
+    });
     img.addEventListener('error', function () {
       avatar.classList.remove('profile-card-avatar--img');
       img.remove();
@@ -462,6 +481,7 @@ function profilePickerScreen(root, params, navigate) {
       }
       var token = switchedToken || ownerToken;
       cache.invalidateAll();
+      invalidateRetention();
       setState({
         activeHomeUser: nextUser,
         authToken: token,
@@ -509,6 +529,21 @@ function profilePickerScreen(root, params, navigate) {
     users = homeUsers;
     applyProfilePickerCols(profilePickerCols(resolvedHomeSize, homeUsers.length));
     rowEl.innerHTML = '';
+    if (isPerfEnabled()) {
+      perfMark('userSelect:avatars-requested', {
+        count: homeUsers.length,
+        withThumb: homeUsers.filter(function (u) { return !!u.thumb; }).length
+      });
+    }
+    // Pre-cache avatar bytes in IDB. On a warm cache resolvePosterSrc() above
+    // already returns a `blob:` URL for instant decode; on cold the fetch
+    // happens off-path and seeds the next session.
+    var avatarUrls = homeUsers
+      .map(function (u) { return u && u.thumb; })
+      .filter(function (u) { return !!u; });
+    if (avatarUrls.length) {
+      try { prefetchAndPersistBlobs(avatarUrls); } catch (e) { /* ignore */ }
+    }
     homeUsers.forEach(function (u) {
       var card = document.createElement('button');
       card.type = 'button';

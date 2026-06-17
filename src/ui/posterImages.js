@@ -1,4 +1,33 @@
 import { addOnceEventListener } from '../utils/domUtils.js';
+import * as persistentCache from '../core/persistentCache.js';
+
+/**
+ * Cross-session poster cache.
+ *
+ * On the B8 the dominant cost of a poster is the Plex /photo transcode + the
+ * HTTP fetch — on cold boot we pay that every time. This layer keeps the
+ * decoded bytes in IndexedDB so the next session can decode from disk
+ * instead of going to the network.
+ *
+ * We never block bind on IDB. Cards get their normal `img.src = url`
+ * immediately; IDB lookups race the network and swap to a `blob:` URL only
+ * when they win (which they always should on a warm cache).
+ *
+ * Object URLs created from cached blobs are kept in a per-session map keyed
+ * by the canonical poster URL. Lookups consult the map first.
+ *
+ * With Kodi-style screen retention (see core/router.js) the router keeps recent
+ * screen DOM alive and no longer calls clearPosterUrlMaps() on ordinary
+ * navigation — a re-shown screen's <img> posters stay bound and decoded, so
+ * Back is instant. clearPosterUrlMaps() is now only invoked on a full reset
+ * (user-switch / sign-out via invalidateRetention), so it must be safe to call
+ * rarely: it simply rebuilds empty maps and revokes outstanding object URLs.
+ * The maps are LRU-capped (MAX_POSTER_URL_ENTRIES) so they stay bounded even
+ * without per-navigation clearing.
+ */
+var urlToObjectUrl = Object.create(null);
+var idbLookupTried = Object.create(null);
+var blobFetchScheduled = Object.create(null);
 
 /** Poster sizing aligned with CSS (--row-poster-*, --grid-poster-*) plus modest overscan. */
 var POSTER_WIDTH_ROW = 180;
@@ -36,6 +65,71 @@ function clearPosterUrlMaps() {
   urlMapOrder = [];
   posterLoadQueue = [];
   activePosterLoads = 0;
+  // Revoke object URLs to release the underlying blob references — IDB
+  // still holds the persistent copy, so a re-render will recreate them.
+  Object.keys(urlToObjectUrl).forEach(function (k) {
+    try { URL.revokeObjectURL(urlToObjectUrl[k]); } catch (e) { /* ignore */ }
+  });
+  urlToObjectUrl = Object.create(null);
+  idbLookupTried = Object.create(null);
+  blobFetchScheduled = Object.create(null);
+}
+
+function ensureObjectUrlForBlob(url, blob) {
+  if (!url || !blob) return null;
+  if (urlToObjectUrl[url]) return urlToObjectUrl[url];
+  try {
+    var obj = URL.createObjectURL(blob);
+    urlToObjectUrl[url] = obj;
+    return obj;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Schedule a background fetch+persist of `url` so the next session can decode
+ * the bytes from IDB. No-op if we've already fetched this URL this session,
+ * if the persistent layer is unavailable, or if fetch is missing.
+ */
+function persistPosterBlobInBackground(url) {
+  if (!url || blobFetchScheduled[url] || urlToObjectUrl[url]) return;
+  if (!persistentCache.isAvailable()) return;
+  if (typeof fetch !== 'function') return;
+  blobFetchScheduled[url] = true;
+  // Off the bind/render path.
+  setTimeout(function () {
+    try {
+      fetch(url).then(function (res) {
+        if (!res || !res.ok) return null;
+        if (typeof res.blob !== 'function') return null;
+        return res.blob();
+      }).then(function (blob) {
+        if (!blob) return;
+        persistentCache.putBlob(url, blob);
+      })['catch'](function () { /* ignore */ });
+    } catch (e) { /* ignore */ }
+  }, 0);
+}
+
+/**
+ * Try to swap a freshly-bound image to a cached `blob:` URL. Races the
+ * network — if IDB returns first, we cancel the network fetch by swapping
+ * src; if the network wins, we leave it alone.
+ */
+function maybeSwapToCachedBlob(img, url) {
+  if (!url || idbLookupTried[url]) return;
+  if (!persistentCache.isAvailable()) return;
+  idbLookupTried[url] = true;
+  persistentCache.getBlob(url).then(function (blob) {
+    if (!blob) return;
+    // If the network already finished, leave it; HTTP cache will handle next time.
+    if (!img || img.dataset.posterSrc !== url) return;
+    if (img.complete && img.naturalWidth > 0) return;
+    var obj = ensureObjectUrlForBlob(url, blob);
+    if (!obj) return;
+    img.src = obj;
+  })['catch'](function () { /* ignore */ });
 }
 
 function sizedPosterUrl(url, width, height) {
@@ -54,7 +148,16 @@ function sizedPosterUrl(url, width, height) {
 
 function posterAlreadyBound(img, url) {
   if (!img || !url) return false;
-  return img.getAttribute('src') === url;
+  // Direct match on the canonical URL, or the case where this URL was served
+  // from a cached blob and the <img> src is the swapped object URL. With screen
+  // retention a re-shown card keeps its decoded blob src — treat it as bound so
+  // we never re-fetch/re-decode it.
+  if (img.getAttribute('src') === url) return true;
+  if (img.dataset && img.dataset.posterSrc === url) {
+    var obj = urlToObjectUrl[url];
+    if (obj && img.getAttribute('src') === obj) return true;
+  }
+  return false;
 }
 
 function clearPosterReveal(img) {
@@ -114,17 +217,26 @@ function startPosterImageLoad(img, url, opts) {
     img.onerror = null;
     markPosterLoaded(url);
     releasePosterLoadSlot();
-    if (img.naturalWidth > 0) revealPosterImage(img);
-    else if (opts.onError) opts.onError();
+    if (img.naturalWidth > 0) {
+      revealPosterImage(img);
+      // Network load succeeded — capture the bytes for next session.
+      persistPosterBlobInBackground(url);
+    } else if (opts.onError) opts.onError();
   }
 
-  if (img.getAttribute('src') !== url) {
+  // Same-session shortcut: an earlier card already produced a blob URL.
+  if (urlToObjectUrl[url]) {
+    img.src = urlToObjectUrl[url];
+  } else if (img.getAttribute('src') !== url) {
     img.src = url;
+    // Race IDB against the network — if disk wins, swap.
+    maybeSwapToCachedBlob(img, url);
   }
   if (img.complete && img.naturalWidth > 0) {
     markPosterLoaded(url);
     revealPosterImage(img);
     releasePosterLoadSlot();
+    persistPosterBlobInBackground(url);
     return;
   }
   img.onload = img.onerror = finishLoad;
@@ -381,7 +493,10 @@ function cardPosterNeedsHydrate(card) {
   var url = card.getAttribute('data-thumb') || '';
   if (!url) return false;
   var img = card.querySelector('img.poster');
-  return !img || img.getAttribute('src') !== url || !(img.complete && img.naturalWidth > 0);
+  if (!img) return true;
+  // A retained, fully-decoded poster (direct src or swapped blob src) is done.
+  if (posterAlreadyBound(img, url) && img.complete && img.naturalWidth > 0) return false;
+  return true;
 }
 
 function neighborhoodNeedsHydrate(cards, start, end) {
@@ -594,6 +709,50 @@ function waitForPosterBatch(rootEl, opts) {
   });
 }
 
+/**
+ * Eagerly fetch + persist the given URLs as blobs. Use for known-important
+ * image sets (e.g. Plex Home avatars) so the next session shows them before
+ * any network frame.
+ */
+function prefetchAndPersistBlobs(urls) {
+  if (!urls || !urls.length) return Promise.resolve(0);
+  if (!persistentCache.isAvailable() || typeof fetch !== 'function') {
+    return Promise.resolve(0);
+  }
+  var hits = 0;
+  var work = urls.map(function (url) {
+    if (!url || blobFetchScheduled[url]) return Promise.resolve();
+    blobFetchScheduled[url] = true;
+    return persistentCache.getBlob(url).then(function (blob) {
+      if (blob) {
+        ensureObjectUrlForBlob(url, blob);
+        hits += 1;
+        return null;
+      }
+      return fetch(url).then(function (res) {
+        if (!res || !res.ok || typeof res.blob !== 'function') return null;
+        return res.blob();
+      }).then(function (fresh) {
+        if (!fresh) return;
+        persistentCache.putBlob(url, fresh);
+        ensureObjectUrlForBlob(url, fresh);
+      })['catch'](function () { /* ignore */ });
+    })['catch'](function () { /* ignore */ });
+  });
+  return Promise.all(work).then(function () { return hits; });
+}
+
+/**
+ * For a known URL with a cached blob, return a session object URL to use as
+ * <img>.src — otherwise return the URL itself. Lets callers (e.g. avatar
+ * rendering) use the cached bytes synchronously when they exist.
+ */
+function resolvePosterSrc(url) {
+  if (!url) return '';
+  if (urlToObjectUrl[url]) return urlToObjectUrl[url];
+  return url;
+}
+
 function hydrateAndWaitForPosters(rootEl, opts) {
   opts = opts || {};
   if (!opts.cards || !opts.cards.length) {
@@ -629,5 +788,7 @@ export {
   hydrateAndWaitForPosters,
   hydrateGridViewport,
   hydrateRowViewport,
-  clearPosterUrlMaps
+  clearPosterUrlMaps,
+  prefetchAndPersistBlobs,
+  resolvePosterSrc
 };

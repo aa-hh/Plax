@@ -20,9 +20,12 @@ function renderHubRow(parent, row, navigate, options) {
   section.className = 'row-section';
   section.setAttribute('data-focus-zone', 'hub-row');
   if (row.displayVariant === 'compact') section.classList.add('row-section--compact');
-  section.innerHTML = row.title
-    ? '<p class="row-label">' + row.title + '</p>'
-    : '';
+  if (row.title) {
+    var label = document.createElement('p');
+    label.className = 'row-label';
+    label.textContent = row.title;
+    section.appendChild(label);
+  }
   var container = document.createElement('div');
   section.appendChild(container);
   parent.appendChild(section);

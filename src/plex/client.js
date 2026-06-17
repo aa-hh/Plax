@@ -124,13 +124,18 @@ function getImageUrl(server, path, opts) {
   opts = opts || {};
   var width = opts.width || 300;
   var height = opts.height != null ? opts.height : Math.round(width * 1.5);
-  var params = {
+  // Route through /photo/:/transcode so PMS resizes the image server-side.
+  // The raw /library/metadata/<id>/thumb/<n> path IGNORES width/height and
+  // returns the full-resolution poster — on a WAN server that's hundreds of
+  // KB per card plus a heavy full-size decode on the TV. The transcode
+  // endpoint returns a small (~180px) JPEG that PMS also caches for reuse.
+  return serverUrl(server.connectionUri, '/photo/:/transcode', {
+    url: path,
     width: width,
-    height: height
-  };
-  if (opts.minSize) params.minSize = 1;
-  if (opts.upscale) params.upscale = 1;
-  return serverUrl(server.connectionUri, path, params, server);
+    height: height,
+    minSize: 1,
+    upscale: 1
+  }, server);
 }
 
 function getThumbUrl(server, path, width) {
