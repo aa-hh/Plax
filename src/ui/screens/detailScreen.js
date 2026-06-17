@@ -258,31 +258,57 @@ function detailScreen(root, params, navigate) {
     return supportsWatchlistBookmark(item) ? watchlistBookmarkButtonHtml(false) : '';
   }
 
+  // ── Breadcrumbs (Workstream G) ──────────────────────────────────────────
+  // One builder, one format for every content type: a trail of navigable
+  // ancestor crumbs in the SAME shape (same .detail-breadcrumb-trail__btn,
+  // same `›` separator), wayfinding — not primary buttons. Each crumb is the
+  // chain of navigable parents ending at the current item's immediate context;
+  // depth follows the content's real hierarchy (film/show: library · season:
+  // series · episode: series › season › episode) while the markup stays
+  // identical so it reads the same at 10 ft.
+  function breadcrumbTrailHtml(ariaLabel, crumbs) {
+    var visible = crumbs.filter(function (c) { return c && c.label; });
+    if (!visible.length) return '';
+    var parts = [];
+    visible.forEach(function (c, i) {
+      if (i > 0) {
+        parts.push('<span class="detail-breadcrumb-trail__sep" aria-hidden="true">›</span>');
+      }
+      var extra = c.cls ? ' ' + c.cls : '';
+      var idAttr = c.id ? ' id="' + c.id + '"' : '';
+      parts.push(
+        '<button type="button" class="detail-breadcrumb-trail__btn' + extra + '"' + idAttr +
+        ' tabindex="0">' + escapeHtml(c.label) + '</button>'
+      );
+    });
+    return '<nav class="detail-breadcrumb-trail" aria-label="' + escapeHtml(ariaLabel) + '">' +
+      parts.join('') + '</nav>';
+  }
+
   function buildEpisodeBreadcrumbTrail(item) {
     var epCode = episodeCode(item);
     var epLabel = item.title || epCode || 'Episode';
     if (!epCode && item.index != null && item.index !== '') {
       epLabel = 'E' + item.index + (item.title ? ' · ' + item.title : '');
     }
-    return '<nav class="detail-breadcrumb-trail" aria-label="Episode navigation">' +
-      '<button type="button" class="detail-breadcrumb-trail__btn btn" id="detail-season-crumb" tabindex="0">' +
-      escapeHtml(seasonLabel(item)) + '</button>' +
-      '<span class="detail-breadcrumb-trail__sep" aria-hidden="true">›</span>' +
-      '<button type="button" class="detail-breadcrumb-trail__btn detail-episode-picker btn" ' +
-      'id="btn-episode-picker" tabindex="0">' + escapeHtml(epLabel) + '</button>' +
-      '</nav>';
+    var seriesTitle = item.grandparentTitle || item.parentTitle || '';
+    return breadcrumbTrailHtml('Episode navigation', [
+      { id: 'detail-series-crumb', label: seriesTitle },
+      { id: 'detail-season-crumb', label: seasonLabel(item) },
+      { id: 'btn-episode-picker', cls: 'detail-episode-picker', label: epLabel }
+    ]);
   }
 
   function buildFilmBreadcrumbTrail() {
-    return '<nav class="detail-breadcrumb-trail" aria-label="Library navigation">' +
-      '<button type="button" class="detail-breadcrumb-trail__btn btn" id="detail-library-crumb" tabindex="0">' +
-      escapeHtml(resolveMovieLibraryTitle()) + '</button></nav>';
+    return breadcrumbTrailHtml('Library navigation', [
+      { id: 'detail-library-crumb', label: resolveMovieLibraryTitle() }
+    ]);
   }
 
   function buildSeriesBreadcrumbTrail(item) {
-    return '<nav class="detail-breadcrumb-trail" aria-label="Series navigation">' +
-      '<button type="button" class="detail-breadcrumb-trail__btn btn" id="detail-series-crumb" tabindex="0">' +
-      escapeHtml(seriesBreadcrumbLabel(item)) + '</button></nav>';
+    return breadcrumbTrailHtml('Series navigation', [
+      { id: 'detail-series-crumb', label: seriesBreadcrumbLabel(item) }
+    ]);
   }
 
   function syncSelectedQualityFromPrefs() {
@@ -934,6 +960,12 @@ function detailScreen(root, params, navigate) {
     wireSubtitleBtn(subs);
     wirePlaybackActions(item);
 
+    var seriesCrumb = screen.querySelector('#detail-series-crumb');
+    if (seriesCrumb && (item.grandparentRatingKey || item.parentRatingKey || params.showKey)) {
+      seriesCrumb.addEventListener('click', function () { navigateToSeriesDetail(item); });
+    } else if (seriesCrumb) {
+      seriesCrumb.disabled = true;
+    }
     var seasonCrumb = screen.querySelector('#detail-season-crumb');
     if (seasonCrumb && item.parentRatingKey) {
       seasonCrumb.addEventListener('click', function () { navigateToSeasonDetail(item); });
