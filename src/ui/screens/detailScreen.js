@@ -1003,9 +1003,9 @@ function detailScreen(root, params, navigate) {
         btn.type = 'button';
         btn.className = 'btn detail-up-next-btn';
         btn.tabIndex = 0;
-        btn.style.marginTop = '0.75em';
-        btn.style.color = 'var(--text-secondary)';
-        btn.innerHTML = '<span style="color:var(--text-muted);font-size:0.75em;display:block;margin-bottom:0.25em">Up Next</span>' +
+        // Spacing/colour live in CSS (DesignSystem owns .detail-up-next-btn /
+        // its __label) — no inline layout styles here (Workstream D).
+        btn.innerHTML = '<span class="detail-up-next-btn__label">Up Next</span>' +
           escapeHtml(nextLabel);
         btn.addEventListener('click', function () {
           navigate('detail', buildEpisodeNavRoute(nextEp, seasonKey));
