@@ -2344,6 +2344,96 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   border-radius: 6px;
 }
 
+/* ── Exit confirm (H) — reuses the detail-modal look ── */
+.exit-confirm-modal {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-loading);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--pad-screen-y) var(--pad-screen-x);
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.exit-confirm-modal[hidden] {
+  display: none !important;
+}
+
+.exit-confirm-sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 560px;
+  padding: var(--space-9) var(--space-8) var(--space-8);
+  background: rgba(13, 17, 26, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.exit-confirm-title {
+  margin: 0 0 var(--space-7);
+  font-size: var(--font-title-compact);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.exit-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.exit-confirm-actions > * + * {
+  margin-left: var(--space-4);
+}
+
+.exit-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  min-width: 160px;
+  padding: var(--space-3) var(--space-7);
+  border: var(--focus-w) solid transparent;
+  border-radius: var(--radius-md);
+  outline: none;
+  cursor: pointer;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: var(--font-meta);
+  font-weight: 600;
+}
+
+.exit-confirm-btn:focus {
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-shadow);
+}
+
+.exit-confirm-btn--danger {
+  background: var(--danger-bg);
+  color: var(--color-error-light);
+  border-color: rgba(229, 9, 20, 0.45);
+}
+
+.exit-confirm-btn--danger:focus {
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-shadow);
+}
+
+html.caps-motion .exit-confirm-btn {
+  transition: transform var(--focus-motion-dur) ease, box-shadow var(--focus-motion-dur) ease;
+}
+
+html.caps-motion .exit-confirm-btn:focus {
+  transform: scale(var(--focus-scale));
+}
+
 /* ── Player overlay ── */
 .player-overlay {
   position: fixed;
