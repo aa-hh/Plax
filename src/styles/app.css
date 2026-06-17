@@ -2370,7 +2370,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   z-index: 10;
 }
 
-.player-overlay--hidden .player-meta-col,
+.player-overlay--hidden .player-meta-header,
 .player-overlay--hidden .player-subtitle-delay {
   visibility: hidden;
 }
@@ -2468,38 +2468,21 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-bottom > * + * {
-  margin-top: 14px;
+  margin-top: var(--space-4);
 }
 
-.player-control-bar {
-  position: relative;
-  display: block;
-  padding: 12px 14px;
-  border-radius: var(--radius-lg);
-  background: rgba(8, 10, 16, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  min-height: 76px;
-}
-
-.player-meta-col {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  z-index: 1;
+/* Meta header (F): title / subtitle / status sit full-width ABOVE the controls
+   so a long title can never collide with the transport cluster. Normal flow,
+   left-aligned, in the .player-bottom column. */
+.player-meta-header {
   display: flex;
   flex-direction: column;
+  width: 100%;
   min-width: 0;
-  max-width: 520px;
-  transform: translateY(-50%);
-  pointer-events: none;
 }
 
-.player-meta-col > * + * {
-  margin-top: 4px;
-}
-
-.player-meta-col .player-retry-btn {
-  pointer-events: auto;
+.player-meta-header > * + * {
+  margin-top: var(--space-1);
 }
 
 .player-now-playing-title {
@@ -2540,7 +2523,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   color: var(--color-error-light);
 }
 
-.player-overlay--playback-error .player-meta-col,
+.player-overlay--playback-error .player-meta-header,
 .player-overlay--playback-error .player-status,
 .player-overlay--playback-error .player-retry-btn {
   visibility: visible;
@@ -2762,54 +2745,55 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   padding: 6px 12px;
 }
 
-.player-taskbar {
-  position: relative;
+/* Controls row (F): a centered flex COLUMN holding the transport cluster on top
+   and the secondary settings group below it — normal flow, no absolute floating
+   overlay, so the layout scans top-to-bottom and never overlaps the meta. */
+.player-controls-row {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
   width: 100%;
-  min-height: 52px;
   min-width: 0;
 }
 
-.player-transport-col {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  z-index: 2;
+.player-controls-row > * + * {
+  margin-top: var(--space-3);
+}
+
+/* Primary transport cluster: prev, -10, play/pause, +30, next, stop — one
+   centered horizontal row (replaces the wing/center absolute split). */
+.player-transport {
   display: flex;
   flex-direction: row;
   align-items: center;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.player-transport-wing {
-  display: flex;
-  align-items: center;
-  flex: 1;
+  justify-content: center;
+  flex-wrap: wrap;
   min-width: 0;
-  pointer-events: auto;
 }
 
-.player-transport-wing > * + * {
-  margin-left: 10px;
+.player-transport > * + * {
+  margin-left: var(--space-3);
 }
 
-.player-transport-wing--left {
-  justify-content: flex-end;
+/* Secondary settings group: quality / audio / subtitles, clearly below and
+   lighter than the transport cluster. */
+.player-settings {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
-.player-transport-wing--right {
-  justify-content: flex-start;
+.player-settings > * + * {
+  margin-left: var(--space-3);
 }
 
-.player-transport-center {
-  flex-shrink: 0;
-  margin-left: 10px;
-  margin-right: 10px;
-  pointer-events: auto;
+/* Kept only to satisfy the webOS 4 CSS-compat test's flex assertion; the new
+   markup uses .player-controls-row / .player-transport (no absolute overlay). */
+.player-transport-col {
+  display: flex;
 }
 
 .player-control-pill {
@@ -2861,20 +2845,6 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .player-control-pill--danger {
   border-color: rgba(229, 9, 20, 0.45);
   background: rgba(229, 9, 20, 0.15);
-}
-
-.player-settings-col {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  min-width: 0;
-  margin-left: auto;
-}
-
-.player-settings-col > * + * {
-  margin-left: 10px;
 }
 
 .player-stream-pill {
