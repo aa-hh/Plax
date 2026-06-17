@@ -426,8 +426,9 @@ html.caps-motion #btn-test-connection:focus {
   display: flex;
   align-items: center;
   width: 100%;
+  min-height: var(--target-min);
   text-align: left;
-  padding: 12px 14px 12px 10px;
+  padding: var(--space-3) 14px var(--space-3) 10px;
   margin-bottom: 2px;
   border-radius: var(--radius-md);
   background: transparent;
@@ -542,10 +543,15 @@ html.caps-motion #btn-test-connection:focus {
   max-width: 980px;
 }
 
-/* ── Buttons ── */
+/* ── Buttons / chips / nav — one base (C) ──
+   Shared padding, radius, font and a 10-foot min target height so a primary
+   action, secondary action, chip and nav pill all read at the same size. */
 .btn {
-  display: inline-block;
-  padding: 14px var(--space-7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: var(--space-3) var(--space-7);
   background: var(--bg-surface);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -615,7 +621,9 @@ html.caps-motion #btn-test-connection:focus {
 }
 
 .nav-item {
-  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
   padding: var(--space-3) var(--space-7);
   background: rgba(255, 255, 255, 0.02);
   border-radius: var(--radius-md);
@@ -1343,8 +1351,11 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .detail-setting-chip {
   flex-shrink: 0;
-  display: inline-block;
-  padding: 12px 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: var(--space-3) 22px;
   background: var(--bg-surface);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-md);
@@ -1385,8 +1396,11 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .season-chip, .episode-chip {
   flex-shrink: 0;
-  display: inline-block;
-  padding: 12px 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: var(--space-3) 22px;
   background: var(--bg-surface);
   border-radius: var(--radius-md);
   font-size: var(--font-meta);
@@ -1783,8 +1797,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 52px;
-  min-height: 52px;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
   padding: 10px;
   border-radius: var(--radius-md);
   background: var(--bg-surface);
@@ -1838,7 +1852,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .detail-breadcrumb,
 .detail-episode-picker {
-  min-height: 48px;
+  min-height: var(--target-min);
   font-size: var(--font-meta);
 }
 
@@ -1874,7 +1888,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .detail-episode-nav .detail-series-title,
 .detail-episode-nav .detail-season-link {
-  min-height: 48px;
+  min-height: var(--target-min);
   padding: 10px 16px;
   background: var(--bg-surface);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -2135,8 +2149,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .detail-network-info-btn {
   flex-shrink: 0;
-  min-width: 52px;
-  min-height: 52px;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
   padding: 0;
   font-size: 28px;
   line-height: 1;
@@ -2766,7 +2780,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 52px;
+  min-height: var(--target-min);
   min-width: 74px;
   padding: 10px 16px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -2779,7 +2793,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-control-pill--icon {
-  min-width: 52px;
+  min-width: var(--target-min);
   padding: 12px;
 }
 
@@ -2831,7 +2845,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 52px;
+  min-height: var(--target-min);
   padding: 10px 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
@@ -2856,7 +2870,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-stream-pill--icon {
-  min-width: 52px;
+  min-width: var(--target-min);
   padding: 12px;
   justify-content: center;
 }
@@ -3367,7 +3381,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .user-chip {
-  min-height: 48px;
+  min-height: var(--target-min);
   padding: 10px var(--space-5);
   background: var(--bg-surface);
   border-radius: var(--radius-pill);
@@ -3969,11 +3983,15 @@ video.native-player.subtitle-no-bg ::cue {
 }
 
 .library-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
   font-size: var(--font-small);
   margin-right: var(--space-2);
