@@ -527,8 +527,8 @@ html.caps-motion #btn-test-connection:focus {
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
-  --home-hub-poster-w: 220px;
-  --home-hub-poster-h: 330px;
+  --home-hub-poster-w: 180px;
+  --home-hub-poster-h: 270px;
   --font-home-card-title: 22px;
   --font-home-card-subtitle: 20px;
   --font-home-card-meta: 18px;
@@ -1165,15 +1165,15 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   display: block;
 }
 
-/* Season detail: episode stills at 16:9 (300×168) — no portrait crop */
+/* Season detail: episode stills at 16:9 — no portrait crop (--poster-ep-*) */
 .row-scroll--episodes .media-card--episode {
-  width: 300px;
+  width: var(--poster-ep-w);
 }
 
 .row-scroll--episodes .media-card--episode .card-poster-wrap,
 .row-scroll--episodes .media-card--episode .poster {
-  width: 300px;
-  height: 168px;
+  width: var(--poster-ep-w);
+  height: var(--poster-ep-h);
   border-radius: var(--radius-md);
   object-fit: cover;
 }
@@ -1231,8 +1231,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .detail-poster {
-  width: 300px;
-  height: 450px;
+  width: var(--poster-detail-w);
+  height: var(--poster-detail-h);
   border-radius: 16px;
   object-fit: cover;
   background: var(--bg-surface);
@@ -1470,12 +1470,12 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .detail-movie-poster-wrap {
   position: relative;
   flex-shrink: 0;
-  width: 200px;
+  width: var(--poster-detail-w);
 }
 
 .detail-movie-poster {
-  width: 200px;
-  height: 300px;
+  width: var(--poster-detail-w);
+  height: var(--poster-detail-h);
   display: block;
   border-radius: var(--radius-md);
 }
@@ -1749,15 +1749,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   -webkit-line-clamp: 4;
 }
 
-.detail-rails--show {
-  --row-poster-w: 180px;
-  --row-poster-h: 270px;
-}
-
-.detail-rails--show .row-section--compact {
-  --row-poster-w: 180px;
-  --row-poster-h: 270px;
-}
+/* Related rails inherit the standard --row-poster-* scale (no override). */
 
 .detail-top-bar {
   display: flex;
