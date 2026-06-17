@@ -838,6 +838,10 @@ function playerScreen(root, params, navigate) {
     if (!menuOpen) return;
     var key = e.keyCode;
     if (key !== 38 && key !== 40) return;
+    // Always swallow arrow keys when the modal is open — prevents attachFocusNav
+    // from moving focus into the background player controls.
+    e.preventDefault();
+    e.stopImmediatePropagation();
     var listEl = document.getElementById('player-menu-list');
     var navItems = [];
     if (listEl) {
@@ -849,10 +853,14 @@ function playerScreen(root, params, navigate) {
 
     var active = document.activeElement;
     var idx = navItems.indexOf(active);
-    if (idx < 0) return;
+    if (idx < 0) {
+      // Focus escaped the modal — snap back to the active item or first item.
+      var fallback = listEl && listEl.querySelector('.player-menu-option--active');
+      if (!fallback && navItems.length) fallback = navItems[0];
+      if (fallback) fallback.focus();
+      return;
+    }
 
-    e.preventDefault();
-    e.stopImmediatePropagation();
     var nextIdx = key === 40
       ? Math.min(navItems.length - 1, idx + 1)
       : Math.max(0, idx - 1);
@@ -2255,8 +2263,7 @@ function playerScreen(root, params, navigate) {
   overlay.addEventListener('focusin', onOverlayActivity);
   overlay.addEventListener('pointerdown', onOverlayActivity);
   overlay.addEventListener('pointermove', onOverlayActivity);
-  overlay.addEventListener('keydown', onTrackModalKeyDown, true);
-
+  document.addEventListener('keydown', onTrackModalKeyDown, true);
   document.addEventListener('keydown', handlePlayerBack, true);
 
   function handlePlayerEnter(e) {
@@ -2442,6 +2449,7 @@ function playerScreen(root, params, navigate) {
         queue.reset();
         detachRemote();
         detachFocus();
+        document.removeEventListener('keydown', onTrackModalKeyDown, true);
         document.removeEventListener('keydown', handlePlayerBack, true);
         document.removeEventListener('keydown', handlePlayerEnter, true);
         document.removeEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);
