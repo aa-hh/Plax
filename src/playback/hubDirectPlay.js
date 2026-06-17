@@ -35,6 +35,10 @@ function resolveDefaultStreamIds(metadata, version) {
     var defaultAudio = audio.filter(function (a) { return a.selected; })[0] || audio[0];
     audioStreamId = defaultAudio.id;
   }
+  // Auto-select TEXT subs only (pickDefaultSubtitleTrack skips graphical, which
+  // would force a burn-in transcode). Text subs render client-side and keep
+  // Direct Play; on webOS 4 the decision sends subtitles=none so PMS leaves the
+  // video untouched while we draw the SRT sidecar.
   if (subs.length) {
     var pickedSub = pickDefaultSubtitleTrack(subs);
     subtitleStreamId = pickedSub ? pickedSub.id : null;
@@ -76,7 +80,7 @@ function buildPlayerParamsFromMetadata(metadata, options) {
     options.capabilities,
     options.deviceInfo || {}
   );
-  var quality = (options.playbackPrefs && options.playbackPrefs.quality) || 'auto';
+  var quality = (options.playbackPrefs && options.playbackPrefs.quality) || 'original';
   var strictDirect = isDirectPlayOnlyQuality(quality);
   var streams = resolveDefaultStreamIds(metadata, version);
   var audioStreamId = options.audioStreamId != null ? options.audioStreamId : streams.audioStreamId;

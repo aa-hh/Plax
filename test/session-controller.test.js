@@ -148,26 +148,26 @@ test('buildPlaybackUrl HTTP targets universal start without m3u8', function () {
   assert.equal(httpQ['X-Plex-Client-Profile-Extra'], undefined);
 });
 
-test('buildPlaybackUrl HLS on webOS 4 uses Generic profile name, not a custom profile extra', function () {
+test('buildPlaybackUrl HLS on webOS 4 uses HEVC-capable device profile', function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
-      cb({ modelName: 'OLED55B9PUA', version: '4.9.0' });
+      cb({ modelName: 'OLED55B9PUA', version: '4.9.0', uhd: true });
     }
   };
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  setState({ deviceInfo: { uhd: true, hdr10: true, dolbyVision: false, versionMajor: 4 } });
 
   var session = baseSession({ forceTranscode: true, playbackStrategy: 'transcode' });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls'));
-  assert.equal(q['X-Plex-Product'], PMS_PRODUCT);
-  // webOS 4: Generic profile (PMS 400s our custom append-transcode-target-codec).
   assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
-  assert.equal(q['X-Plex-Client-Profile-Extra'], undefined);
+  assert.ok(q['X-Plex-Client-Profile-Extra'].indexOf('videoCodec=h264,hevc') >= 0);
   assert.equal(q.directPlay, '0');
-  assert.equal(q.directStream, '0');
+  assert.equal(q.directStream, '1');
   assert.ok(q.path && q.path.indexOf('http') < 0);
-  assert.equal(q.location, 'wan');
+  assert.equal(q.location, undefined);
+  assert.equal(q['X-Plex-Product'], undefined);
 });
 
 test('buildPlaybackUrl simulator Plex Web adds webOS HLS profile extra', function () {
@@ -769,7 +769,8 @@ test('buildPlaybackUrl uses resourceSession from decision on start URL', functio
   });
   var q = parseQuery(buildPlaybackUrl(mockServer, partKey, session, 'hls', 'transcode'));
   assert.equal(q.session, 'ti0aanprmpr6y635rp2ttrbi');
-  assert.equal(q.transcodeSessionId, 'ti0aanprmpr6y635rp2ttrbi');
+  assert.equal(q['X-Plex-Session-Id'], 'ti0aanprmpr6y635rp2ttrbi');
+  assert.equal(q.transcodeSessionId, undefined);
   assert.notEqual(q.session, 'xplay-test-session');
 });
 
@@ -834,7 +835,29 @@ test('resolveStreamUrl falls back to http-transcode when start.m3u8 probe return
   assert.ok(result.url.indexOf('start.m3u8') < 0);
 });
 
-test('resolveStreamUrl on webOS 4 hands HLS start to native player without XHR pre-probe', async function () {
+test('resolveStreamUrl prefers HTTP MP4 remux for MKV Dolby Vision copy', async function () {
+  mockFetchWithDecision([
+    '<MediaContainer resourceSession="plex-dv-copy">',
+    '<Video><Media protocol="hls"><Part decision="copy" protocol="hls"/></Media></Video>',
+    '</MediaContainer>'
+  ].join(''));
+  var session = baseSession({
+    playbackStrategy: 'direct-stream',
+    version: {
+      partKey: partKey,
+      container: 'mkv',
+      videoCodec: 'hevc',
+      videoProfile: 'dvhe.05'
+    },
+    transcodeSessionId: undefined
+  });
+  var result = await resolveStreamUrl(session);
+  assert.equal(result.mode, 'direct-stream');
+  assert.ok(result.url.indexOf('start.m3u8') < 0);
+  assert.ok(/\/transcode\/universal\/start\?/.test(result.url));
+});
+
+test('resolveStreamUrl on webOS 4 routes segmented transcode to progressive HTTP (fMP4 HLS init segment 404s)', async function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
   globalThis.webOS = {
     platform: { tv: true },
@@ -873,7 +896,7 @@ test('resolveStreamUrl on webOS 4 hands HLS start to native player without XHR p
 
   var session = baseSession({ forceTranscode: true, transcodeSessionId: undefined });
   var result = await resolveStreamUrl(session);
-  assert.equal(result.mode, 'transcode-hls');
-  assert.ok(result.url.indexOf('start.m3u8') >= 0);
-  assert.equal(probedStart, false, 'start.m3u8 should not be XHR-probed on webOS 4');
+  assert.equal(result.mode, 'transcode-http');
+  assert.ok(result.url.indexOf('start.m3u8') < 0, 'webOS 4 transcode must not use segmented HLS');
+  assert.equal(probedStart, false, 'progressive HTTP start should not be XHR-probed on webOS 4');
 });

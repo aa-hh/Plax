@@ -25,6 +25,7 @@ import { probePlayback } from '../../playback/capabilityProbe.js';
 import {
   listProfiles,
   getProfile,
+  normalizeQualityKey,
   isDirectPlayOnlyQuality
 } from '../../playback/qualityProfiles.js';
 import { setPlaybackPrefs } from '../../settings/playbackSettings.js';
@@ -286,12 +287,12 @@ function detailScreen(root, params, navigate) {
   }
 
   function syncSelectedQualityFromPrefs() {
-    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'auto';
-    selectedQuality = quality === 'directOnly' ? 'original' : quality;
+    var quality = (getState().playbackPrefs && getState().playbackPrefs.quality) || 'original';
+    selectedQuality = normalizeQualityKey(quality);
   }
 
   function getDetailQuality() {
-    return selectedQuality || 'auto';
+    return selectedQuality || 'original';
   }
 
   function getDetailPlaybackPrefs() {
@@ -382,14 +383,14 @@ function detailScreen(root, params, navigate) {
       body = 'Bitrate ' + probe.bitrateCheck.actualMbps + ' Mbps exceeds this TV\'s ' +
         probe.bitrateCheck.limitMbps + ' Mbps Direct Play limit.';
       body += strictDirect
-        ? ' Original file only is selected — use Auto or a transcode quality to play.'
-        : (quality === 'auto'
-          ? ' Auto will use remux or transcode instead of progressive direct play.'
+        ? ' Original file only is selected — use a transcode quality to play.'
+        : (quality === 'original'
+          ? ' Original will use remux or transcode instead of progressive direct play.'
           : ' Server transcode will be used.');
     } else if (strictDirect && blocked) {
       body += ' Original file only is selected in Settings — playback may fail without remux or transcode.';
-    } else if (quality === 'auto' && blocked && probe.canDirectStream) {
-      body += ' Auto will try HLS remux (direct stream) instead of progressive direct play.';
+    } else if (quality === 'original' && blocked && probe.canDirectStream) {
+      body += ' Original will try HLS remux (direct stream) instead of progressive direct play.';
     }
     return '<div id="direct-play-notice" class="' + cls + '"><strong>' + title +
       '</strong><span>' + escapeHtml(body) + '</span></div>';
@@ -415,7 +416,7 @@ function detailScreen(root, params, navigate) {
     if (toggle) {
       toggle.textContent = probe && probe.warnings.length
         ? 'Playback compatibility'
-        : 'How Auto quality works';
+        : 'How Original quality works';
     }
     if (body) body.innerHTML = html;
   }
@@ -757,6 +758,9 @@ function detailScreen(root, params, navigate) {
   }
 
   function pickDefaultSubtitleIfNeeded(subs) {
+    // Auto-select TEXT subs only (pickDefaultSubtitleTrack skips graphical).
+    // Text subs render client-side and keep Direct Play; image subs are never
+    // auto-enabled because they'd force a burn-in transcode.
     if (selectedSubtitle != null && !trackExists(subs, selectedSubtitle)) {
       selectedSubtitle = null;
     }

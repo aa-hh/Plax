@@ -9,7 +9,9 @@ import { isSimulatorRuntime } from '../platform/webosRuntime.js';
 import {
   describeHlsError,
   fetchHlsManifestProbe,
-  isHlsUrl
+  isHlsUrl,
+  patchHlsMasterForChromeCompat,
+  isHlsPatchActive
 } from './hlsPolicy.js';
 import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
 import { shouldScrobble, shouldResetScrobble } from './scrobblePolicy.js';
@@ -21,6 +23,8 @@ import { createRebufferWatchdog } from './rebufferWatchdog.js';
 import { summarizeTranscodeUrl } from './plexPaths.js';
 import { addOnceEventListener } from '../utils/domUtils.js';
 import { getState } from '../core/store.js';
+import { buildMediaSource } from './mediaOption.js';
+import { getProfile } from './qualityProfiles.js';
 import { tvLog, tvError } from '../utils/tvDebug.js';
 import { isPerfEnabled, mark as perfMark } from '../perf/resourceMonitor.js';
 
@@ -92,6 +96,11 @@ var activeTextTrack = null;
 var lastPlaybackUrl = null;
 var playbackModeRef = 'unknown';
 var runtimeBuildLogged = false;
+var sourceAttachedAtMs = 0;
+var playAttemptId = 0;
+var playAttemptFailureCount = 0;
+var lastLifecycleEventStamp = null;
+var lastSourceAttachmentMeta = null;
 
 var TIMELINE_INTERVAL_MS = 10000;
 
@@ -114,14 +123,20 @@ function setProgressApiForTest(overrides) {
 }
 
 /**
- * webOS TV 5+ buffering policy (see docs/caching-and-buffering.md):
+ * webOS TV buffering policy (see docs/caching-and-buffering.md):
  *   - Single native <video> element (one decoder, hard LG rule).
- *   - preload="metadata" — fetch manifest + first segment; never "auto" on TV
- *     (memory pressure on 1-2 GB devices, especially webOS 5).
+ *   - preload="auto" on webOS 4 (≤4) to warm the pipeline before play();
+ *     preload="metadata" on webOS 5+ (memory pressure on 1-2 GB devices).
  *   - Re-buffer watchdog: if the player stays in waiting/stalled for
  *     REBUFFER_TIMEOUT_MS without progressing, fire onRebufferTimeout so the
  *     screen can downshift quality / fall back to HTTP transcode.
  */
+
+function videoPreloadPolicy() {
+  var state = typeof getState === 'function' ? getState() : null;
+  var major = state && state.platformMajor != null ? state.platformMajor : 0;
+  return (major > 0 && major <= 4) ? 'auto' : 'metadata';
+}
 
 function streamTypeLabel(mode) {
   if (mode === 'direct') return 'direct-play';
@@ -134,6 +149,188 @@ function compactPlaybackUrl(url) {
   var redacted = redactPlexUrl(url);
   if (!redacted || redacted.length <= 180) return redacted || '';
   return redacted.slice(0, 177) + '...';
+}
+
+function truncatePlaybackString(value, maxLen) {
+  maxLen = maxLen || 180;
+  if (value == null) return '';
+  var str = String(value);
+  if (str.length <= maxLen) return str;
+  return str.slice(0, Math.max(0, maxLen - 3)) + '...';
+}
+
+function nowMs() {
+  if (typeof performance !== 'undefined' && performance.now) return performance.now();
+  return Date.now();
+}
+
+function roundStat(value) {
+  if (value == null || !isFinite(value)) return null;
+  return Math.round(value * 1000) / 1000;
+}
+
+function serializeTimeRanges(ranges, maxRanges) {
+  maxRanges = maxRanges || 3;
+  if (!ranges || typeof ranges.length !== 'number' || ranges.length <= 0) return [];
+  var limit = Math.min(maxRanges, ranges.length);
+  var out = [];
+  for (var i = 0; i < limit; i++) {
+    var start = null;
+    var end = null;
+    try { start = ranges.start(i); } catch (_e1) { start = null; }
+    try { end = ranges.end(i); } catch (_e2) { end = null; }
+    out.push({ start: roundStat(start), end: roundStat(end) });
+  }
+  return out;
+}
+
+function detectUrlKind(url) {
+  if (!url) return 'none';
+  if (url.indexOf('blob:') === 0) return 'blob';
+  if (url.indexOf('data:') === 0) return 'data';
+  if (url.indexOf('https://') === 0) return 'https';
+  if (url.indexOf('http://') === 0) return 'http';
+  return 'other';
+}
+
+function sanitizeHintObject(value) {
+  if (!value || typeof value !== 'object') return null;
+  var keys = Object.keys(value).slice(0, 10);
+  var out = {};
+  keys.forEach(function (key) {
+    var field = value[key];
+    if (typeof field === 'string') out[key] = truncatePlaybackString(field, 80);
+    else if (typeof field === 'number' || typeof field === 'boolean' || field == null) out[key] = field;
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+function roundMbps(value) {
+  if (value == null || !isFinite(value)) return null;
+  return Math.round(value * 100) / 100;
+}
+
+function safeNumericBitrateKbps(value) {
+  if (value == null || value === '') return null;
+  var parsed = parseFloat(value);
+  if (!isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function computeRequiredMbps(session, selectedQuality) {
+  var profile = getProfile(selectedQuality);
+  var version = session && session.version;
+  var media = session && session.item && session.item.media && session.item.media[0];
+  var versionBitrateKbps = safeNumericBitrateKbps(version && version.bitrate);
+  var sourceBitrateKbps = safeNumericBitrateKbps((media && media.bitrate) || versionBitrateKbps);
+  var qualityBitrateKbps = safeNumericBitrateKbps(profile && profile.maxVideoBitrate);
+  var baselineKbps = qualityBitrateKbps || sourceBitrateKbps || versionBitrateKbps;
+  if (!baselineKbps) return null;
+  return roundMbps((baselineKbps / 1000) * 1.15);
+}
+
+function collectNetworkHint(state, session) {
+  var hint = {
+    requiredMbps: null,
+    observedMbps: null,
+    reason: 'no-live-sample'
+  };
+  var selectedQuality = (session && session.quality) ||
+    (state && state.playbackPrefs && state.playbackPrefs.quality) ||
+    'original';
+  hint.requiredMbps = computeRequiredMbps(session, selectedQuality);
+  hint.bitrateCheck = sanitizeHintObject(
+    (session && session.bitrateCheck) ||
+      (session && session.probe && session.probe.bitrateCheck) ||
+      (state && state.lastBitrateCheck)
+  );
+  hint.networkProbe = sanitizeHintObject(
+    (session && session.networkProbe) ||
+      (session && session.server && session.server.networkProbe) ||
+      (state && state.networkProbe) ||
+      (state && state.lastNetworkProbe)
+  );
+  return hint;
+}
+
+function makeLifecycleStamp(eventName, extras) {
+  var stamp = {
+    event: eventName,
+    atEpochMs: Date.now()
+  };
+  if (playPressedAtMs > 0) stamp.sincePlayPressedMs = Math.max(0, Math.round(nowMs() - playPressedAtMs));
+  if (sourceAttachedAtMs > 0) stamp.sinceSourceAttachMs = Math.max(0, Math.round(nowMs() - sourceAttachedAtMs));
+  if (extras && typeof extras === 'object') Object.assign(stamp, extras);
+  lastLifecycleEventStamp = stamp;
+  return stamp;
+}
+
+function buildLifecycleSnapshot(eventName, extras) {
+  var state = typeof getState === 'function' ? getState() : null;
+  var selectedQuality = (sessionRef && sessionRef.quality) ||
+    (state && state.playbackPrefs && state.playbackPrefs.quality) ||
+    'unknown';
+  var activeUrl = (videoEl && (videoEl.currentSrc || videoEl.src)) || lastPlaybackUrl || '';
+  var networkHint = collectNetworkHint(state, sessionRef);
+  var snapshot = {
+    event: eventName,
+    mode: playbackModeRef,
+    playbackModeRef: playbackModeRef,
+    url: truncatePlaybackString(compactPlaybackUrl(activeUrl), 180),
+    urlKind: detectUrlKind(activeUrl),
+    isHls: isHlsUrl(activeUrl),
+    usingHlsJs: !!activeHls,
+    readyState: videoEl ? videoEl.readyState : null,
+    networkState: videoEl ? videoEl.networkState : null,
+    currentTime: videoEl ? roundStat(videoEl.currentTime) : null,
+    duration: videoEl ? roundStat(videoEl.duration) : null,
+    videoWidth: videoEl ? (videoEl.videoWidth || 0) : 0,
+    videoHeight: videoEl ? (videoEl.videoHeight || 0) : 0,
+    bufferedRanges: videoEl ? serializeTimeRanges(videoEl.buffered, 3) : [],
+    seekableRanges: videoEl ? serializeTimeRanges(videoEl.seekable, 3) : [],
+    paused: videoEl ? !!videoEl.paused : null,
+    ended: videoEl ? !!videoEl.ended : null,
+    playbackSessionId: sessionRef && sessionRef.playbackSessionId || null,
+    transcodeSessionId: sessionRef && sessionRef.transcodeSessionId || null,
+    selectedQuality: selectedQuality,
+    requiredMbps: networkHint.requiredMbps,
+    observedMbps: networkHint.observedMbps,
+    reason: networkHint.reason,
+    bitrateCheck: networkHint.bitrateCheck,
+    networkProbe: networkHint.networkProbe,
+    playAttemptId: playAttemptId,
+    failureCount: playAttemptFailureCount,
+    lastLifecycleEvent: lastLifecycleEventStamp
+  };
+  if (extras && typeof extras === 'object') Object.assign(snapshot, extras);
+  return snapshot;
+}
+
+function logPlaybackLifecycle(eventName, extras, level) {
+  level = level || 'info';
+  var stamp = makeLifecycleStamp(eventName);
+  var payload = buildLifecycleSnapshot(eventName, Object.assign({ lifecycleStamp: stamp }, extras || {}));
+  if (level === 'error') {
+    tvError('playback', eventName, payload);
+    console.error('[playback] ' + eventName, payload);
+    return;
+  }
+  if (level === 'warn') {
+    tvLog('playback', eventName, payload);
+    console.warn('[playback] ' + eventName, payload);
+    return;
+  }
+  tvLog('playback', eventName, payload);
+  console.info('[playback] ' + eventName, payload);
+}
+
+function markPlaybackFailure(kind) {
+  playAttemptFailureCount += 1;
+  return {
+    failureKind: kind,
+    failureOrder: playAttemptFailureCount === 1 ? 'first-failure' : 'follow-up-failure',
+    failureCount: playAttemptFailureCount
+  };
 }
 
 function logPlaybackStreamType(mode, url) {
@@ -180,21 +377,105 @@ function logRuntimeBuildStampOnce() {
   runtimeBuildLogged = true;
   if (typeof window !== 'undefined' && window.__XPLAY_BUILD__) {
     var b = window.__XPLAY_BUILD__;
-    console.info('[XPlay Lite] runtime-build', b.builtAt, b.gitCommit || 'no-git', b.summary || '');
+    var buildNumber = Number(b.buildNumber);
+    if (!isFinite(buildNumber) || buildNumber < 1) buildNumber = 'unknown-build';
+    else buildNumber = Math.floor(buildNumber);
+    console.info('[XPlay Lite] runtime-build', 'build=' + buildNumber, b.builtAt, b.gitCommit || 'no-git', b.summary || '');
     return;
   }
   console.warn('[XPlay Lite] runtime-build missing');
 }
 
-function shouldUseMseHls(url) {
+function isTranscodeFallbackMode(mode) {
+  return mode === 'transcode-hls' || mode === 'transcode-http';
+}
+
+function shouldUseMseHls(url, mode) {
+  if (!isTranscodeFallbackMode(mode)) return false;
   if (!isHlsUrl(url) || !HlsPlayer || !HlsPlayer.isSupported || !HlsPlayer.isSupported()) {
     return false;
   }
   var identity = getPlexClientIdentity();
-  /* Real webOS TVs have native HLS support and stricter decoder ownership.
-   * Simulator and desktop-browser runs use Chromium's MSE path instead, which
-   * avoids FFmpegDemuxer rejecting Plex MPEG-TS HLS directly. */
-  return isSimulatorRuntime() || !identity || identity.product !== PMS_PRODUCT;
+  /* hls.js is only for the H.264 transcode fallback. Direct play/stream use
+   * the native webOS pipeline (mediaOption) for HEVC/HDR/DV.
+   *
+   * webOS 4 (2018 B8/C8/E8) native HLS rejects Plex's transcoded variant
+   * playlists even after we patch in a CODECS attribute. hls.js handles the
+   * playlist + segment fetch directly via MSE for that fallback path. */
+  if (isSimulatorRuntime()) return true;
+  if (!identity) return true;
+  if (identity.product === PMS_PRODUCT) {
+    var major = parseInt(String(identity.platformVersion || '').split('.')[0], 10);
+    var isB8c8e8 = /OLED\d{2}[BCEW]8/i.test(String(identity.model || ''));
+    if (major === 4 || isB8c8e8) return true;
+    return false;
+  }
+  return true;
+}
+
+function clearNativeVideoSources() {
+  if (!videoEl) return;
+  var sources = videoEl.querySelectorAll('source');
+  for (var i = sources.length - 1; i >= 0; i--) {
+    var node = sources[i];
+    if (typeof node.remove === 'function') {
+      node.remove();
+    } else if (videoEl.children) {
+      videoEl.children = videoEl.children.filter(function (c) { return c !== node; });
+      node.parentElement = null;
+    }
+  }
+  videoEl.removeAttribute('src');
+}
+
+function mediaSourceHints(session) {
+  if (!session || !session.quality) return {};
+  var profile = getProfile(session.quality);
+  return profile && profile.maxVideoBitrate
+    ? { maxVideoBitrate: profile.maxVideoBitrate }
+    : {};
+}
+
+function applyNativeVideoSource(url, mode, offsetMs, session, options) {
+  options = options || {};
+  var state = typeof getState === 'function' ? getState() : null;
+  var deviceInfo = state && state.deviceInfo ? state.deviceInfo : {};
+  var built = buildMediaSource(url, mode, deviceInfo, offsetMs, mediaSourceHints(session));
+  var sourceType = built && built.sourceType ? built.sourceType : '';
+  var sourceTypePrefix = sourceType ? sourceType.split(';')[0] : '';
+  var sourceMeta = {
+    sourceTypePrefix: sourceTypePrefix || null,
+    urlKind: detectUrlKind(url),
+    isBlobUrl: detectUrlKind(url) === 'blob',
+    codecsPatchUsed: options.codecsPatchUsed === true,
+    mediaTransportType: built && built.mediaOption && built.mediaOption.mediaTransportType || null
+  };
+  lastSourceAttachmentMeta = sourceMeta;
+  logPlaybackLifecycle('source-attach-native-before', sourceMeta);
+  // Diagnose <source> rejection: Chromium skips a <source> whose type fails
+  // canPlayType (→ networkState 3, no error event). Log what the TV accepts.
+  if (videoEl && typeof videoEl.canPlayType === 'function') {
+    tvLog('playback', 'canPlayType', {
+      full: videoEl.canPlayType(built.sourceType),
+      mime: videoEl.canPlayType(sourceTypePrefix),
+      mp4: videoEl.canPlayType('video/mp4'),
+      mkv: videoEl.canPlayType('video/x-matroska'),
+      sourceType: built.sourceType.slice(0, 80)
+    });
+  }
+  clearNativeVideoSources();
+  var source = document.createElement('source');
+  source.setAttribute('src', url);
+  source.setAttribute('type', built.sourceType);
+  videoEl.appendChild(source);
+  videoEl.load();
+  sourceAttachedAtMs = nowMs();
+  logPlaybackLifecycle('source-attach-native-after', sourceMeta);
+  tvLog('playback', 'native source', {
+    transport: built.mediaOption.mediaTransportType,
+    maxWidth: built.mediaOption.option.adaptiveStreaming.maxWidth,
+    maxHeight: built.mediaOption.option.adaptiveStreaming.maxHeight
+  });
 }
 
 function destroyActiveHls() {
@@ -245,13 +526,25 @@ function attachMseHls(url, requestHeaders) {
   activeHls.on(events.MEDIA_ATTACHED, function () {
     activeHls.loadSource(url);
   });
-  activeHls.on(events.MANIFEST_PARSED, function () {
+  activeHls.on(events.MANIFEST_PARSED, function (_e, data) {
+    var levels = data && data.levels ? data.levels.length : 'unknown';
+    tvLog('playback', 'hls.js manifest parsed', { levels: levels, url: url ? url.slice(0, 120) : null });
     notifyBuffering(false);
   });
   activeHls.on(events.ERROR, function (_event, data) {
-    if (!data || !data.fatal) return;
-    console.warn('[playback] hls.js fatal error', data.type, data.details);
-    tvLog('playback', 'hls.js fatal', { type: data.type, details: data.details });
+    if (!data) return;
+    if (!data.fatal) {
+      tvLog('playback', 'hls.js error', {
+        fatal: false,
+        type: data.type,
+        details: data.details,
+        url: (data.frag && data.frag.url ? data.frag.url.slice(0, 160) : null) ||
+             (data.url ? data.url.slice(0, 160) : null),
+        response: data.response ? { code: data.response.code, text: data.response.text } : null
+      });
+      return;
+    }
+    tvError('playback', 'hls.js fatal', { type: data.type, details: data.details });
     if (data.type === errorTypes.NETWORK_ERROR && activeHls.startLoad) {
       activeHls.startLoad();
       return;
@@ -267,7 +560,6 @@ function attachMseHls(url, requestHeaders) {
     }
   });
   activeHls.attachMedia(videoEl);
-  console.info('[playback] using hls.js for HLS compatibility');
   tvLog('playback', 'using hls.js');
 }
 
@@ -297,11 +589,20 @@ function normalizePlaybackError(err, url) {
   var mediaErr = err && err.code != null ? err : null;
   var msg = (err && err.message) ? err.message : String(err || 'Playback failed');
   if (!mediaErr && videoEl && videoEl.error) mediaErr = videoEl.error;
+  var mediaMessage = mediaErr && mediaErr.message
+    ? mediaErr.message
+    : (mediaErr ? describeHlsError(mediaErr) : '');
+  var failureOrder = playAttemptFailureCount <= 1 ? 'first-failure' : 'follow-up-failure';
   return {
     message: msg,
     mediaError: mediaErr || err,
+    mediaErrorCode: mediaErr && mediaErr.code != null ? mediaErr.code : null,
+    mediaErrorMessage: mediaMessage || null,
     isHls: isHlsUrl(src),
-    url: redactPlexUrl(src)
+    url: redactPlexUrl(src),
+    failureCount: playAttemptFailureCount,
+    failureOrder: failureOrder,
+    lastLifecycleEvent: lastLifecycleEventStamp
   };
 }
 
@@ -416,7 +717,18 @@ function attachPlaybackEvents() {
     notifyBuffering(false);
     var err = videoEl.error;
     var msg = describeHlsError(err);
+    var srcKind = detectUrlKind(videoEl && videoEl.src);
+    var failureMeta = markPlaybackFailure('video-error');
     console.error('Playback error', msg, err, redactPlexUrl(videoEl.src));
+    logPlaybackLifecycle('error', {
+      message: msg,
+      mediaErrorCode: err && err.code,
+      mediaErrorMessage: err && err.message ? err.message : msg,
+      blobSrcFailure: srcKind === 'blob',
+      sourceAttachment: lastSourceAttachmentMeta,
+      failureKind: failureMeta.failureKind,
+      failureOrder: failureMeta.failureOrder
+    }, 'error');
     tvError('playback', 'video error', {
       message: msg,
       code: err && err.code,
@@ -424,30 +736,31 @@ function attachPlaybackEvents() {
     });
     logHlsErrorDiagnostics(videoEl.src, err);
     if (onErrorCb) {
-      onErrorCb({
-        message: msg,
-        mediaError: err,
-        isHls: isHlsUrl(videoEl.src),
-        url: redactPlexUrl(videoEl.src)
-      });
+      onErrorCb(normalizePlaybackError(err, videoEl.src));
     }
   });
 
   videoEl.addEventListener('waiting', function () {
     notifyBuffering(true);
-    tvLog('playback', 'video waiting');
+    logPlaybackLifecycle('waiting');
   });
   videoEl.addEventListener('stalled', function () {
     notifyBuffering(true);
-    tvLog('playback', 'video stalled');
+    logPlaybackLifecycle('stalled');
   });
   videoEl.addEventListener('playing', function () {
     notifyBuffering(false);
     syncInitialPlayingTimeline();
-    tvLog('playback', 'video playing');
+    logPlaybackLifecycle('playing');
   });
-  videoEl.addEventListener('canplay', function () { notifyBuffering(false); });
-  videoEl.addEventListener('canplaythrough', function () { notifyBuffering(false); });
+  videoEl.addEventListener('canplay', function () {
+    notifyBuffering(false);
+    logPlaybackLifecycle('canplay');
+  });
+  videoEl.addEventListener('canplaythrough', function () {
+    notifyBuffering(false);
+    logPlaybackLifecycle('canplaythrough');
+  });
 }
 
 function init() {
@@ -461,13 +774,12 @@ function init() {
   // webOS TV buffering policy:
   //   playsinline / webkit-playsinline → keep inline; never trigger a fullscreen
   //     fallback flow (LG single-video rule, no PiP).
-  //   preload="metadata" → fetch manifest + first segment only; "auto" would
-  //     bloat decoder memory on webOS 5.
+  //   preload → "auto" on webOS 4 (Jellyfin-style warm-up); "metadata" on 5+.
   //   NO crossorigin attribute → Plex tokenises requests via query string and
   //     CORS preflights have caused HLS init failures on some LG firmwares.
   videoEl.setAttribute('playsinline', '');
   videoEl.setAttribute('webkit-playsinline', '');
-  videoEl.setAttribute('preload', 'metadata');
+  videoEl.setAttribute('preload', videoPreloadPolicy());
   videoEl.removeAttribute('crossorigin');
   attachPlaybackEvents();
 }
@@ -783,12 +1095,14 @@ function play(url, session, options) {
   lastKnownPositionMs = offsetMs;
   initialPlayingTimelineSynced = false;
   firstFrameFired = false;
+  playPressedAtMs = nowMs();
+  sourceAttachedAtMs = 0;
+  playAttemptId += 1;
+  playAttemptFailureCount = 0;
+  lastLifecycleEventStamp = null;
+  lastSourceAttachmentMeta = null;
   if (isPerfEnabled()) {
-    playPressedAtMs = (typeof performance !== 'undefined' && performance.now)
-      ? performance.now() : Date.now();
-    perfMark('play:pressed', { mode: mode, mseHls: shouldUseMseHls(url) });
-  } else {
-    playPressedAtMs = 0;
+    perfMark('play:pressed', { mode: mode, mseHls: shouldUseMseHls(url, mode) });
   }
   lastPlaybackUrl = url;
   playbackModeRef = mode;
@@ -799,36 +1113,94 @@ function play(url, session, options) {
   tvLog('playback', 'play attempt', {
     mode: mode,
     offsetMs: offsetMs,
-    mseHls: shouldUseMseHls(url),
+    mseHls: shouldUseMseHls(url, mode),
     url: compactPlaybackUrl(url)
   });
   rebufferWatchdog.resetEpisode();
-  notifyBuffering(true);
   videoEl.classList.remove('hidden');
-  if (shouldUseMseHls(url)) {
-    attachMseHls(url, hlsAuthHeaders(url, session));
-  } else {
-    destroyActiveHls();
-    videoEl.src = url;
-  }
   keepScreenOn(true);
   addOnceEventListener(videoEl, 'canplay', notifyFirstFrame);
   addOnceEventListener(videoEl, 'playing', notifyFirstFrame);
-  if (offsetMs > 0 && !shouldSkipClientPlaybackOffset(url, mode, offsetMs)) {
-    applyPlaybackOffset(offsetMs);
+
+  if (shouldUseMseHls(url, mode)) {
+    clearNativeVideoSources();
+    attachMseHls(url, hlsAuthHeaders(url, session));
+    sourceAttachedAtMs = nowMs();
+    lastSourceAttachmentMeta = {
+      sourceTypePrefix: 'application/vnd.apple.mpegurl',
+      urlKind: detectUrlKind(url),
+      isBlobUrl: false,
+      codecsPatchUsed: false,
+      mediaTransportType: 'MSE'
+    };
+    logPlaybackLifecycle('source-attach-mse', lastSourceAttachmentMeta);
+    startVideoPlay(url);
+  } else {
+    destroyActiveHls();
+    var useHlsPatch = isHlsPatchActive() && isTranscodeFallbackMode(mode) && isHlsUrl(url);
+    if (useHlsPatch) {
+      // H.264 transcode fallback on webOS 5+: native HLS rejects bare STREAM-INF.
+      patchHlsMasterForChromeCompat(url, hlsAuthHeaders(url, session))
+        .then(function (patchedUrl) {
+          var patched = patchedUrl !== url;
+          var patchedKind = detectUrlKind(patchedUrl);
+          var patchMeta = { patched: patched, patchedUrlKind: patchedKind };
+          if (patched && patchedKind === 'blob') {
+            logPlaybackLifecycle('hls-patch-blob-url', patchMeta, 'warn');
+          } else if (patched && patchedKind === 'data') {
+            logPlaybackLifecycle('hls-patch-data-url', patchMeta, 'warn');
+          } else {
+            logPlaybackLifecycle('hls-patch-source', patchMeta);
+          }
+          tvLog('playback', 'hls src', patchMeta);
+          applyNativeVideoSource(patchedUrl, mode, offsetMs, session, { codecsPatchUsed: patched });
+          startVideoPlay(url);
+        });
+    } else {
+      applyNativeVideoSource(url, mode, offsetMs, session, { codecsPatchUsed: false });
+      startVideoPlay(url);
+    }
   }
-  var p = videoEl.play();
-  if (p && p.catch) {
-    p.catch(function (err) {
-      console.error(err);
-      tvError('playback', 'play() rejected', err && err.message ? err.message : err);
-      notifyBuffering(false);
-      if (onErrorCb) onErrorCb(normalizePlaybackError(err, url));
-    });
-  }
+
   startProgressSync();
   armInitialPlayingTimelineSync();
   return videoEl;
+
+  function shouldApplyClientSeekAfterLoad(srcUrl) {
+    if (!offsetMs || offsetMs <= 0) return false;
+    if (shouldSkipClientPlaybackOffset(srcUrl, mode, offsetMs)) return false;
+    // Native mediaOption resume uses transmission.playTime.start — avoid double seek.
+    if (!shouldUseMseHls(srcUrl, mode)) return false;
+    return true;
+  }
+
+  function startVideoPlay(srcUrl) {
+    if (shouldApplyClientSeekAfterLoad(srcUrl)) {
+      applyPlaybackOffset(offsetMs);
+    }
+    var p = videoEl.play();
+    if (p && p.catch) {
+      p.catch(function (err) {
+        var srcKind = detectUrlKind(videoEl && videoEl.src);
+        var failureMeta = markPlaybackFailure('play-rejected');
+        console.error(err);
+        logPlaybackLifecycle('play() rejected', {
+          error: err && err.message ? err.message : String(err),
+          blobSrcFailure: srcKind === 'blob',
+          sourceAttachment: lastSourceAttachmentMeta,
+          failureKind: failureMeta.failureKind,
+          failureOrder: failureMeta.failureOrder
+        }, 'error');
+        tvError('playback', 'play() rejected', {
+          message: err && err.message ? err.message : String(err),
+          failureOrder: failureMeta.failureOrder,
+          blobSrcFailure: srcKind === 'blob'
+        });
+        notifyBuffering(false);
+        if (onErrorCb) onErrorCb(normalizePlaybackError(err, url));
+      });
+    }
+  }
 }
 
 function getVideoElement() {
@@ -867,10 +1239,10 @@ function stop(options) {
   if (videoEl) {
     videoEl.pause();
     destroyActiveHls();
-    // Order matters on webOS: clear src first, then call load() to free the
-    // native decoder. Otherwise the decoder may stay pinned until the next
+    // Order matters on webOS: clear src/sources first, then call load() to free
+    // the native decoder. Otherwise the decoder may stay pinned until the next
     // <video> usage and silently fail subsequent play().
-    videoEl.removeAttribute('src');
+    clearNativeVideoSources();
     videoEl.load();
     videoEl.classList.add('hidden');
   }
@@ -883,6 +1255,9 @@ function stop(options) {
   lastPlaybackUrl = null;
   playbackModeRef = 'unknown';
   streamBaseOffsetMs = 0;
+  sourceAttachedAtMs = 0;
+  lastLifecycleEventStamp = null;
+  lastSourceAttachmentMeta = null;
 
   if (server && ratingKey && !options.skipTimeline) {
     var continuing = options.continuing != null ? options.continuing : 0;
@@ -1070,11 +1445,7 @@ function clearListeners() {
   onTimelineSyncFailureCb = null;
 }
 
-function showControls(visible) {
-  if (videoEl) {
-    videoEl.classList.toggle('controls-visible', visible);
-  }
-}
+function showControls() {}
 
 function setPlaybackMode(mode) {
   playbackModeRef = mode || 'unknown';
@@ -1087,12 +1458,40 @@ function getPlaybackMode() {
 function getPlaybackStats() {
   var w = videoEl ? videoEl.videoWidth : 0;
   var h = videoEl ? videoEl.videoHeight : 0;
+  var state = typeof getState === 'function' ? getState() : null;
+  var selectedQuality = (sessionRef && sessionRef.quality) ||
+    (state && state.playbackPrefs && state.playbackPrefs.quality) ||
+    'unknown';
+  var networkHint = collectNetworkHint(state, sessionRef);
+  var currentUrl = (videoEl && (videoEl.currentSrc || videoEl.src)) || lastPlaybackUrl || '';
   return {
     mode: playbackModeRef,
+    playbackModeRef: playbackModeRef,
     url: redactPlexUrl(lastPlaybackUrl),
+    redactedUrl: truncatePlaybackString(compactPlaybackUrl(currentUrl), 180),
+    urlKind: detectUrlKind(currentUrl),
     videoWidth: w,
     videoHeight: h,
-    isHls: isHlsUrl(lastPlaybackUrl)
+    isHls: isHlsUrl(lastPlaybackUrl),
+    usingHlsJs: !!activeHls,
+    readyState: videoEl ? videoEl.readyState : null,
+    networkState: videoEl ? videoEl.networkState : null,
+    currentTime: videoEl ? roundStat(videoEl.currentTime) : null,
+    duration: videoEl ? roundStat(videoEl.duration) : null,
+    bufferedRanges: videoEl ? serializeTimeRanges(videoEl.buffered, 3) : [],
+    seekableRanges: videoEl ? serializeTimeRanges(videoEl.seekable, 3) : [],
+    paused: videoEl ? !!videoEl.paused : null,
+    ended: videoEl ? !!videoEl.ended : null,
+    playbackSessionId: sessionRef && sessionRef.playbackSessionId || null,
+    transcodeSessionId: sessionRef && sessionRef.transcodeSessionId || null,
+    selectedQuality: selectedQuality,
+    requiredMbps: networkHint.requiredMbps,
+    observedMbps: networkHint.observedMbps,
+    reason: networkHint.reason,
+    bitrateCheck: networkHint.bitrateCheck,
+    networkProbe: networkHint.networkProbe,
+    lastLifecycleEvent: lastLifecycleEventStamp,
+    failureCount: playAttemptFailureCount
   };
 }
 
@@ -1128,6 +1527,8 @@ export {
   setPlaybackMode,
   getPlaybackMode,
   getPlaybackStats,
+  serializeTimeRanges as __serializeTimeRangesForTest,
+  truncatePlaybackString as __truncatePlaybackStringForTest,
   REBUFFER_TIMEOUT_MS,
   setProgressApiForTest,
   setRebufferTimersForTest,

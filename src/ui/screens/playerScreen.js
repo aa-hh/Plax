@@ -1,7 +1,7 @@
 import { getState } from '../../core/store.js';
 import { getMetadata } from '../../plex/library.js';
 import { createSession, resolveStreamUrl } from '../../playback/sessionController.js';
-import * as player from '../../playback/playerAdapter.js';
+import * as player from '../../playback/playerFactory.js';
 import * as queue from '../../playback/playbackQueue.js';
 import {
   extractIntroMarkers,
@@ -31,10 +31,11 @@ import {
 import {
   listProfiles,
   getProfile,
+  normalizeQualityKey,
+  formatOriginalQualityLabel,
   isDirectPlayOnlyQuality,
   allowsPlaybackFallback,
-  requiresServerTranscode,
-  nextLowerTranscodeProfileKey
+  requiresServerTranscode
 } from '../../playback/qualityProfiles.js';
 import {
   showLoadingOverlay,
@@ -65,19 +66,11 @@ import {
   applyRestartPlaybackFallbackFlags,
   decideErrorFallback,
   decideRebufferFallback,
-  clearHlsFallbackAfterHlsTranscodeStart,
-  resetRebufferDownshiftForEpisode
+  clearHlsFallbackAfterHlsTranscodeStart
 } from '../../playback/playbackFallback.js';
 import { createPlaybackRestartLock } from '../../playback/playbackRestartLock.js';
 import { probePlayback } from '../../playback/capabilityProbe.js';
 import { isStalePlaybackGeneration } from '../../playback/playbackGeneration.js';
-import {
-  cancelNetworkProbe,
-  setPlaybackActive,
-  ensureItemProbeForPlay,
-  resolveEffectivePlaybackQuality,
-  resolveInitialPlaybackStrategy
-} from '../../playback/networkProbe.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
 import { onAppBackground } from '../../platform/webos.js';
 import {
@@ -257,7 +250,7 @@ function playerScreen(root, params, navigate) {
     '</div>' +
     '</div>' +
     '<div class="player-settings-col">' +
-    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-quality" tabindex="0" aria-haspopup="dialog" aria-label="Quality">' +
+    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-player-quality" tabindex="0" aria-haspopup="dialog" aria-label="Quality">' +
     '<span class="player-stream-active-mark" id="mark-quality" hidden></span>' +
     ICON_QUALITY +
     '</button>' +
@@ -265,7 +258,7 @@ function playerScreen(root, params, navigate) {
     '<span class="player-stream-active-mark" id="mark-audio" hidden></span>' +
     ICON_AUDIO +
     '</button>' +
-    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-subtitles" tabindex="0" aria-haspopup="dialog" aria-label="Subtitles">' +
+    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-player-subtitles" tabindex="0" aria-haspopup="dialog" aria-label="Subtitles">' +
     '<span class="player-stream-active-mark" id="mark-subtitles"></span>' +
     ICON_SUBTITLE +
     '</button>' +
@@ -329,7 +322,7 @@ function playerScreen(root, params, navigate) {
   var subtitleOffset = params.subtitleOffset != null
     ? params.subtitleOffset
     : (playbackPrefs.subtitleOffsetMs || 0);
-  var selectedQuality = playbackPrefs.quality || 'auto';
+  var selectedQuality = normalizeQualityKey(playbackPrefs.quality || 'original');
 
   var audioTracks = [];
   var subtitleTracks = [];
@@ -337,8 +330,6 @@ function playerScreen(root, params, navigate) {
   var qualityOptions = listProfiles();
   var playbackMode = 'unknown';
   var deviceInfo = { uhd: false, hdr10: false, dolbyVision: false };
-  var playNetworkProbe = null;
-  var effectivePlaybackQuality = null;
 
   loadDeviceDisplay(function (info) {
     deviceInfo = info;
@@ -412,6 +403,13 @@ function playerScreen(root, params, navigate) {
     context = context || {};
     var message = formatPlaybackFailure(err, context);
     tvError('player', 'PLAYBACK FAILED', message);
+    tvError('player', 'playback failure diagnostics', {
+      stats: player.getPlaybackStats ? player.getPlaybackStats() : null,
+      selectedQuality: selectedQuality,
+      strategy: session && session.playbackStrategy || null,
+      protocol: session && session.transcodeProtocol || null,
+      requirementInfo: currentProbe && currentProbe.bitrateCheck ? currentProbe.bitrateCheck : null
+    });
     refreshDebugFromEnvironment('playback-failure');
     ensureDebugOverlayOnTop();
 
@@ -440,8 +438,6 @@ function playerScreen(root, params, navigate) {
     }
     return message;
   }
-
-  cancelNetworkProbe();
 
   function beginPrepareOverlay() {
     awaitingPrepareOverlay = true;
@@ -497,22 +493,10 @@ function playerScreen(root, params, navigate) {
   }
 
   function activeTranscodeQualityKey() {
-    if (selectedQuality !== 'auto' && requiresServerTranscode(selectedQuality)) {
+    if (requiresServerTranscode(selectedQuality)) {
       return selectedQuality;
     }
-    if (effectivePlaybackQuality && requiresServerTranscode(effectivePlaybackQuality)) {
-      return effectivePlaybackQuality;
-    }
     return null;
-  }
-
-  function applyTranscodeQualityDownshift(nextQuality) {
-    if (selectedQuality === 'auto') {
-      effectivePlaybackQuality = nextQuality;
-    } else {
-      selectedQuality = nextQuality;
-      effectivePlaybackQuality = nextQuality;
-    }
   }
 
   function resolveFirstFrameWaiters() {
@@ -663,10 +647,21 @@ function playerScreen(root, params, navigate) {
     btnSkipIntroPrompt.focus();
   }
 
+  function focusOverlayDefault() {
+    // When the toolbar comes up, land focus on the play/pause button so OK
+    // toggles playback immediately — the most common action.
+    var btn = document.getElementById('btn-pause');
+    if (btn && !btn.hidden && (btn.offsetWidth > 0 || btn.offsetHeight > 0)) {
+      btn.focus();
+      if (document.activeElement === btn) return;
+    }
+    focusFirst(overlay.querySelector('.player-bottom') || overlay);
+  }
+
   function toggleOverlayVisible() {
     setOverlayVisible(!overlayVisible);
     if (overlayVisible) {
-      focusFirst(overlay.querySelector('.player-bottom') || overlay);
+      focusOverlayDefault();
     }
   }
 
@@ -742,8 +737,11 @@ function playerScreen(root, params, navigate) {
     var ver = currentVersion || {};
     var res = ver.videoResolution || media.videoResolution || '';
     var name = prof.label || selectedQuality;
-    if (selectedQuality === 'auto') {
-      name = 'Auto';
+    if (selectedQuality === 'original') {
+      name = formatOriginalQualityLabel(
+        ver.bitrate || media.bitrate || 0,
+        ver.videoResolution || media.videoResolution || ''
+      );
     } else {
       var short = (prof.label || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
       if (short) name = short;
@@ -767,7 +765,7 @@ function playerScreen(root, params, navigate) {
 
   function updateTrackButtonLabels() {
     var btnAudio = document.getElementById('btn-audio');
-    var btnSubs = document.getElementById('btn-subtitles');
+    var btnSubs = document.getElementById('btn-player-subtitles');
     var markSubs = document.getElementById('mark-subtitles');
     if (btnAudio) {
       btnAudio.setAttribute('aria-label', 'Audio: ' + formatAudioPillLabel());
@@ -778,7 +776,7 @@ function playerScreen(root, params, navigate) {
       if (markSubs) markSubs.hidden = !subsOn;
       btnSubs.setAttribute('aria-label', 'Subtitles: ' + formatSubtitlePillLabel());
     }
-    var btnQuality = document.getElementById('btn-quality');
+    var btnQuality = document.getElementById('btn-player-quality');
     if (btnQuality) {
       btnQuality.setAttribute('aria-label', 'Quality: ' + formatQualityPillLabel());
     }
@@ -964,7 +962,6 @@ function playerScreen(root, params, navigate) {
     if (!infoPanel) return;
     if (infoPanelVisible) {
       closeMenu();
-      hideExitConfirm();
       setOverlayVisible(true);
       clearOverlayHideTimer();
       infoPanel.hidden = false;
@@ -1003,8 +1000,8 @@ function playerScreen(root, params, navigate) {
     var bitrate = ver.bitrate || media.bitrate;
     if (bitrate) lines.push('Source bitrate: ~' + Math.round(bitrate / 1000) + ' Mbps');
     if (isStrictDirectPlay()) lines.push('Quality: original file only (no remux/transcode fallback)');
-    else if (selectedQuality === 'auto') {
-      lines.push('Quality: Auto (direct → remux → transcode)');
+    else if (selectedQuality === 'original') {
+      lines.push('Quality: Original (direct → remux → transcode)');
     } else {
       var qProf = getProfile(selectedQuality);
       if (qProf && qProf.label) lines.push('Quality: ' + qProf.label);
@@ -1095,7 +1092,7 @@ function playerScreen(root, params, navigate) {
       if (isStrictDirectPlay()) {
         setPlayerMessage(
           'Subtitles unavailable in Original quality' + detail +
-            '. Switch to Auto quality for embedded subtitles, or pick image subtitles (burn-in).'
+            '. Switch to Original quality for embedded subtitles, or pick image subtitles (burn-in).'
         );
         return Promise.resolve();
       }
@@ -1165,8 +1162,21 @@ function playerScreen(root, params, navigate) {
       });
     } else if (kind === 'quality') {
       if (titleEl) titleEl.textContent = 'Quality';
+      var media = (currentItem && currentItem.media && currentItem.media[0]) || {};
+      var ver = currentVersion || {};
+      var srcBitrate = ver.bitrate || media.bitrate || 0;
+      var srcRes = ver.videoResolution || media.videoResolution || '';
+      var activeQualityKey = normalizeQualityKey(selectedQuality);
       qualityOptions.forEach(function (q) {
-        options.push({ kind: 'quality', id: q.id, label: q.label, selected: q.id === selectedQuality });
+        var label = q.id === 'original'
+          ? formatOriginalQualityLabel(srcBitrate, srcRes)
+          : q.label;
+        options.push({
+          kind: 'quality',
+          id: q.id,
+          label: label,
+          selected: q.id === activeQualityKey
+        });
       });
     }
     options.forEach(function (opt) {
@@ -1317,37 +1327,22 @@ function playerScreen(root, params, navigate) {
       showBuffering('Buffering…');
     } else {
       hideBuffering();
-      resetRebufferDownshiftForEpisode(fallbackState);
     }
   });
 
   player.onRebufferTimeout(function () {
     if (destroyed || !session) return;
-    tvLog('player', 'rebuffer timeout');
+    tvError('player', 'rebuffer timeout', { playbackMode: playbackMode, quality: activeTranscodeQualityKey() });
     if (!canAutoFallback()) {
       setPlayerMessage(formatDirectPlayOnlyError(currentProbe) +
         ' Buffering with no transcode fallback.');
       return;
     }
-    var qualityKey = activeTranscodeQualityKey();
-    var nextLower = qualityKey ? nextLowerTranscodeProfileKey(qualityKey) : null;
-    var onHlsTranscode = session.transcodeProtocol === 'hls' &&
-      (playbackMode === 'transcode-hls' || playbackMode === 'direct-stream' ||
-        session.playbackStrategy === 'transcode' ||
-        session.playbackStrategy === 'direct-stream');
     var rebufferStep = decideRebufferFallback(fallbackState, playbackFallbackContext({
       playbackMode: playbackMode,
-      transcodeProtocol: session.transcodeProtocol,
-      onHlsTranscode: onHlsTranscode,
-      nextLowerQuality: nextLower
+      transcodeProtocol: session.transcodeProtocol
     }));
-    if (rebufferStep.action === 'quality-downshift' && rebufferStep.nextQuality) {
-      applyTranscodeQualityDownshift(rebufferStep.nextQuality);
-      var prof = getProfile(rebufferStep.nextQuality);
-      setPlayerMessage('Slow buffering — lowering to ' + (prof && prof.label || rebufferStep.nextQuality) + '…');
-      restartPlaybackAt(restartOffsetMs(params.offset), null, 'quality');
-      return;
-    }
+    tvError('player', 'rebuffer fallback', { action: rebufferStep.action });
     if (rebufferStep.action === 'full-transcode') {
       setPlayerMessage('Stream copy stalled — transcoding…');
       retryTranscode('hls', restartOffsetMs(params.offset), 'full-transcode-fallback');
@@ -1672,20 +1667,20 @@ function playerScreen(root, params, navigate) {
   }
 
   function sessionQualityForPlay() {
-    if (selectedQuality !== 'auto') return selectedQuality;
-    return effectivePlaybackQuality || 'auto';
+    if (selectedQuality === 'original') return 'original';
+    return selectedQuality;
   }
 
   function initialPlaybackStrategy(probe, forceTranscode) {
-    return resolveInitialPlaybackStrategy({
-      prefsQuality: selectedQuality,
-      effectiveQuality: sessionQualityForPlay(),
-      playbackProbe: probe,
-      refinedProbe: playNetworkProbe,
-      forceTranscode: forceTranscode,
-      version: currentVersion,
-      directPlayOnly: isStrictDirectPlay()
-    });
+    if (isStrictDirectPlay()) return 'direct';
+    var quality = sessionQualityForPlay();
+    if (requiresServerTranscode(quality)) return 'transcode';
+    if (forceTranscode) return 'transcode';
+    if (selectedQuality === 'original' && probe) {
+      if (!probe.canDirectPlay && !probe.canDirectStream) return 'transcode';
+      if (!probe.canDirectPlay && probe.canDirectStream) return 'direct-stream';
+    }
+    return 'direct';
   }
 
   function subtitleBurnSessionFlags() {
@@ -1961,53 +1956,29 @@ function playerScreen(root, params, navigate) {
       });
       return Promise.resolve();
     }
-    return ensureItemProbeForPlay(
-      server,
-      item,
-      currentVersion,
-      deviceInfo,
-      currentProbe
-    ).then(function (refined) {
-      if (destroyed || isStalePlayback(gen)) return;
-      playNetworkProbe = refined;
-      effectivePlaybackQuality = resolveEffectivePlaybackQuality(selectedQuality, refined);
-      setPlaybackActive(true);
-      session = createSession(item, currentVersion, buildSessionOptions(startOffsetMs));
-      if (selectedQuality === 'auto' && refined && refined.recommendedLabel &&
-          effectivePlaybackQuality !== 'auto') {
-        setPlayerMessage('Using ' + refined.recommendedLabel + ' based on connection test.');
+    tvLog('player', 'quality resolved', { prefs: selectedQuality });
+    if (destroyed || isStalePlayback(gen)) return Promise.resolve();
+    session = createSession(item, currentVersion, buildSessionOptions(startOffsetMs));
+    return chainPlaybackReady(tryPlayback(startOffsetMs, gen), gen).then(function (result) {
+      if (destroyed || isStalePlayback(gen) || !result) return result;
+      hidePrepareOverlayIfReady();
+      setOverlayVisible(true);
+      if (isStrictDirectPlay() && result.mode !== 'direct') {
+        setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
       }
-      return chainPlaybackReady(tryPlayback(startOffsetMs, gen), gen).then(function (result) {
-        if (destroyed || isStalePlayback(gen) || !result) return result;
-        hidePrepareOverlayIfReady();
-        setOverlayVisible(true);
-        if (isStrictDirectPlay() && result.mode !== 'direct') {
-          setPlayerMessage(formatDirectPlayOnlyError(currentProbe));
-        }
-        if (shouldApplyClientSubtitleAfterPlay(result.mode)) {
-          scheduleDeferredClientSubtitle(result.mode);
-        } else {
-          if (selectedSubtitleId == null) player.clearSubtitles();
-          syncSubtitleDelayControls();
-        }
-        if (infoPanelVisible) updateInfoPanel();
-        clearHlsFallbackAfterHlsTranscodeStart(
-          fallbackState,
-          result.mode,
-          isHlsUrl(result.url)
-        );
-        return result;
-      });
-    }).catch(function (err) {
-      if (destroyed || isStalePlayback(gen)) return;
-      playNetworkProbe = null;
-      effectivePlaybackQuality = selectedQuality === 'auto' ? 'auto' : selectedQuality;
-      setPlaybackActive(true);
-      session = createSession(item, currentVersion, buildSessionOptions(startOffsetMs));
-      return chainPlaybackReady(tryPlayback(startOffsetMs, gen), gen).catch(function (playErr) {
-        if (destroyed || isStalePlayback(gen)) return;
-        showPlaybackFailure(playErr || err, { phase: 'Playback' });
-      });
+      if (shouldApplyClientSubtitleAfterPlay(result.mode)) {
+        scheduleDeferredClientSubtitle(result.mode);
+      } else {
+        if (selectedSubtitleId == null) player.clearSubtitles();
+        syncSubtitleDelayControls();
+      }
+      if (infoPanelVisible) updateInfoPanel();
+      clearHlsFallbackAfterHlsTranscodeStart(
+        fallbackState,
+        result.mode,
+        isHlsUrl(result.url)
+      );
+      return result;
     });
   }
 
@@ -2027,7 +1998,6 @@ function playerScreen(root, params, navigate) {
   }
 
   function exitPlayer() {
-    hideExitConfirm();
     awaitingPrepareOverlay = false;
     hideLoadingOverlay();
     player.stop();
@@ -2124,8 +2094,8 @@ function playerScreen(root, params, navigate) {
   });
   document.getElementById('btn-stop').addEventListener('click', exitPlayer);
   document.getElementById('btn-audio').addEventListener('click', function () { openMenu('audio'); });
-  document.getElementById('btn-subtitles').addEventListener('click', function () { openMenu('subtitles'); });
-  document.getElementById('btn-quality').addEventListener('click', function () { openMenu('quality'); });
+  document.getElementById('btn-player-subtitles').addEventListener('click', function () { openMenu('subtitles'); });
+  document.getElementById('btn-player-quality').addEventListener('click', function () { openMenu('quality'); });
   var btnPlaybackRetry = document.getElementById('btn-playback-retry');
   if (btnPlaybackRetry) {
     btnPlaybackRetry.addEventListener('click', function () {
@@ -2281,7 +2251,7 @@ function playerScreen(root, params, navigate) {
     var ae = document.activeElement;
     if (ae && ae.tagName === 'BUTTON') return;
     setOverlayVisible(true);
-    focusFirst(overlay.querySelector('.player-bottom') || overlay);
+    focusOverlayDefault();
     e.preventDefault();
   }
 
@@ -2426,7 +2396,6 @@ function playerScreen(root, params, navigate) {
         playbackErrorBanner.parentNode.removeChild(playbackErrorBanner);
         playbackErrorBanner = null;
       }
-      setPlaybackActive(false);
       if (progressInterval) clearInterval(progressInterval);
       clearAutoplayCountdown();
       clearOverlayHideTimer();

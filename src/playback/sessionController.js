@@ -40,6 +40,7 @@ import {
   isHlsUrl,
   extractHlsManifestDiagnostics
 } from './hlsPolicy.js';
+import { buildWebOsClientProfileExtra } from './deviceProfile.js';
 import { tvLog, tvError } from '../utils/tvDebug.js';
 
 /**
@@ -48,7 +49,7 @@ import { tvLog, tvError } from '../utils/tvDebug.js';
  */
 function resolvePlaybackStrategy(session) {
   var prefs = getState().playbackPrefs || {};
-  var quality = session.quality || prefs.quality || 'auto';
+  var quality = session.quality || prefs.quality || 'original';
   if (session.playbackStrategy) return session.playbackStrategy;
   if (isDirectPlayOnlyQuality(quality) && !session.forceTranscode) {
     return 'direct';
@@ -74,7 +75,7 @@ function generateClientPlaybackSessionId() {
 
 function sessionQualityKey(session) {
   var prefs = getState().playbackPrefs || {};
-  return session.quality || prefs.quality || 'auto';
+  return session.quality || prefs.quality || 'original';
 }
 
 function applyPlexTranscodeLevelParams(params, session, usesTranscoder) {
@@ -195,8 +196,20 @@ function assignStartUrlSessionParams(params, session) {
   return params;
 }
 
+function prefersMp4RemuxForDv(session) {
+  var version = session && session.version;
+  if (!version) return false;
+  var container = String(version.container || '').toLowerCase();
+  var profile = String(version.videoProfile || '').toLowerCase();
+  var codec = String(version.videoCodec || '').toLowerCase();
+  var hasDv = profile.indexOf('dv') >= 0 || codec.indexOf('dv') >= 0 ||
+    profile.indexOf('dolby') >= 0;
+  return hasDv && container === 'mkv';
+}
+
 function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrides) {
   var prefs = getState().playbackPrefs || {};
+  var deviceInfo = getState().deviceInfo || {};
   var path = resolveSessionMetadataPath(session) || normalizePlexPath(partKey);
   var params = applyPlexClientFields(Object.assign({
     path: path,
@@ -206,21 +219,11 @@ function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrid
     directPlay: '1',
     directStream: '1',
     directStreamAudio: '1',
-    // plex-for-kodi sends these on every decision; PMS's MDE 400s without a
-    // client profile, and wants the buffer hint to size the transcode session.
     mediaBufferSize: '102400',
-    // Telling PMS our delivery protocol up front + supplying an explicit HLS
-    // transcode target is what makes the Generic profile produce a valid
-    // decision. Without these PMS returns size=0 with transcodeDecisionCode
-    // 4005 ("No conversion profile found for protocol http"), which then
-    // 400s start.m3u8 because there's no session to start.
-    protocol: 'hls',
     'X-Plex-Client-Profile-Name': 'Generic',
-    'X-Plex-Client-Profile-Extra': [
-      'add-transcode-target(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec=h264&audioCodec=aac,ac3,mp3)',
-      'add-transcode-target-audio-codec(type=videoProfile&context=streaming&protocol=hls&audioCodec=aac)',
-      'add-direct-play-profile(type=videoProfile&container=mp4,m4v,mov&videoCodec=h264&audioCodec=aac,ac3,mp3)'
-    ].join('+'),
+    'X-Plex-Client-Profile-Extra': buildWebOsClientProfileExtra(deviceInfo, {
+      strategy: session.playbackStrategy || 'direct'
+    }),
     location: plexLocationForServer(server)
   }, flagOverrides || {}));
   assignDecisionSessionParams(params, session);
@@ -229,7 +232,12 @@ function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrid
   applyProfileToParams(params, session.quality || prefs.quality, prefs);
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
   if (session.subtitleStreamId != null && session.subtitleBurnIn !== true) {
-    params.subtitles = 'auto';
+    // We render text subs client-side (SRT TextTrack pipeline). On webOS 4 the
+    // minimal "Generic" profile declares no SubtitleProfiles, so subtitles=auto
+    // makes PMS burn the sub in → full transcode → Direct Play disabled. Tell it
+    // subtitles=none so it direct-plays/streams the video untouched; we fetch
+    // the SRT sidecar ourselves. webOS 5+ keeps the soft-mux (auto) path.
+    params.subtitles = isWebOs4Tv() ? 'none' : 'auto';
   } else if (session.subtitleStreamId != null && session.subtitleBurnIn === true) {
     Object.assign(params, buildSubtitleTranscodeParams(
       session.subtitleStreamId,
@@ -308,10 +316,6 @@ function resolveStrategyFromDecision(parsed, session, requestProtocol) {
       );
       strategy = 'transcode';
     }
-    if (isWebOs4Tv() && strategy === 'direct-stream') {
-      tvLog('session', 'webOS4 override remux → transcode');
-      strategy = 'transcode';
-    }
     applyPmsDeliveryFromDecision(session, partProtocol);
     /* Honor explicit HTTP fallback from the screen; otherwise follow PMS protocol. */
     if (session.playbackStrategy === 'http-transcode') {
@@ -362,6 +366,7 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
   if (!url) {
     return Promise.resolve(resolveStrategyFromDecision(null, session, protocol));
   }
+  tvLog('session', 'decision request', { url: redactPlexUrl(url) });
   var headers = buildDecisionHeaders(server, session);
 
   function fetchDecision(decisionUrl) {
@@ -372,8 +377,24 @@ function requestPlaybackDecision(server, partKey, session, protocol) {
   }
 
   function handleDecisionBody(body) {
+    var bodyStr = String(body || '').replace(/\s+/g, ' ');
     tvLog('session', 'decision response body', {
-      body: String(body || '').replace(/\s+/g, ' ').slice(0, 800)
+      body: bodyStr.slice(0, 800)
+    });
+    // The per-Stream decisions name exactly which track PMS refuses to direct
+    // play and why (e.g. videoCodec/container/audioCodec). The container-level
+    // text is generic ("Direct play is disabled"); the Stream tags carry the
+    // real reason, so surface them explicitly.
+    var streamTags = bodyStr.match(/<Stream\b[^>]*>/gi) || [];
+    streamTags.forEach(function (tag) {
+      var dt = (tag.match(/decisionText=("|')(.*?)\1/i) || [])[2];
+      if (!dt) return;
+      tvLog('session', 'stream decision', {
+        type: (tag.match(/streamType=("|')(.*?)\1/i) || [])[2],
+        codec: (tag.match(/\bcodec=("|')(.*?)\1/i) || [])[2],
+        decision: (tag.match(/\bdecision=("|')(.*?)\1/i) || [])[2],
+        why: dt
+      });
     });
     var parsed = parseTranscodeDecision(body, session);
     if (session) {
@@ -473,7 +494,22 @@ function logPlaybackDecisionOutcome(session, parsed, resolved) {
   }
   if (session.commitToHlsDelivery) parts.push('delivery=hls-committed');
   console.info('[playback] ' + parts.join(' '));
-  tvLog('session', 'decision ' + parts.join(' '));
+  tvError('session', 'decision ' + parts.join(' '));
+  var v = session.version || {};
+  var dev = getState().deviceInfo || {};
+  tvLog('session', 'decision why', {
+    source: {
+      container: v.container,
+      videoCodec: v.videoCodec,
+      videoProfile: v.videoProfile,
+      videoResolution: v.videoResolution,
+      width: v.width,
+      height: v.height,
+      bitrateKbps: v.bitrate,
+      audioCodec: v.audioCodec
+    },
+    device: { uhd: dev.uhd, hdr10: dev.hdr10, dolbyVision: dev.dolbyVision, model: dev.model }
+  });
 }
 
 function createSession(item, version, options) {
@@ -587,9 +623,11 @@ function resolveStreamUrl(session) {
     ? selectPartSubtitleStream(server, session)
     : Promise.resolve();
 
-  return pre.then(function () {
-    return requestPlaybackDecision(server, partKey, session, requestProtocol);
-  }).then(function (resolved) {
+  return Promise.all([
+    pre,
+    requestPlaybackDecision(server, partKey, session, requestProtocol)
+  ]).then(function (results) {
+    var resolved = results[1];
     try {
       var strategy = resolved.strategy;
       var protocol = resolved.protocol || requestProtocol;
@@ -602,6 +640,23 @@ function resolveStreamUrl(session) {
         };
       }
       var startProtocol = strategy === 'http-transcode' ? 'http' : protocol;
+      // webOS 4: the fMP4 HLS path is broken — for HEVC/DV content PMS emits an
+      // #EXT-X-MAP init segment (/base/header) that 404s during startup and
+      // hangs playback forever (plain .ts segments and progressive HTTP both
+      // work). Deliver any segmented transcode/copy strategy as progressive
+      // HTTP instead: copy→progressive MP4 preserves DV, transcode→progressive
+      // MP4 still plays. True direct play (strategy 'direct') is already
+      // progressive and left untouched.
+      if (isWebOs4Tv() && isSegmentedDeliveryProtocol(startProtocol) &&
+          (strategy === 'direct-stream' || strategy === 'transcode')) {
+        startProtocol = 'http';
+        tvError('session', 'webOS4: HLS → progressive HTTP', { strategy: strategy });
+      } else if (strategy === 'direct-stream' && prefersMp4RemuxForDv(session)) {
+        startProtocol = 'http';
+        tvLog('session', 'DV MKV remux → progressive MP4', {
+          container: session.version && session.version.container
+        });
+      }
       var playbackUrl = buildPlaybackUrl(server, partKey, session, startProtocol, strategy);
       var mode = resolveStreamMode(strategy, startProtocol);
       tvLog('session', 'url ' + mode, {
