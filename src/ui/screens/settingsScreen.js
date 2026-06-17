@@ -91,8 +91,8 @@ function openTextInputModal(opts) {
 
   function onKey(e) {
     var code = e.keyCode || e.which;
-    // Back key (webOS) or Escape
-    if (code === 461 || code === 27) {
+    // Back key (webOS), Escape, or Backspace
+    if (code === 461 || code === 27 || code === 8) {
       e.preventDefault();
       e.stopPropagation();
       close();

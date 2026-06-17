@@ -673,10 +673,32 @@ function detailScreen(root, params, navigate) {
 
   function onDetailModalKeyDown(e) {
     if (!detailModalKind) return;
-    if (e.keyCode === 461 || e.key === 'Backspace' || e.key === 'GoBack' || e.keyCode === 27) {
+    var key = e.keyCode;
+    if (key === 461 || key === 27 || key === 8 || e.key === 'GoBack') {
       e.preventDefault();
       e.stopPropagation();
       closeDetailModal();
+      return;
+    }
+    // Trap UP/DOWN in the modal list so attachFocusNav can't move focus to the background.
+    if (key === 38 || key === 40) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      var list = screen.querySelector('#detail-modal-list');
+      var navItems = list ? Array.prototype.slice.call(list.querySelectorAll('.detail-modal-option')) : [];
+      var cancelBtn = screen.querySelector('#detail-modal-cancel');
+      if (cancelBtn) navItems.push(cancelBtn);
+      if (!navItems.length) return;
+      var active = document.activeElement;
+      var idx = navItems.indexOf(active);
+      if (idx < 0) {
+        var fallback = list && list.querySelector('.detail-modal-option--active');
+        if (!fallback && navItems.length) fallback = navItems[0];
+        if (fallback) fallback.focus();
+        return;
+      }
+      var next = key === 40 ? Math.min(navItems.length - 1, idx + 1) : Math.max(0, idx - 1);
+      if (next !== idx) navItems[next].focus();
     }
   }
 
