@@ -39,7 +39,7 @@ test('webOS 4 CSS: no flex/grid gap in critical layout containers', function () 
     '.row-scroll',
     '.pairing-layout',
     '.detail-layout',
-    '.player-transport-col',
+    '.player-transport',
     '.player-seek-row',
     '.profile-picker-row',
     '.pin-pad-grid',
@@ -104,7 +104,7 @@ test('webOS 4 CSS: row card width scoped to row-scroll not library grid', functi
 });
 
 test('webOS 4 CSS: player transport uses flex not grid', function () {
-  var block = firstRule('.player-transport-col');
+  var block = firstRule('.player-transport');
   assert.match(block, /display:\s*flex/);
   assert.doesNotMatch(block, /display:\s*grid/);
 });

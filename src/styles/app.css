@@ -2899,12 +2899,6 @@ html.caps-motion .exit-confirm-btn:focus {
   margin-left: var(--space-3);
 }
 
-/* Kept only to satisfy the webOS 4 CSS-compat test's flex assertion; the new
-   markup uses .player-controls-row / .player-transport (no absolute overlay). */
-.player-transport-col {
-  display: flex;
-}
-
 .player-control-pill {
   display: inline-flex;
   align-items: center;
