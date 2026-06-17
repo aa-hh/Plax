@@ -37,45 +37,31 @@ function buildPlayerOverlayFixture() {
   seekRow.setAttribute('data-focus-zone', 'player-seek');
   seekRow.appendChild(pill('player-seek', 'player-seek-bar'));
 
-  var controlBar = createElement('div');
-  controlBar.className = 'player-control-bar';
-
-  var taskbar = createElement('div');
-  taskbar.className = 'player-taskbar';
-  taskbar.setAttribute('data-focus-zone', 'player-taskbar');
-  taskbar.setAttribute('data-focus-mode', 'sequential');
-  taskbar.setAttribute('data-focus-sequential-axis', 'horizontal');
+  // Mirrors the restructured toolbar (Workstream F): a single .player-controls-row
+  // zone holding the flat .player-transport cluster then the .player-settings group
+  // (replaces the old control-bar > taskbar > transport-col/wings/center nesting).
+  var controlsRow = createElement('div');
+  controlsRow.className = 'player-controls-row';
+  controlsRow.setAttribute('data-focus-zone', 'player-taskbar');
+  controlsRow.setAttribute('data-focus-mode', 'sequential');
+  controlsRow.setAttribute('data-focus-sequential-axis', 'horizontal');
 
   var transport = createElement('div');
-  transport.className = 'player-transport-col';
-  var wingLeft = createElement('div');
-  wingLeft.className = 'player-transport-wing player-transport-wing--left';
-  var wingRight = createElement('div');
-  wingRight.className = 'player-transport-wing player-transport-wing--right';
-  var transportCenter = createElement('div');
-  transportCenter.className = 'player-transport-center';
-  ['btn-prev', 'btn-rewind'].forEach(function (id) {
-    wingLeft.appendChild(pill(id, 'player-control-pill'));
+  transport.className = 'player-transport';
+  ['btn-prev', 'btn-rewind', 'btn-pause', 'btn-forward', 'btn-next', 'btn-stop'].forEach(function (id) {
+    transport.appendChild(pill(id, 'player-control-pill'));
   });
-  transportCenter.appendChild(pill('btn-pause', 'player-control-pill'));
-  ['btn-forward', 'btn-next', 'btn-stop'].forEach(function (id) {
-    wingRight.appendChild(pill(id, 'player-control-pill'));
-  });
-  transport.appendChild(wingLeft);
-  transport.appendChild(transportCenter);
-  transport.appendChild(wingRight);
 
   var settings = createElement('div');
-  settings.className = 'player-settings-col';
+  settings.className = 'player-settings';
   ['btn-quality', 'btn-audio', 'btn-subtitles'].forEach(function (id) {
     settings.appendChild(pill(id, 'player-stream-pill'));
   });
 
-  taskbar.appendChild(transport);
-  taskbar.appendChild(settings);
-  controlBar.appendChild(taskbar);
+  controlsRow.appendChild(transport);
+  controlsRow.appendChild(settings);
   bottom.appendChild(seekRow);
-  bottom.appendChild(controlBar);
+  bottom.appendChild(controlsRow);
   overlay.appendChild(bottom);
   return overlay;
 }
