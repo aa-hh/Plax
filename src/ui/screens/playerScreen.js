@@ -282,12 +282,6 @@ function playerScreen(root, params, navigate) {
     '</div>' +
     '</div>' +
     '</div>' +
-    '<div class="player-exit-confirm" id="player-exit-confirm" hidden>' +
-    '<p class="player-exit-prompt">Exit playback?</p>' +
-    '<div class="player-exit-actions" data-cols="2">' +
-    '<button class="btn btn-primary" id="btn-exit-yes" tabindex="0">Yes, exit</button>' +
-    '<button class="btn" id="btn-exit-no" tabindex="0">Cancel</button>' +
-    '</div></div>' +
     '<div class="player-info-panel" id="player-info-panel" hidden>' +
     '<p class="player-menu-title">Playback info</p>' +
     '<pre class="player-info-body" id="player-info-body"></pre>' +
@@ -360,7 +354,6 @@ function playerScreen(root, params, navigate) {
   var overlayVisible = true;
   var menuOpen = null;
   var infoPanelVisible = false;
-  var exitConfirmVisible = false;
   var scrubPreviewMs = null;
   var scrubPreviewSource = null;
   var scrubPreviewSourceKey = null;
@@ -393,7 +386,6 @@ function playerScreen(root, params, navigate) {
   var menuReturnFocus = null;
   var infoPanel = document.getElementById('player-info-panel');
   var autoplayPanel = document.getElementById('player-autoplay-panel');
-  var exitConfirm = document.getElementById('player-exit-confirm');
   var playbackErrorBanner = null;
 
   function ensurePlaybackErrorBanner() {
@@ -644,7 +636,7 @@ function playerScreen(root, params, navigate) {
   function scheduleOverlayHide() {
     clearOverlayHideTimer();
     if (isMotionCursorVisible()) return;
-    if (!overlayVisible || menuOpen || exitConfirmVisible || infoPanelVisible) return;
+    if (!overlayVisible || menuOpen || infoPanelVisible) return;
     if (autoplayPanel && !autoplayPanel.hidden) return;
     overlayHideTimer = setTimeout(function () {
       setOverlayVisible(false);
@@ -811,7 +803,7 @@ function playerScreen(root, params, navigate) {
   }
 
   function shouldTrapPlayerChromeFocus() {
-    return !!(menuOpen || exitConfirmVisible || infoPanelVisible ||
+    return !!(menuOpen || infoPanelVisible ||
       (autoplayPanel && !autoplayPanel.hidden));
   }
 
@@ -1123,8 +1115,6 @@ function playerScreen(root, params, navigate) {
   function openMenu(kind) {
     menuOpen = kind;
     menuReturnFocus = document.activeElement;
-    exitConfirmVisible = false;
-    if (exitConfirm) exitConfirm.hidden = true;
     if (infoPanel) infoPanel.hidden = true;
     infoPanelVisible = false;
     setOverlayVisible(true);
@@ -1274,34 +1264,10 @@ function playerScreen(root, params, navigate) {
     }
   }
 
-  function showExitConfirm() {
-    exitConfirmVisible = true;
-    closeMenu();
-    setOverlayVisible(true);
-    clearOverlayHideTimer();
-    syncPlayerChromeFocusable();
-    if (exitConfirm) {
-      exitConfirm.hidden = false;
-      focusFirst(exitConfirm);
-    }
-  }
 
-  function hideExitConfirm() {
-    exitConfirmVisible = false;
-    if (exitConfirm) exitConfirm.hidden = true;
-    syncPlayerChromeFocusable();
-    scheduleOverlayHide();
-    refreshSkipPromptChrome();
-  }
 
   function handlePlayerBack(e) {
     if (e.keyCode !== KEYS.BACK && e.key !== 'GoBack' && e.keyCode !== 8) return;
-    if (exitConfirmVisible) {
-      hideExitConfirm();
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
-    }
     if (menuOpen) {
       closeMenu();
       e.preventDefault();
@@ -1327,7 +1293,7 @@ function playerScreen(root, params, navigate) {
       e.stopImmediatePropagation();
       return;
     }
-    showExitConfirm();
+    exitPlayer();
     e.preventDefault();
     e.stopImmediatePropagation();
   }
@@ -1411,7 +1377,7 @@ function playerScreen(root, params, navigate) {
   }
 
   function refreshSkipPromptChrome() {
-    var showChrome = skipPromptActive && !menuOpen && !exitConfirmVisible;
+    var showChrome = skipPromptActive && !menuOpen;
     if (btnSkipIntroPrompt) btnSkipIntroPrompt.hidden = !showChrome;
     overlay.classList.toggle('player-overlay--skip-intro-active', showChrome);
     if (showChrome) focusSkipIntroPromptIfActive();
@@ -2159,7 +2125,6 @@ function playerScreen(root, params, navigate) {
       onOverlayActivity();
     });
   }
-  document.getElementById('btn-exit-yes').addEventListener('click', exitPlayer);
   document.getElementById('btn-autoplay-play').addEventListener('click', function () {
     clearAutoplayCountdown();
     playNextInQueue();
@@ -2169,7 +2134,6 @@ function playerScreen(root, params, navigate) {
     clearAutoplayCountdown();
     scheduleOverlayHide();
   });
-  document.getElementById('btn-exit-no').addEventListener('click', hideExitConfirm);
   document.getElementById('btn-menu-cancel').addEventListener('click', function () {
     closeMenu();
     onOverlayActivity();
@@ -2282,7 +2246,7 @@ function playerScreen(root, params, navigate) {
     if (e.keyCode === 13) {
       var ae = document.activeElement;
       if (ae && (ae.tagName === 'BUTTON' || ae.classList.contains('player-seek-bar'))) return;
-      if (menuOpen || exitConfirmVisible) return;
+      if (menuOpen) return;
       toggleOverlayVisible();
       e.preventDefault();
     }
@@ -2296,7 +2260,7 @@ function playerScreen(root, params, navigate) {
   document.addEventListener('keydown', handlePlayerBack, true);
 
   function handlePlayerEnter(e) {
-    if (e.keyCode !== 13 || menuOpen || exitConfirmVisible) return;
+    if (e.keyCode !== 13 || menuOpen) return;
     if (skipPromptActive && btnSkipIntroPrompt && !btnSkipIntroPrompt.hidden) {
       var focused = document.activeElement;
       if (!overlayVisible || focused === btnSkipIntroPrompt) {

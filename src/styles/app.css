@@ -2164,7 +2164,6 @@ html { min-width: 1280px; min-height: 720px; }
 .player-overlay--hidden.player-overlay--skip-intro-active .player-bottom,
 .player-overlay--hidden.player-overlay--skip-intro-active .player-hint,
 .player-overlay--hidden.player-overlay--skip-intro-active .player-subtitle-delay,
-.player-overlay--hidden.player-overlay--skip-intro-active .player-exit-confirm,
 .player-overlay--hidden.player-overlay--skip-intro-active .player-info-panel,
 .player-overlay--hidden.player-overlay--skip-intro-active .player-autoplay-panel,
 .player-overlay--hidden.player-overlay--skip-intro-active .player-track-modal {
@@ -2861,7 +2860,6 @@ html { min-width: 1280px; min-height: 720px; }
   color: var(--text-secondary);
 }
 
-.player-exit-confirm,
 .player-info-panel {
   margin-top: var(--space-5);
   padding: var(--space-5) var(--space-6);
@@ -2909,29 +2907,6 @@ html { min-width: 1280px; min-height: 720px; }
 
 .player-menu-option--active:focus {
   color: var(--accent);
-}
-
-.player-exit-confirm {
-  background: rgba(0, 0, 0, 0.7);
-  max-width: 640px;
-}
-
-.player-exit-confirm[hidden] {
-  display: none !important;
-}
-
-.player-exit-prompt {
-  font-size: 28px;
-  margin-bottom: 16px;
-  color: var(--text-primary);
-}
-
-.player-exit-actions {
-  display: flex;
-}
-
-.player-exit-actions > * + * {
-  margin-left: var(--space-3);
 }
 
 .player-hint {
