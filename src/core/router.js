@@ -145,6 +145,9 @@ function shouldExitToLauncher(route, params) {
 
 function back() {
   // Follow the breadcrumb trail back to wherever the user actually came from.
+  // Root-screen exit is NOT handled here — the keydown handler shows the
+  // exit-confirm modal instead. Keeping the launcher-exit out of back() avoids
+  // a second exit path (the double-exit pitfall noted at webos.js:138).
   if (history.length > 0) {
     var prev = history.pop();
     navigatingBack = true;
@@ -153,11 +156,6 @@ function back() {
     } finally {
       navigatingBack = false;
     }
-    return;
-  }
-  // No breadcrumbs left — we're at an entry screen. Back exits to the launcher.
-  if (shouldExitToLauncher(currentRoute, currentParams)) {
-    exitToLauncher();
   }
 }
 
@@ -170,53 +168,133 @@ function isBackKey(e) {
   return e.keyCode === 461 || e.key === 'Backspace' || e.key === 'GoBack';
 }
 
-// Hold-to-quit at the home screen. webOS auto-repeats keydown (~every 100ms)
-// while a key is physically held, so a quick tap fires once while a hold fires
-// many times in quick succession; we treat a burst as "held".
-var BACK_HOLD_REPEATS = 4;
-var BACK_HOLD_WINDOW_MS = 700;
-var backRepeatCount = 0;
-var backRepeatTimer = null;
+/**
+ * Exit-confirm modal (Workstream H).
+ *
+ * Replaces the old undiscoverable hold-Back-4× gesture: at a root screen a
+ * single Back opens a lightweight "Exit XPlay?" confirm (tvOS-style). The sheet
+ * is a self-contained focus trap built once and reused; D-pad LEFT/RIGHT move
+ * between Exit / Cancel, OK activates, Back/Esc cancels. Focus defaults to
+ * Cancel so an accidental extra Back never quits the app. Class names match the
+ * shared contract so DesignSystem can style them (reuses the detail-modal look).
+ */
+var exitModalEl = null;
+var exitModalReturnFocus = null;
 
-function clearBackHold() {
-  backRepeatCount = 0;
-  if (backRepeatTimer) {
-    clearTimeout(backRepeatTimer);
-    backRepeatTimer = null;
+function isExitModalOpen() {
+  return !!(exitModalEl && !exitModalEl.hidden);
+}
+
+function buildExitConfirmModal() {
+  if (exitModalEl) return exitModalEl;
+  var overlay = document.createElement('div');
+  overlay.className = 'exit-confirm-modal';
+  overlay.hidden = true;
+  overlay.innerHTML =
+    '<div class="exit-confirm-sheet" role="dialog" aria-modal="true" aria-labelledby="exit-confirm-title">' +
+    '<p class="exit-confirm-title" id="exit-confirm-title">Exit XPlay?</p>' +
+    '<div class="exit-confirm-actions">' +
+    '<button type="button" class="exit-confirm-btn exit-confirm-btn--danger" id="exit-confirm-exit" tabindex="0">Exit</button>' +
+    '<button type="button" class="exit-confirm-btn" id="exit-confirm-cancel" tabindex="0">Cancel</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#exit-confirm-exit').addEventListener('click', function () {
+    closeExitConfirm();
+    exitToLauncher();
+  });
+  overlay.querySelector('#exit-confirm-cancel').addEventListener('click', closeExitConfirm);
+  overlay.addEventListener('keydown', onExitModalKeyDown, true);
+  exitModalEl = overlay;
+  return overlay;
+}
+
+function exitModalButtons() {
+  if (!exitModalEl) return [];
+  return [
+    exitModalEl.querySelector('#exit-confirm-exit'),
+    exitModalEl.querySelector('#exit-confirm-cancel')
+  ];
+}
+
+function onExitModalKeyDown(e) {
+  if (!isExitModalOpen()) return;
+  var key = e.keyCode;
+  // Back / Esc cancels (and must not bubble to the global Back handler, which
+  // would otherwise treat the cancel as another root Back and re-open us).
+  if (isBackKey(e) || key === 27) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeExitConfirm();
+    return;
+  }
+  // Trap LEFT/RIGHT between the two buttons; keep focus inside the sheet.
+  if (key === 37 || key === 39) {
+    e.preventDefault();
+    e.stopPropagation();
+    var btns = exitModalButtons();
+    if (btns.length < 2) return;
+    var idx = btns.indexOf(document.activeElement);
+    if (idx < 0) { btns[1].focus(); return; }
+    var next = key === 39 ? Math.min(btns.length - 1, idx + 1) : Math.max(0, idx - 1);
+    if (next !== idx && btns[next]) btns[next].focus();
+    return;
+  }
+  // Swallow UP/DOWN so focus can't escape the sheet into the background screen.
+  if (key === 38 || key === 40) {
+    e.preventDefault();
+    e.stopPropagation();
   }
 }
 
-function registerBackHold() {
-  backRepeatCount += 1;
-  if (backRepeatCount >= BACK_HOLD_REPEATS) {
-    clearBackHold();
-    exitToLauncher();
-    return;
+function openExitConfirm() {
+  if (isExitModalOpen()) return;
+  buildExitConfirmModal();
+  exitModalReturnFocus = document.activeElement;
+  exitModalEl.hidden = false;
+  // Focus DEFAULTS to Cancel — accidental over-pressing Back never exits.
+  var cancelBtn = exitModalEl.querySelector('#exit-confirm-cancel');
+  if (cancelBtn && cancelBtn.focus) cancelBtn.focus();
+}
+
+function closeExitConfirm() {
+  if (!exitModalEl) return;
+  exitModalEl.hidden = true;
+  var prev = exitModalReturnFocus;
+  exitModalReturnFocus = null;
+  if (prev && typeof prev.focus === 'function' &&
+      (prev.offsetWidth > 0 || prev.offsetHeight > 0)) {
+    prev.focus();
   }
-  if (backRepeatTimer) clearTimeout(backRepeatTimer);
-  backRepeatTimer = setTimeout(clearBackHold, BACK_HOLD_WINDOW_MS);
 }
 
 function init(root) {
   rootEl = root;
-  document.addEventListener('keyup', function (e) {
-    if (isBackKey(e)) clearBackHold();
-  });
   document.addEventListener('keydown', function (e) {
     if (isBackKey(e)) {
+      // The exit-confirm sheet handles its own Back (capture phase on the
+      // overlay) and stops propagation, so we normally never reach here while
+      // it's open. Belt-and-suspenders: if it is open, swallow Back and let the
+      // sheet's own handler manage it — never fall through to back()/exit.
+      if (isExitModalOpen()) {
+        e.preventDefault();
+        return;
+      }
       // Have breadcrumbs? Always walk back one step and swallow the key so the
       // webOS system doesn't also exit us to the launcher.
       if (history.length > 0) {
         e.preventDefault();
-        clearBackHold();
         back();
         return;
       }
-      // At an entry screen (home with no history): a single tap does nothing;
-      // holding Back quits the app. We detect a hold via the remote's keydown
-      // auto-repeat so we don't depend on a (flaky on webOS 4) keyup.
+      // At a root entry screen (no breadcrumbs): a single Back opens the
+      // exit-confirm modal. webOS exit itself only happens if the user then
+      // chooses Exit. Non-root screens never reach this branch (they have
+      // history). shouldExitToLauncher gates routes that aren't true roots.
       e.preventDefault();
-      registerBackHold();
+      if (shouldExitToLauncher(currentRoute, currentParams)) {
+        openExitConfirm();
+      }
       return;
     }
     if (e.keyCode === SEARCH_KEYCODE && !SEARCH_BLOCKED_ROUTES[currentRoute]) {
@@ -389,6 +467,7 @@ function trimRetainedToTop() {
 function invalidateRetention() {
   trimRetainedToTop();
   history = [];
+  closeExitConfirm();
   clearPosterUrlMaps();
 }
 
