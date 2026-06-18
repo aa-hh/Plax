@@ -170,6 +170,14 @@ var ICON_STOP =
   '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
   '<path fill="currentColor" d="M6 6h12v12H6V6z"/>' +
   '</svg>';
+var ICON_CHEVRON_LEFT =
+  '<svg class="player-menu-chevron-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path fill="currentColor" d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>' +
+  '</svg>';
+var ICON_CHEVRON_RIGHT =
+  '<svg class="player-menu-chevron-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path fill="currentColor" d="M8.59 16.59 10 18l6-6-6-6-1.41 1.41L13.17 12z"/>' +
+  '</svg>';
 var ICON_SKIP_INTRO =
   '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
   '<path fill="currentColor" d="M4 18l8.5-6L4 6v12zm9-6v6h2V6h-2zm3.5 6 5.5-3-5.5-3v6z"/>' +
@@ -284,7 +292,13 @@ function playerScreen(root, params, navigate) {
     '</div>' +
     '<div class="player-track-modal" id="player-track-modal" hidden>' +
     '<div class="player-track-modal-sheet" id="player-track-modal-sheet" data-focus-zone="player-menu" role="dialog" aria-modal="true" aria-labelledby="player-menu-title">' +
+    // Category header: name flanked by ‹ › chevrons that step between categories
+    // (Subtitles ↔ Audio ↔ Quality) WITHOUT closing the panel.
+    '<div class="player-track-modal-header">' +
+    '<button type="button" class="player-menu-chevron" id="btn-menu-prev-cat" tabindex="0" aria-label="Previous category">' + ICON_CHEVRON_LEFT + '</button>' +
     '<p class="player-track-modal-title" id="player-menu-title"></p>' +
+    '<button type="button" class="player-menu-chevron" id="btn-menu-next-cat" tabindex="0" aria-label="Next category">' + ICON_CHEVRON_RIGHT + '</button>' +
+    '</div>' +
     '<div class="player-menu-list" id="player-menu-list"></div>' +
     '<div class="player-track-modal-footer">' +
     '<button type="button" class="btn btn-player-modal-cancel" id="btn-menu-cancel" tabindex="0">Cancel</button>' +
@@ -878,6 +892,14 @@ function playerScreen(root, params, navigate) {
   function onTrackModalKeyDown(e) {
     if (!menuOpen) return;
     var key = e.keyCode;
+    // Left/Right step between categories (Subtitles ↔ Audio ↔ Quality) without
+    // closing — mirrors the ‹ › chevrons in the panel header.
+    if (key === 37 || key === 39) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      switchMenuCategory(key === 39 ? 1 : -1);
+      return;
+    }
     if (key !== 38 && key !== 40) return;
     // Always swallow arrow keys when the modal is open — prevents attachFocusNav
     // from moving focus into the background player controls.
@@ -1161,8 +1183,11 @@ function playerScreen(root, params, navigate) {
   }
 
   function openMenu(kind) {
+    // Only capture the return-focus target on the FIRST open — switching
+    // categories re-enters openMenu with focus already inside the panel, and we
+    // must not overwrite the cluster pill we should return to on close.
+    if (!menuOpen) menuReturnFocus = document.activeElement;
     menuOpen = kind;
-    menuReturnFocus = document.activeElement;
     if (infoPanel) infoPanel.hidden = true;
     infoPanelVisible = false;
     if (mediaInfoOpen) closeMediaInfo();
@@ -1226,14 +1251,24 @@ function playerScreen(root, params, navigate) {
     options.forEach(function (opt) {
       var btn = document.createElement('button');
       btn.type = 'button';
+      // Selected = light pill + trailing checkmark; others plain (Player spec).
       btn.className = 'btn player-menu-option' + (opt.selected ? ' player-menu-option--active' : '');
-      btn.textContent = opt.label + (opt.selected ? ' ✓' : '');
+      var labelSpan = document.createElement('span');
+      labelSpan.className = 'player-menu-option-label';
+      labelSpan.textContent = opt.label;
+      btn.appendChild(labelSpan);
+      var checkSpan = document.createElement('span');
+      checkSpan.className = 'player-menu-option-check';
+      checkSpan.setAttribute('aria-hidden', 'true');
+      checkSpan.textContent = opt.selected ? '✓' : '';
+      btn.appendChild(checkSpan);
       btn.tabIndex = 0;
       btn.addEventListener('click', function () {
         applyMenuSelection(kind, opt.id);
       });
       listEl.appendChild(btn);
     });
+    updateMenuChevrons();
     var cancelBtn = document.getElementById('btn-menu-cancel');
     var selectedBtn = listEl.querySelector('.player-menu-option--active');
     if (selectedBtn) {
@@ -1245,6 +1280,42 @@ function playerScreen(root, params, navigate) {
       focusFirst(document.getElementById('player-track-modal-sheet'));
     }
     clearOverlayHideTimer();
+  }
+
+  // Categories the chevron header steps through, in display order. Quality is
+  // always available; audio/subtitles depend on the title having tracks.
+  function availableMenuCategories() {
+    var cats = [];
+    if (subtitleTracks.length || graphicalSubtitleTracks.length) cats.push('subtitles');
+    if (audioTracks.length) cats.push('audio');
+    if (qualityOptions.length) cats.push('quality');
+    // Always offer subtitles (it has an "Off" entry) even with no embedded tracks.
+    if (cats.indexOf('subtitles') < 0) cats.unshift('subtitles');
+    return cats;
+  }
+
+  function updateMenuChevrons() {
+    var cats = availableMenuCategories();
+    var prevBtn = document.getElementById('btn-menu-prev-cat');
+    var nextBtn = document.getElementById('btn-menu-next-cat');
+    // With only one category, hide the chevrons entirely (nothing to switch to).
+    var multi = cats.length > 1;
+    if (prevBtn) prevBtn.hidden = !multi;
+    if (nextBtn) nextBtn.hidden = !multi;
+  }
+
+  function switchMenuCategory(dir) {
+    if (!menuOpen) return;
+    var cats = availableMenuCategories();
+    if (cats.length < 2) return;
+    var idx = cats.indexOf(menuOpen);
+    if (idx < 0) idx = 0;
+    var nextIdx = (idx + dir + cats.length) % cats.length;
+    if (nextIdx === idx) return;
+    // Re-render in place: openMenu rebuilds the list + header for the new
+    // category without tearing down the panel, so it "moves between categories
+    // WITHOUT closing" per the Player spec.
+    openMenu(cats[nextIdx]);
   }
 
   function applyMenuSelection(kind, id) {
@@ -2174,6 +2245,12 @@ function playerScreen(root, params, navigate) {
   document.getElementById('btn-menu-cancel').addEventListener('click', function () {
     closeMenu();
     onOverlayActivity();
+  });
+  document.getElementById('btn-menu-prev-cat').addEventListener('click', function () {
+    switchMenuCategory(-1);
+  });
+  document.getElementById('btn-menu-next-cat').addEventListener('click', function () {
+    switchMenuCategory(1);
   });
 
   var mediaInfoModal = document.getElementById('player-media-info-modal');
