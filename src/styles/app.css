@@ -39,14 +39,18 @@
   --space-8: 32px;
   --space-9: 40px;
   --space-10: 48px;
-  /* 1080p TV safe area + 12-col grid (Google TV, ×2 of 960-MDPI 58/52/20dp):
-     116 margin + 12×104 col + 11×40 gutter = 1920 exact tiling. */
-  --safe-x: 116px;
-  --safe-y: 54px;
+  /* Google TV 12-col grid, expressed in vw so it scales with the screen instead
+     of assuming exactly 1920px. Design canvas = 960dp; at 2× density (1080p TV)
+     100vw = 1920px, so 1dp ≈ 0.10417vw. Spec: 58dp margin, 52dp column, 20dp
+     gutter → 12×52 + 11×20 + 2×58 = 960dp. These resolve to the old px values at
+     1920 (116 / 104 / 40) but now flex on any panel size.
+     ref: developer.android.com/design/ui/tv/guides/styles/layouts */
+  --safe-x: 6.0417vw;       /* 58dp → 116px @1920 */
+  --safe-y: 54px;           /* vertical stays fixed (no horizontal-grid coupling) */
   --layout-cols: 12;
-  --layout-col-w: 104px;
-  --layout-gutter: 40px;
-  --content-max: 1688px;
+  --layout-col-w: 5.4167vw; /* 52dp → 104px */
+  --layout-gutter: 2.0833vw;/* 20dp → 40px */
+  --content-max: 87.9167vw; /* 12 cols + 11 gutters → 1688px */
   --pad-screen-x: var(--safe-x);
   --pad-screen-y: var(--safe-y);
   --font-title: 52px;
@@ -59,12 +63,16 @@
   --font-card-meta: 14px;
   --font-meta: 22px;
   --font-small: 19px;
-  /* Unified poster scale (all 2:3) — see tv-ui-contract.md (Workstream B) */
-  --row-poster-w: 180px;   /* standard: shelves, related rails, search */
-  --row-poster-h: 270px;
-  --row-card-gap: 16px;
-  --grid-poster-w: 180px;  /* library grid — matches standard */
-  --grid-poster-h: 270px;
+  /* Poster scale (all 2:3, vw so cards scale with the screen).
+     RAIL/CAROUSEL cards span 2 grid columns (2×52 + 20 = 124dp = 248px @1920),
+     the Google TV card footprint — wide enough that a carousel shows ~5 full
+     cards plus a peeking 6th. Gutter between cards = the 20dp grid gutter (40px).
+     LIBRARY grid stays denser (browse view) but inherits the bigger gutter. */
+  --row-poster-w: 12.9167vw; /* 2 cols → 248px @1920 */
+  --row-poster-h: 19.375vw;  /* 2:3 → 372px */
+  --row-card-gap: 2.0833vw;  /* grid gutter → 40px */
+  --grid-poster-w: 9.375vw;  /* dense browse grid → 180px */
+  --grid-poster-h: 14.0625vw;/* 2:3 → 270px */
   --poster-detail-w: 300px; /* detail hero poster */
   --poster-detail-h: 450px;
   --poster-ep-w: 300px;     /* episode card (16:9) */
@@ -173,20 +181,22 @@
   --gt-card-5up: 248px;
   --gt-card-4up: 392px;
   --gt-card-3up: 536px;
-  /* 12-column grid spans (precomputed N*104 + (N-1)*40 — no calc() division on webOS4).
-     Place every element on one of these so D-pad routing follows grid position. */
-  --gt-col-1: 104px;
-  --gt-col-2: 248px;
-  --gt-col-3: 392px;
-  --gt-col-4: 536px;
-  --gt-col-5: 680px;
-  --gt-col-6: 824px;
-  --gt-col-7: 968px;
-  --gt-col-8: 1112px;
-  --gt-col-9: 1256px;
-  --gt-col-10: 1400px;
-  --gt-col-11: 1544px;
-  --gt-col-12: 1688px;
+  /* 12-column grid spans in vw (precomputed N*52dp + (N-1)*20dp, ÷9.6 to vw — no
+     calc() division on webOS4). Resolve to the old px (104/248/.../1688) at 1920
+     but scale with the screen. Place elements on these so D-pad routing follows
+     grid position. */
+  --gt-col-1: 5.4167vw;
+  --gt-col-2: 12.9167vw;
+  --gt-col-3: 20.4167vw;
+  --gt-col-4: 27.9167vw;
+  --gt-col-5: 35.4167vw;
+  --gt-col-6: 42.9167vw;
+  --gt-col-7: 50.4167vw;
+  --gt-col-8: 57.9167vw;
+  --gt-col-9: 65.4167vw;
+  --gt-col-10: 72.9167vw;
+  --gt-col-11: 80.4167vw;
+  --gt-col-12: 87.9167vw;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -313,7 +323,7 @@ body::after {
 }
 
 .btn:focus,
-.card:not(.media-card):focus,
+.card:not(.media-card):not(.profile-card):focus,
 .nav-item:focus,
 .library-item:focus,
 .row-item:not(.media-card):focus,
@@ -322,7 +332,6 @@ body::after {
 .detail-setting-chip:focus,
 .library-filter-chip:focus,
 .user-chip:focus,
-.profile-card:focus,
 .pin-pad-btn:focus,
 .detail-breadcrumb:focus,
 .detail-episode-picker:focus,
@@ -349,7 +358,7 @@ body::after {
 
 /* Capability-gated motion (newer webOS / sim / dev browser only — A).
    webOS 4 never gets this class, so it keeps the static ring above. */
-html.caps-motion .card:not(.media-card),
+html.caps-motion .card:not(.media-card):not(.profile-card),
 html.caps-motion .nav-item,
 html.caps-motion .library-item,
 html.caps-motion .row-item:not(.media-card),
@@ -358,7 +367,6 @@ html.caps-motion .episode-chip,
 html.caps-motion .detail-setting-chip,
 html.caps-motion .library-filter-chip,
 html.caps-motion .user-chip,
-html.caps-motion .profile-card,
 html.caps-motion .pin-pad-btn,
 html.caps-motion .detail-episode-picker,
 html.caps-motion .detail-link,
@@ -386,7 +394,7 @@ html.caps-motion .player-stream-pill {
   transition: box-shadow var(--focus-motion-dur) ease, background var(--focus-motion-dur) ease;
 }
 
-html.caps-motion .card:not(.media-card):focus,
+html.caps-motion .card:not(.media-card):not(.profile-card):focus,
 html.caps-motion .nav-item:focus,
 html.caps-motion .library-item:focus,
 html.caps-motion .row-item:not(.media-card):focus,
@@ -395,7 +403,6 @@ html.caps-motion .episode-chip:focus,
 html.caps-motion .detail-setting-chip:focus,
 html.caps-motion .library-filter-chip:focus,
 html.caps-motion .user-chip:focus,
-html.caps-motion .profile-card:focus,
 html.caps-motion .pin-pad-btn:focus,
 html.caps-motion .detail-episode-picker:focus,
 html.caps-motion .detail-link:focus,
@@ -789,8 +796,10 @@ html.caps-motion .detail-watchlist-btn:focus {
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
-  --home-hub-poster-w: 180px;
-  --home-hub-poster-h: 270px;
+  /* Home rails use the full 2-column Google TV card (248×372 @1920) for the
+     spacious, peeking-carousel feel. vw so it scales with the screen. */
+  --home-hub-poster-w: 12.9167vw;
+  --home-hub-poster-h: 19.375vw;
   --font-home-card-title: 22px;
   --font-home-card-subtitle: 20px;
   --font-home-card-meta: 18px;
@@ -1118,13 +1127,16 @@ html.caps-motion .detail-watchlist-btn:focus {
 .media-grid {
   display: flex;
   flex-wrap: wrap;
-  margin: -12px -10px;
+  /* Negative margin must mirror the per-card margin below so the grid's content
+     edge still aligns to the safe column. Horizontal half-gutter = 1.0417vw (20px
+     → 40px gap, the grid gutter); vertical 14px keeps rows a touch tighter. */
+  margin: -14px -1.0417vw;
   padding: var(--focus-ring-pad) var(--focus-ring-pad) 16px;
   align-content: flex-start;
 }
 
 .media-grid > .media-card {
-  margin: 12px 10px;
+  margin: 14px 1.0417vw;
 }
 
 .media-card {
@@ -4041,34 +4053,33 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   box-sizing: border-box;
 }
 
+/* ── Profile picker = Google TV standard SQUARE card ─────────────────────────
+   A real card (square image + title below), NOT a control. Cards focus with a
+   ring + scale on the image (like posters) — never the light-fill control
+   treatment (that white block is why the name washed out and the focused card
+   looked pre-selected). .profile-card is excluded from the generic control
+   focus groups above via :not(.profile-card). */
 .profile-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   min-width: var(--profile-card-min);
-  padding: var(--space-5);
-  background: var(--bg-surface);
-  border-radius: var(--radius-lg);
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
   position: relative;
-  transition: transform 0.35s ease, opacity 0.25s ease;
-}
-
-.profile-card-avatar + .profile-card-name {
-  margin-top: var(--space-3);
-}
-
-.profile-card--admin .profile-card-avatar {
-  border: 2px solid var(--accent);
 }
 
 .profile-card-avatar {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
+  width: 100%;
+  height: var(--profile-card-min);   /* square: width == card width */
+  border-radius: var(--gt-radius-card);
+  border: var(--focus-w) solid transparent;   /* ring target (no reflow on focus) */
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 44px;
   font-weight: 700;
   background: var(--bg-elevated);
   color: var(--text-primary);
@@ -4084,52 +4095,41 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .profile-card-name {
+  margin-top: var(--space-3);
+  text-align: center;
   font-size: var(--font-body);
   color: var(--text-secondary);
-  font-weight: var(--gt-weight-body);
-  letter-spacing: var(--gt-ls-body);
-  max-width: 140px;
+  font-weight: var(--gt-weight-label);
+  letter-spacing: var(--gt-ls-label);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: color 0.18s ease;
 }
 
-/* ── Profile picker focus/selected states (Google "Who's watching" guidance) ──
-   Avatar tiles do NOT use the generic light-fill control treatment — that turned
-   the tile into a white block and washed the name out. Instead:
-   • FOCUS (hover) = BLUE — blue ring on the avatar, blue name, subtle blue tile.
-   • SELECTED = WHITE — bright/white ring on the avatar, bright name.
-   These override the generic .profile-card:focus rule above by source order
-   (equal specificity, declared later). Name color follows each state so it is
-   always legible (the bug was the name keeping its own light color on focus). */
-.profile-card:focus {
-  /* FOCUS = blue hover: keep the DARK rest tile (a light fill here read as the
-     white "selected" state, so the auto-focused card looked pre-selected and
-     barely changed on pick). The blue avatar ring + blue name ARE the focus cue.
-     This must stay visually distinct from the WHITE selected state below. */
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  box-shadow: none;
-}
+/* FOCUS (hover) = BLUE: ring + scale on the image, blue title. */
 .profile-card:focus .profile-card-avatar {
-  box-shadow: 0 0 0 3px var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--focus-shadow);
 }
 .profile-card:focus .profile-card-name {
   color: var(--accent);
 }
-/* Selected (white) must WIN over focus (blue) when a card is both — e.g. a
-   no-PIN profile stays focused while it loads into the app. The extra `.card`
-   (every card carries it) lifts these to the same specificity as the
-   `.profile-card:focus` rules above; declared later, they take precedence. So a
-   picked card reads WHITE even while still focused. */
-.profile-card--selected.card {
-  background: rgba(227, 227, 227, 0.12);
+html.caps-motion .profile-card-avatar {
+  transition: transform var(--focus-motion-dur) ease;
 }
-.profile-card--selected.card .profile-card-avatar {
+html.caps-motion .profile-card:focus .profile-card-avatar {
+  transform: scale(var(--focus-scale-med));
+}
+
+/* SELECTED = WHITE: persistent bright ring + bright title (the chosen profile,
+   e.g. during PIN entry or while a no-PIN profile loads in). Declared after
+   focus so it wins when a card is both focused and selected. */
+.profile-card--selected .profile-card-avatar {
+  border-color: var(--text-primary);
   box-shadow: 0 0 0 3px var(--text-primary);
 }
-.profile-card--selected.card .profile-card-name {
+.profile-card--selected .profile-card-name {
   color: var(--text-primary);
 }
 
