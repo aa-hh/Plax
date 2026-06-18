@@ -520,9 +520,21 @@ html.caps-motion .detail-watchlist-btn:focus {
 /* Immersive hero bleeds full-width into BOTH gutters (backdrop continues to the
    screen edges); its content block keeps the safe-area inset so text stays on
    the grid and clears the collapsed rail. */
+/* Immersive backdrop bleeds to the TOP and RIGHT edges (Google: "scale and align
+   the subject to the top-right corner") but NOT the left — the left gutter stays
+   clean for the collapsed sidebar. width:auto (not 100%) lets the negative right
+   margin actually GROW the element to the screen's right edge; with width:100%
+   the margin only shifts it, leaving a dark band on the right. Negative top margin
+   pulls it under the screen's top safe-area padding so the art reaches the top. */
 .screen-home .il-hero {
-  margin-left: calc(-1 * var(--safe-x));
+  width: auto;
+  margin-top: calc(-1 * var(--safe-y));
+  margin-left: 0;
   margin-right: calc(-1 * var(--safe-x));
+}
+/* Hero left edge now sits on column 1, so the content block aligns flush to it. */
+.screen-home .il-hero__content {
+  left: 0;
 }
 
 /* Carousels bleed into the RIGHT gutter so the 7th card peeks past the 6-card
@@ -2984,18 +2996,39 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   margin-top: var(--space-4);
 }
 
-/* Meta header (F): title / subtitle / status sit full-width ABOVE the controls
-   so a long title can never collide with the transport cluster. Normal flow,
-   left-aligned, in the .player-bottom column. */
+/* Info row (JetStream): title block on the LEFT, secondary icon-button cluster
+   on the RIGHT, bottom-aligned, ABOVE the seek bar. */
 .player-meta-header {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
   width: 100%;
   min-width: 0;
 }
 
-.player-meta-header > * + * {
+.player-meta-header__info {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.player-meta-header__info > * + * {
   margin-top: var(--space-1);
+}
+
+/* Secondary icon-button cluster (subtitles / audio / quality), right side. */
+.player-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: var(--space-6);
+}
+
+.player-actions > * + * {
+  margin-left: var(--space-3);
 }
 
 .player-now-playing-title {

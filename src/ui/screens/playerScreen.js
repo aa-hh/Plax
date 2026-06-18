@@ -239,14 +239,32 @@ function playerScreen(root, params, navigate) {
     '<span class="player-skip-intro-prompt-hint">OK</span>' +
     '</button>' +
     '<div class="player-bottom">' +
-    // Meta header sits full-width ABOVE the scrubber and controls so a long
-    // title can never collide with the transport cluster.
+    // JetStream layout: the "Info" row puts the title on the LEFT and the
+    // secondary icon buttons (subtitles / audio / quality) on the RIGHT, on the
+    // same line ABOVE the seek bar. The transport cluster lives below the seek.
     '<div class="player-meta-header">' +
+    '<div class="player-meta-header__info">' +
     '<h1 class="player-now-playing-title" id="player-title-primary">Loading…</h1>' +
     '<p class="player-now-playing-subtitle" id="player-title-secondary" hidden></p>' +
     '<p class="player-status" id="player-status" hidden></p>' +
     '<button type="button" class="btn player-retry-btn" id="btn-playback-retry" hidden tabindex="0">Retry</button>' +
     '<p class="player-next-up" id="player-next-up" hidden></p>' +
+    '</div>' +
+    // Secondary icon-button cluster (CC / audio / settings), top-right.
+    '<div class="player-actions" data-focus-zone="player-actions" data-focus-mode="sequential" data-focus-sequential-axis="horizontal">' +
+    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-player-subtitles" tabindex="0" aria-haspopup="dialog" aria-label="Subtitles">' +
+    '<span class="player-stream-active-mark" id="mark-subtitles"></span>' +
+    ICON_SUBTITLE +
+    '</button>' +
+    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-audio" tabindex="0" aria-haspopup="dialog" aria-label="Audio">' +
+    '<span class="player-stream-active-mark" id="mark-audio" hidden></span>' +
+    ICON_AUDIO +
+    '</button>' +
+    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-player-quality" tabindex="0" aria-haspopup="dialog" aria-label="Quality">' +
+    '<span class="player-stream-active-mark" id="mark-quality" hidden></span>' +
+    ICON_QUALITY +
+    '</button>' +
+    '</div>' +
     '</div>' +
     '<div class="player-seek-row" data-focus-zone="player-seek">' +
     '<span class="player-time player-time--elapsed" id="player-time-elapsed" aria-hidden="true">0:00</span>' +
@@ -273,20 +291,6 @@ function playerScreen(root, params, navigate) {
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-forward" tabindex="0" aria-label="Forward 30 seconds">' + ICON_FORWARD + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon" id="btn-next" tabindex="0" aria-label="Next in queue">' + ICON_NEXT + '</button>' +
     '<button type="button" class="player-control-pill player-control-pill--icon player-control-pill--danger" id="btn-stop" tabindex="0" aria-label="Stop">' + ICON_STOP + '</button>' +
-    '</div>' +
-    '<div class="player-settings">' +
-    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-player-quality" tabindex="0" aria-haspopup="dialog" aria-label="Quality">' +
-    '<span class="player-stream-active-mark" id="mark-quality" hidden></span>' +
-    ICON_QUALITY +
-    '</button>' +
-    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-audio" tabindex="0" aria-haspopup="dialog" aria-label="Audio">' +
-    '<span class="player-stream-active-mark" id="mark-audio" hidden></span>' +
-    ICON_AUDIO +
-    '</button>' +
-    '<button type="button" class="player-stream-pill player-stream-pill--icon" id="btn-player-subtitles" tabindex="0" aria-haspopup="dialog" aria-label="Subtitles">' +
-    '<span class="player-stream-active-mark" id="mark-subtitles"></span>' +
-    ICON_SUBTITLE +
-    '</button>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -2562,9 +2566,12 @@ function playerScreen(root, params, navigate) {
       return;
     }
 
-    // UP from the settings group → media-info button.
+    // UP from the secondary icon-button cluster (now top-right, above the seek)
+    // → media-info button, but only when it's actually visible; otherwise let
+    // default nav handle it (don't trap focus on a hidden target).
     if (key === 38 && active && active.closest &&
-        active.closest('.player-settings')) {
+        active.closest('.player-actions') &&
+        btnMediaInfo && !btnMediaInfo.hidden) {
       btnMediaInfo.focus();
       e.preventDefault();
       e.stopImmediatePropagation();
