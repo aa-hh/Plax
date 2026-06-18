@@ -216,7 +216,7 @@ function resolveTranscodeMediaPath(server, relativePath /* , playbackMode */) {
 }
 
 function isClientGeneratedSessionId(sessionId) {
-  return !!(sessionId && /^xplay-/i.test(String(sessionId)));
+  return !!(sessionId && /^plax-/i.test(String(sessionId)));
 }
 
 function extractPartIdFromPath(partPath) {

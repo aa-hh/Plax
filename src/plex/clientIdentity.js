@@ -3,7 +3,7 @@ import { isTvRuntime } from '../platform/versionGate.js';
 import { isSimulatorRuntime } from '../platform/webosRuntime.js';
 
 /** Product string for plex.tv pairing / account device list. */
-var AUTH_PRODUCT = 'XPlay Lite';
+var AUTH_PRODUCT = 'Plax';
 var VERSION = '0.1.0';
 
 /**
@@ -96,7 +96,7 @@ function plexWebIdentity() {
     platformVersion: browserChromeVersion(),
     device: 'Computer',
     model: 'Browser',
-    deviceName: 'XPlay Lite (' + AUTH_PRODUCT + ')',
+    deviceName: AUTH_PRODUCT,
     deviceVendor: ''
   };
 }
@@ -147,7 +147,7 @@ function logPlexClientIdentityOnce() {
 
 function getClientId() {
   var id = getState().clientId;
-  return id || 'xplay-anonymous';
+  return id || 'plax-anonymous';
 }
 
 function plexClientFields() {

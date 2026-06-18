@@ -125,7 +125,7 @@
   }
   function initResourceMonitor() {
     enabled$1 = shouldEnable();
-    window.__xplayPerf = {
+    window.__plaxPerf = {
       isEnabled: function () {
         return enabled$1;
       },
@@ -151,7 +151,7 @@
       }
     };
     if (enabled$1) {
-      console.log('[XPlay Lite] Perf mode enabled. Use window.__xplayPerf.exportData()');
+      console.log('[XPlay Lite] Perf mode enabled. Use window.__plaxPerf.exportData()');
     }
     return enabled$1;
   }
@@ -610,8 +610,8 @@
   var TICK_MS = 200;
   var GYRO_THRESHOLD_RAD_S = 0.12;
   var LINEAR_ACCEL_THRESHOLD = 0.75;
-  var MOTION_CURSOR_SHOW_EVENT = 'xplay-motion-cursor-show';
-  var MOTION_CURSOR_HIDE_EVENT = 'xplay-motion-cursor-hide';
+  var MOTION_CURSOR_SHOW_EVENT = 'plax-motion-cursor-show';
+  var MOTION_CURSOR_HIDE_EVENT = 'plax-motion-cursor-hide';
   var BODY_CLASS = 'cursor-visible';
   var initialized = false;
   var cursorVisible = false;
@@ -1356,7 +1356,7 @@
     }
   }
 
-  var PREFIX = 'xplay_lite_';
+  var PREFIX = 'plax_';
   var SESSION_OWNER_KEY = PREFIX + 'session_ownerAuthToken';
   var SESSION_HOME_SIZE_KEY = PREFIX + 'session_homeSize';
   function get$1(key) {
@@ -1555,7 +1555,7 @@
   }
   function setLoadingLabel(el, text) {
     if (!el) return;
-    var label = el.querySelector('.xplay-loader-label');
+    var label = el.querySelector('.plax-loader-label');
     if (label) label.textContent = text;
   }
 
@@ -1786,7 +1786,7 @@
   }
   function initTvDebug() {
     enabled = shouldEnableDebug();
-    window.__xplayDebug = {
+    window.__plaxDebug = {
       isEnabled: function () {
         return enabled;
       },
@@ -41612,7 +41612,7 @@ Schedule: ${scheduleItems.map(seg => segmentToString(seg))} pos: ${this.timeline
       }
     }
     activeTextTrack = null;
-    var tracks = videoEl.querySelectorAll('track[data-xplay-sub]');
+    var tracks = videoEl.querySelectorAll('track[data-plax-sub]');
     for (var t = 0; t < tracks.length; t++) tracks[t].remove();
   }
   function applySrtText(srtText, offsetMs) {
@@ -43630,10 +43630,10 @@ Schedule: ${scheduleItems.map(seg => segmentToString(seg))} pos: ${this.timeline
   }
 
   function generateClientId() {
-    var stored = localStorage.getItem('xplay_lite_clientId');
+    var stored = localStorage.getItem('plax_clientId');
     if (stored) return stored;
     var id = 'xplay-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem('xplay_lite_clientId', id);
+    localStorage.setItem('plax_clientId', id);
     return id;
   }
   function pairingScreen(root, params, navigate) {
@@ -47223,8 +47223,8 @@ Schedule: ${scheduleItems.map(seg => segmentToString(seg))} pos: ${this.timeline
     }
     function wireQualityRow() {
       var btn = screen.querySelector('#detail-file-quality');
-      if (!btn || btn._xplayQualityWired) return;
-      btn._xplayQualityWired = true;
+      if (!btn || btn._plaxQualityWired) return;
+      btn._plaxQualityWired = true;
       btn.addEventListener('click', function () {
         openDetailModal('quality', 'Quality', listProfiles().map(function (p) {
           return {
@@ -50620,8 +50620,8 @@ Schedule: ${scheduleItems.map(seg => segmentToString(seg))} pos: ${this.timeline
     }
     function ensurePlaybackProgressUiSync() {
       var video = getVideoElement();
-      if (!video || video.getAttribute('data-xplay-progress-sync') === '1') return;
-      video.setAttribute('data-xplay-progress-sync', '1');
+      if (!video || video.getAttribute('data-plax-progress-sync') === '1') return;
+      video.setAttribute('data-plax-progress-sync', '1');
       video.addEventListener('playing', function () {
         if (destroyed) return;
         syncPlaybackProgressUi();
@@ -51722,14 +51722,14 @@ Schedule: ${scheduleItems.map(seg => segmentToString(seg))} pos: ${this.timeline
     var debugSel = document.getElementById('debug-log-select');
     debugSel.value = isTvDebugEnabled() ? '1' : '0';
     debugSel.addEventListener('change', function () {
-      if (window.__xplayDebug) {
-        if (debugSel.value === '1') window.__xplayDebug.enable();else window.__xplayDebug.disable();
+      if (window.__plaxDebug) {
+        if (debugSel.value === '1') window.__plaxDebug.enable();else window.__plaxDebug.disable();
       }
       setStatus('Debug log overlay ' + (debugSel.value === '1' ? 'enabled' : 'disabled') + ' — relaunch recommended.');
     });
     perfSel.addEventListener('change', function () {
-      if (window.__xplayPerf) {
-        if (perfSel.value === '1') window.__xplayPerf.enable();else window.__xplayPerf.disable();
+      if (window.__plaxPerf) {
+        if (perfSel.value === '1') window.__plaxPerf.enable();else window.__plaxPerf.disable();
       }
       setStatus('Performance HUD ' + (perfSel.value === '1' ? 'enabled' : 'disabled') + ' — relaunch to apply fully.');
     });
@@ -52849,7 +52849,7 @@ Schedule: ${scheduleItems.map(seg => segmentToString(seg))} pos: ${this.timeline
    * Reusable circular spinner (rotating partial border ring).
    *
    * API:
-   *   createSpinner(options?) -> HTMLElement (.xplay-spinner-wrap)
+   *   createSpinner(options?) -> HTMLElement (.plax-spinner-wrap)
    *     options.size   — 'small' | 'medium' | 'large' | 'em' (default 'medium'; 'em' = 1em ring, set font-size on wrap/parent)
    *     options.className — extra class on the wrap element
    *     options.label  — aria-label (default 'Loading')
@@ -52989,7 +52989,7 @@ Schedule: ${scheduleItems.map(seg => segmentToString(seg))} pos: ${this.timeline
       var show = profilesLoading || switching;
       if (!profileSpinner) return;
       profileSpinner.hidden = !show;
-      var ring = profileSpinner.querySelector('.xplay-spinner');
+      var ring = profileSpinner.querySelector('.plax-spinner');
       if (ring) ring.setAttribute('aria-label', spinnerLabel());
     }
     function setProfileLoading(loading) {

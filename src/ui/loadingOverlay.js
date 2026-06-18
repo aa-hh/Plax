@@ -20,10 +20,10 @@ function ensureOverlay() {
   var inner = overlayEl.querySelector('.loading-overlay-inner');
   if (inner && !loaderWrap) {
     loaderWrap = document.createElement('div');
-    loaderWrap.className = 'xplay-loader-wrap xplay-loader-large';
+    loaderWrap.className = 'plax-loader-wrap plax-loader-large';
     loaderWrap.appendChild(createSpinner({ size: 'large', label: 'Buffering…' }));
     var label = document.createElement('p');
-    label.className = 'xplay-loader-label';
+    label.className = 'plax-loader-label';
     label.textContent = 'Buffering…';
     loaderWrap.appendChild(label);
     inner.appendChild(loaderWrap);

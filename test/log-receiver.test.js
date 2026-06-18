@@ -40,7 +40,7 @@ test('parseLogBody: JSON array', function () {
 });
 
 test('createLogReceiverServer: POST /log appends file', function (t, done) {
-  var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xplay-log-'));
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plax-log-'));
   var logFile = path.join(dir, 'tv.log');
   var server = logReceiver.createLogReceiverServer({ logFile: logFile });
 

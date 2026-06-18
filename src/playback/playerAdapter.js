@@ -378,15 +378,15 @@ function logPlaybackConnection(url, session) {
 function logRuntimeBuildStampOnce() {
   if (runtimeBuildLogged) return;
   runtimeBuildLogged = true;
-  if (typeof window !== 'undefined' && window.__XPLAY_BUILD__) {
-    var b = window.__XPLAY_BUILD__;
+  if (typeof window !== 'undefined' && window.__PLAX_BUILD__) {
+    var b = window.__PLAX_BUILD__;
     var buildNumber = Number(b.buildNumber);
     if (!isFinite(buildNumber) || buildNumber < 1) buildNumber = 'unknown-build';
     else buildNumber = Math.floor(buildNumber);
-    console.info('[XPlay Lite] runtime-build', 'build=' + buildNumber, b.builtAt, b.gitCommit || 'no-git', b.summary || '');
+    console.info('[Plax] runtime-build', 'build=' + buildNumber, b.builtAt, b.gitCommit || 'no-git', b.summary || '');
     return;
   }
-  console.warn('[XPlay Lite] runtime-build missing');
+  console.warn('[Plax] runtime-build missing');
 }
 
 function isTranscodeFallbackMode(mode) {
@@ -808,7 +808,7 @@ function clearSubtitles() {
     }
   }
   activeTextTrack = null;
-  var tracks = videoEl.querySelectorAll('track[data-xplay-sub]');
+  var tracks = videoEl.querySelectorAll('track[data-plax-sub]');
   for (var t = 0; t < tracks.length; t++) tracks[t].remove();
 }
 

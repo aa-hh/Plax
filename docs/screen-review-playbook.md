@@ -1,4 +1,4 @@
-# XPlay Lite Screen Review Playbook
+# Plax Screen Review Playbook
 
 This playbook gives you a repeatable way to visually review every core screen in the simulator while checking against `docs/design-system.md`.
 
@@ -7,7 +7,7 @@ This playbook gives you a repeatable way to visually review every core screen in
 1. Start simulator:
 
 ```bash
-cd "XPlay 2"
+cd "Plax"
 npm run sim
 ```
 

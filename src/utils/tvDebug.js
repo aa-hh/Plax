@@ -2,19 +2,19 @@
  * TV-friendly debug logging (webOS 4 ares-inspect is flaky).
  * Enabled when:
  *  - URL contains ?debug=1
- *  - localStorage xplay_debug_enabled === "1"
+ *  - localStorage plax_debug_enabled === "1"
  *  - PalmSystem.launchParams includes debug (ares-launch -p '{"debug":1}')
- *  - window.__XPLAY_DEBUG__ === true
+ *  - window.__PLAX_DEBUG__ === true
  *
  * Remote HTTP sink (Mac `npm run log:receive`) when a sink URL is set.
  * tvLog() only mirrors remotely when debug is on; tvError() always mirrors if a sink URL is set.
- *  - localStorage xplay_log_sink_url
+ *  - localStorage plax_log_sink_url
  *  - PalmSystem.launchParams logSink (ares-launch -p '{"debug":1,"logSink":"http://…/log"}')
- *  - window.__XPLAY_LOG_SINK_URL__ (build / dev injection)
+ *  - window.__PLAX_LOG_SINK_URL__ (build / dev injection)
  */
 
-var STORAGE_KEY = 'xplay_debug_enabled';
-var LOG_SINK_STORAGE_KEY = 'xplay_log_sink_url';
+var STORAGE_KEY = 'plax_debug_enabled';
+var LOG_SINK_STORAGE_KEY = 'plax_log_sink_url';
 var MAX_LINES = 14;
 var enabled = false;
 var lines = [];
@@ -124,7 +124,7 @@ function formatDisableHelp(state) {
   state = state || getDebugEnableState();
   var lp = state.launchParams != null ? state.launchParams : describeLaunchParams();
   return 'Debug overlay off (source=' + state.source + ', launchParams=' + lp + '). ' +
-    'Enable: ares-launch -p \'{"debug":1}\' --device Alec-TV com.xplay.lite ' +
+    'Enable: ares-launch -p \'{"debug":1}\' --device Alec-TV com.plax ' +
     'or Settings → Debug log overlay → On.';
 }
 
@@ -163,8 +163,8 @@ function ensureOverlay() {
     return;
   }
   overlayEl = document.createElement('pre');
-  overlayEl.id = 'xplay-debug-overlay';
-  overlayEl.className = 'xplay-debug-overlay';
+  overlayEl.id = 'plax-debug-overlay';
+  overlayEl.className = 'plax-debug-overlay';
   overlayEl.setAttribute('aria-live', 'polite');
   body.appendChild(overlayEl);
   renderOverlay();
@@ -181,8 +181,8 @@ function ensureDebugOverlayOnTop() {
 
 function setDebugOverlayPlayerMode(active) {
   if (!overlayEl || !overlayEl.classList) return;
-  if (active) overlayEl.classList.add('xplay-debug-overlay--player');
-  else overlayEl.classList.remove('xplay-debug-overlay--player');
+  if (active) overlayEl.classList.add('plax-debug-overlay--player');
+  else overlayEl.classList.remove('plax-debug-overlay--player');
 }
 
 function pushLine(tag, message, detail) {
@@ -292,7 +292,7 @@ function activateDebugOverlay(source) {
   enabled = true;
   ensureOverlay();
   pushLine('debug', 'Debug overlay active' + (source ? ' (' + source + ')' : ''));
-  emitConsole('log', 'XPlay Lite', 'Debug overlay active' + (source ? ' via ' + source : ''));
+  emitConsole('log', 'Plax', 'Debug overlay active' + (source ? ' via ' + source : ''));
 }
 
 function refreshDebugFromEnvironment(reason) {
@@ -301,8 +301,8 @@ function refreshDebugFromEnvironment(reason) {
     if (!enabled) {
       if (state.source === 'launchParams' || state.source === '__XPLAY_DEBUG__' || state.source === 'url') {
         activateDebugOverlay(state.source + (reason ? ', ' + reason : ''));
-      } else if (window.__xplayDebug && typeof window.__xplayDebug.enable === 'function') {
-        window.__xplayDebug.enable();
+      } else if (window.__plaxDebug && typeof window.__plaxDebug.enable === 'function') {
+        window.__plaxDebug.enable();
         if (reason) pushLine('debug', 'Debug refreshed (' + reason + ')');
       } else {
         activateDebugOverlay(state.source + (reason ? ', ' + reason : ''));
@@ -383,14 +383,14 @@ function initTvDebug() {
   installRelaunchDebugRefresh();
   var state = getDebugEnableState();
   enabled = state.enabled;
-  window.__xplayDebug = {
+  window.__plaxDebug = {
     isEnabled: function () { return enabled; },
     enable: function () {
       safeLocalSet(STORAGE_KEY, '1');
       enabled = true;
       ensureOverlay();
       pushLine('debug', 'Debug overlay enabled');
-      emitConsole('log', 'XPlay Lite', 'Debug overlay enabled');
+      emitConsole('log', 'Plax', 'Debug overlay enabled');
     },
     disable: function () {
       safeLocalSet(STORAGE_KEY, null);
@@ -398,7 +398,7 @@ function initTvDebug() {
       lines = [];
       if (overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl);
       overlayEl = null;
-      emitConsole('log', 'XPlay Lite', 'Debug overlay disabled');
+      emitConsole('log', 'Plax', 'Debug overlay disabled');
     },
     log: tvLog,
     error: tvError,
@@ -411,7 +411,7 @@ function initTvDebug() {
   if (enabled) {
     activateDebugOverlay(state.source);
   } else {
-    emitConsole('log', 'XPlay Lite', formatDisableHelp(state));
+    emitConsole('log', 'Plax', formatDisableHelp(state));
   }
   return enabled;
 }

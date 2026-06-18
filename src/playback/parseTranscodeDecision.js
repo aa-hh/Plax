@@ -146,7 +146,7 @@ function parseTranscodeDecision(xmlText, session) {
   };
 }
 
-/** Map Part@decision to XPlay playback strategy. */
+/** Map Part@decision to Plax playback strategy. */
 function strategyFromPartDecision(partDecision) {
   var d = String(partDecision || '').toLowerCase();
   if (d === 'directplay') return 'direct';

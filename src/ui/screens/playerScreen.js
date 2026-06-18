@@ -302,6 +302,7 @@ function playerScreen(root, params, navigate) {
     '<button class="btn" id="btn-autoplay-cancel" tabindex="0">Cancel</button>' +
     '</div></div>';
   root.appendChild(overlay);
+  document.body.classList.add('player-active');
   var detachFocus = attachFocusNav(overlay);
 
   refreshDebugFromEnvironment('player');
@@ -1651,8 +1652,8 @@ function playerScreen(root, params, navigate) {
 
   function ensurePlaybackProgressUiSync() {
     var video = player.getVideoElement();
-    if (!video || video.getAttribute('data-xplay-progress-sync') === '1') return;
-    video.setAttribute('data-xplay-progress-sync', '1');
+    if (!video || video.getAttribute('data-plax-progress-sync') === '1') return;
+    video.setAttribute('data-plax-progress-sync', '1');
     video.addEventListener('playing', function () {
       if (destroyed) return;
       primedPositionMs = null;
@@ -2664,6 +2665,7 @@ function playerScreen(root, params, navigate) {
   return {
     destroy: function () {
       destroyed = true;
+      document.body.classList.remove('player-active');
       setDebugOverlayPlayerMode(false);
       clearPlaybackFailureUi();
       if (playbackErrorBanner && playbackErrorBanner.parentNode) {

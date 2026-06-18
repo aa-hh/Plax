@@ -1,6 +1,6 @@
 # Agent handoff: browse, playback, episode detail
 
-**Repo:** `/Users/alechamilton/XPlay 2`  
+**Repo:** `/Users/alechamilton/Plax`  
 **Git:** `main` tracks `origin/main`; app source is largely **uncommitted** (working tree). Do not assume prior agents committed work.  
 **Parent conversation:** [Browse & playback session](f8742b35-f83f-4ac2-a2cf-a71b7c1485c3)
 
@@ -228,7 +228,7 @@ Each package = **one agent session**. Run `npm run build && npm run validate` be
 ### B1 — Episode detail TV UX
 
 ```
-Implement a webOS TV episode detail experience in XPlay 2 (/Users/alechamilton/XPlay 2).
+Implement a webOS TV episode detail experience in Plax (/Users/alechamilton/Plax).
 
 When metadata type is episode, replace the generic detail template with a TV layout: breadcrumb back, landscape episode art with watch progress, grandparent series title (navigate to show), episode title, season/ep/time-remaining, release/duration/content rating, audience/IMDb rating when present, Play/Resume + mark watched, and file detail rows (Video / Audio / Subtitles) showing label + current value with OK-to-pick modals.
 
@@ -240,25 +240,25 @@ Acceptance: logical D-pad focus order; no hover-only UI; npm run build && npm ru
 ### B2 — Browse Phase 2
 
 ```
-Implement browse loading Phase 2 for XPlay 2: browse-section cache for library grids, optional parallel section page fetch after first paint, tiered/SWR hub cache, bootstrap/home overlap (prefetch promoted hubs during bootstrap when safe), and search hub stagger/parallel load. Update docs/caching-and-buffering.md. Follow proposals in docs/agent-handoff-browse-playback-detail.md B2 (from audit 579dd837). npm run build && npm run validate must pass.
+Implement browse loading Phase 2 for Plax: browse-section cache for library grids, optional parallel section page fetch after first paint, tiered/SWR hub cache, bootstrap/home overlap (prefetch promoted hubs during bootstrap when safe), and search hub stagger/parallel load. Update docs/caching-and-buffering.md. Follow proposals in docs/agent-handoff-browse-playback-detail.md B2 (from audit 579dd837). npm run build && npm run validate must pass.
 ```
 
 ### B3 — Browse Phase 3
 
 ```
-Implement true library grid virtualization for XPlay 2 library screen: bounded DOM for large sections, working D-pad focus and poster hydration, compatible with progressive browseByType. Fix or document virtualRow vs perf-budgets mismatch. Large change — see docs/agent-handoff-browse-playback-detail.md B3. npm run build && npm run validate must pass.
+Implement true library grid virtualization for Plax library screen: bounded DOM for large sections, working D-pad focus and poster hydration, compatible with progressive browseByType. Fix or document virtualRow vs perf-budgets mismatch. Large change — see docs/agent-handoff-browse-playback-detail.md B3. npm run build && npm run validate must pass.
 ```
 
 ### B4 — Direct play clarity
 
 ```
-Improve direct play clarity in XPlay 2: clearer quality profile labels in settings, MKV progressive probe consideration, pass deviceInfo into player-side probe, optional HDR warning, and player/detail copy that distinguishes Direct Play vs Direct Stream vs Transcode and notes Auto remux fallback. See docs/agent-handoff-browse-playback-detail.md B4 and prior audit (dcdf28a0). npm run build && npm run validate must pass.
+Improve direct play clarity in Plax: clearer quality profile labels in settings, MKV progressive probe consideration, pass deviceInfo into player-side probe, optional HDR warning, and player/detail copy that distinguishes Direct Play vs Direct Stream vs Transcode and notes Auto remux fallback. See docs/agent-handoff-browse-playback-detail.md B4 and prior audit (dcdf28a0). npm run build && npm run validate must pass.
 ```
 
 ### B5 — Skip credits
 
 ```
-Add skip credits support in XPlay 2 mirroring intro markers: Plex Marker type=credit, player prompt visible until user skips, per-marker keys, seek padding. Extend scripts/validate-intro-markers.mjs. See docs/agent-handoff-browse-playback-detail.md B5. npm run build && npm run validate must pass.
+Add skip credits support in Plax mirroring intro markers: Plex Marker type=credit, player prompt visible until user skips, per-marker keys, seek padding. Extend scripts/validate-intro-markers.mjs. See docs/agent-handoff-browse-playback-detail.md B5. npm run build && npm run validate must pass.
 ```
 
 ### B6 — Search loading parity
@@ -289,7 +289,7 @@ Bring searchScreen loading UX in line with homeScreen: skeleton hub rows while s
 ## Quick verification commands
 
 ```bash
-cd "/Users/alechamilton/XPlay 2"
+cd "/Users/alechamilton/Plax"
 npm run build && npm run validate
 node scripts/validate-intro-markers.mjs
 ```

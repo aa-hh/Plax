@@ -9,24 +9,24 @@ function createLoadingIndicator(options) {
   var label = options.label || '';
 
   var wrap = document.createElement('div');
-  wrap.className = 'xplay-loader-wrap xplay-loader-' + size;
+  wrap.className = 'plax-loader-wrap plax-loader-' + size;
   if (options.className) wrap.className += ' ' + options.className;
 
   var loader = document.createElement('div');
-  loader.className = 'xplay-loader';
+  loader.className = 'plax-loader';
   loader.setAttribute('role', 'status');
   loader.setAttribute('aria-live', 'polite');
   loader.setAttribute('aria-label', label || 'Loading');
   loader.innerHTML =
-    '<span class="xplay-loader-dot"></span>' +
-    '<span class="xplay-loader-dot xplay-loader-dot-active"></span>' +
-    '<span class="xplay-loader-dot"></span>';
+    '<span class="plax-loader-dot"></span>' +
+    '<span class="plax-loader-dot plax-loader-dot-active"></span>' +
+    '<span class="plax-loader-dot"></span>';
 
   wrap.appendChild(loader);
 
   if (label) {
     var text = document.createElement('p');
-    text.className = 'xplay-loader-label';
+    text.className = 'plax-loader-label';
     text.textContent = label;
     wrap.appendChild(text);
   }
@@ -36,7 +36,7 @@ function createLoadingIndicator(options) {
 
 function setLoadingLabel(el, text) {
   if (!el) return;
-  var label = el.querySelector('.xplay-loader-label');
+  var label = el.querySelector('.plax-loader-label');
   if (label) label.textContent = text;
 }
 

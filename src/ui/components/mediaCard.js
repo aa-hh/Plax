@@ -260,6 +260,9 @@ function createMediaCard(item, onSelect, options) {
     if (e.keyCode === 13) { e.preventDefault(); activate(); }
   });
 
+  // Expose item for features that read focused-card metadata (e.g. immersive list hero).
+  card._plaxItem = item;
+
   return card;
 }
 

@@ -91,7 +91,11 @@ function openTextInputModal(opts) {
 
   function onKey(e) {
     var code = e.keyCode || e.which;
-    // Back key (webOS), Escape, or Backspace
+    // Allow Backspace to delete characters in the input field
+    if (code === 8 && document.activeElement === input) {
+      return;
+    }
+    // Back key (webOS), Escape, or Backspace from outside input
     if (code === 461 || code === 27 || code === 8) {
       e.preventDefault();
       e.stopPropagation();
@@ -307,9 +311,9 @@ function settingsScreen(root, params, navigate) {
   var debugSel = document.getElementById('debug-log-select');
   debugSel.value = isTvDebugEnabled() ? '1' : '0';
   debugSel.addEventListener('change', function () {
-    if (window.__xplayDebug) {
-      if (debugSel.value === '1') window.__xplayDebug.enable();
-      else window.__xplayDebug.disable();
+    if (window.__plaxDebug) {
+      if (debugSel.value === '1') window.__plaxDebug.enable();
+      else window.__plaxDebug.disable();
     }
     setStatus('Debug log overlay ' + (debugSel.value === '1' ? 'enabled' : 'disabled') +
       ' — relaunch recommended.', false);
@@ -321,17 +325,17 @@ function settingsScreen(root, params, navigate) {
     logSinkInput.addEventListener('change', function () {
       var next = logSinkInput.value.trim();
       setLogSinkUrl(next);
-      if (window.__xplayDebug && window.__xplayDebug.setLogSinkUrl) {
-        window.__xplayDebug.setLogSinkUrl(next);
+      if (window.__plaxDebug && window.__plaxDebug.setLogSinkUrl) {
+        window.__plaxDebug.setLogSinkUrl(next);
       }
       setStatus(next ? 'Log sink saved — debug overlay must be on.' : 'Log sink cleared.', false);
     });
   }
 
   perfSel.addEventListener('change', function () {
-    if (window.__xplayPerf) {
-      if (perfSel.value === '1') window.__xplayPerf.enable();
-      else window.__xplayPerf.disable();
+    if (window.__plaxPerf) {
+      if (perfSel.value === '1') window.__plaxPerf.enable();
+      else window.__plaxPerf.disable();
     }
     setStatus('Performance HUD ' + (perfSel.value === '1' ? 'enabled' : 'disabled') +
       ' — relaunch to apply fully.', false);
@@ -339,8 +343,8 @@ function settingsScreen(root, params, navigate) {
 
   var perfStatusEl = document.getElementById('perf-trace-status');
   function refreshPerfStatus() {
-    if (!perfStatusEl || !window.__xplayPerf) return;
-    var snap = window.__xplayPerf.getSnapshot();
+    if (!perfStatusEl || !window.__plaxPerf) return;
+    var snap = window.__plaxPerf.getSnapshot();
     perfStatusEl.textContent = snap.markCount + ' marks · ' + snap.sampleCount + ' samples';
   }
   refreshPerfStatus();
@@ -348,11 +352,11 @@ function settingsScreen(root, params, navigate) {
   var perfExporting = false;
   document.getElementById('btn-perf-export').addEventListener('click', function () {
     if (perfExporting) return; // guard against D-pad/Enter repeat firing duplicate traces
-    if (!window.__xplayPerf) {
+    if (!window.__plaxPerf) {
       setStatus('Perf telemetry not initialised.', true);
       return;
     }
-    var data = window.__xplayPerf.exportData();
+    var data = window.__plaxPerf.exportData();
     if (!data.marks.length && !data.samples.length) {
       setStatus('No perf data captured yet — turn HUD on and use the app first.', true);
       return;
@@ -375,7 +379,7 @@ function settingsScreen(root, params, navigate) {
   });
 
   document.getElementById('btn-perf-clear').addEventListener('click', function () {
-    if (window.__xplayPerf) window.__xplayPerf.clear();
+    if (window.__plaxPerf) window.__plaxPerf.clear();
     refreshPerfStatus();
     setStatus('Perf trace buffer cleared.', false);
   });
@@ -617,7 +621,7 @@ function renderDeveloperSettings(container) {
         payload = JSON.stringify({
           level: 'log',
           tag: 'test',
-          message: 'ping from XPlay settings',
+          message: 'ping from Plax settings',
           ts: new Date().toISOString()
         });
       } catch (e) {

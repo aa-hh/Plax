@@ -265,7 +265,7 @@ test('play sets Plex auth headers on hls.js requests', function () {
     item: { ratingKey: '99', duration: 120000 }
   };
   playerModule.play(
-    'http://127.0.0.1/video.m3u8?X-Plex-Token=query-token&session=xplay-session',
+    'http://127.0.0.1/video.m3u8?X-Plex-Token=query-token&session=plax-session',
     plexSession,
     { mode: 'transcode-hls' }
   );
@@ -278,14 +278,14 @@ test('play sets Plex auth headers on hls.js requests', function () {
   };
   inst.config.xhrSetup(xhr);
   assert.equal(reqHeaders['X-Plex-Token'], 'query-token');
-  assert.equal(reqHeaders['X-Plex-Session-Identifier'], 'xplay-session');
+  assert.equal(reqHeaders['X-Plex-Session-Identifier'], 'plax-session');
 });
 
 test('play uses hls.js for H.264 transcode fallback on webOS 4 TV', function () {
   var FakeHls = createFakeHls();
   var video = playerModule.getVideoElement();
   playerModule.setHlsPlayerForTest(FakeHls);
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -304,7 +304,7 @@ test('play uses native source mediaOption for direct play on webOS 4', function 
   var FakeHls = createFakeHls();
   var video = playerModule.getVideoElement();
   playerModule.setHlsPlayerForTest(FakeHls);
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -696,7 +696,7 @@ test('loadClientSubtitleFromUrls salvages chunked WebVTT responseText after fetc
     await playerModule.loadClientSubtitleFromUrls([{
       label: 'universal-metadata-auto',
       url: 'http://plex.local/video/:/transcode/universal/subtitles',
-      init: { headers: { Accept: 'text/vtt', 'X-Plex-Session-Identifier': 'xplay-test' } }
+      init: { headers: { Accept: 'text/vtt', 'X-Plex-Session-Identifier': 'plax-test' } }
     }], 0);
     var track = playerModule.getVideoElement().textTracks[0];
     assert.equal(track.mode, 'showing');
@@ -704,7 +704,7 @@ test('loadClientSubtitleFromUrls salvages chunked WebVTT responseText after fetc
     assert.equal(track.cues[0].startTime, 4);
     assert.equal(track.cues[0].text, 'Recovered cue');
     assert.equal(xhrHeaders.Accept, 'text/vtt');
-    assert.equal(xhrHeaders['X-Plex-Session-Identifier'], 'xplay-test');
+    assert.equal(xhrHeaders['X-Plex-Session-Identifier'], 'plax-test');
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;

@@ -1,4 +1,4 @@
-# XPlay 2 Video Player — Consolidated Review Summary
+# Plax Video Player — Consolidated Review Summary
 
 **Scope:** webOS TV Plex client playback stack (`src/playback/`, `playerScreen.js`, related UI and settings).  
 **Review date:** May 2026.  

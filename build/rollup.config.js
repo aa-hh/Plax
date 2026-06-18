@@ -12,7 +12,7 @@ export default {
   output: {
     file: 'dist/app.js',
     format: 'iife',
-    name: 'XPlayLite',
+    name: 'Plax',
     sourcemap: !production
   },
   plugins: [

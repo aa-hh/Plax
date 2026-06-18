@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#0a0a0f">
   <meta name="color-scheme" content="dark">
-  <title>XPlay Lite</title>
+  <title>Plax</title>
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
@@ -21,7 +21,7 @@
      Uses XMLHttpRequest (not fetch) so it works on Chromium 53 before
      polyfills are available. Reads sink URL from localStorage directly. */
   (function () {
-    var LOG_SINK_KEY = 'xplay_log_sink_url';
+    var LOG_SINK_KEY = 'plax_log_sink_url';
 
     function getSinkUrl() {
       try {

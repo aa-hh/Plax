@@ -202,9 +202,27 @@ function mountBrowsingHubNav(host, options) {
   host.innerHTML = '';
   // --label-active: opt-in hook so DesignSystem can keep the ACTIVE section's
   // label legible even while the rail is collapsed (the rest stay icon-only).
-  host.className = 'browsing-hub-nav-host browsing-hub-nav-host--label-active';
+  host.className = 'browsing-hub-nav-host';
   host.setAttribute('role', 'navigation');
   host.setAttribute('aria-label', 'Browse');
+
+  // App mark at the top of the drawer (Google TV nav-drawer anatomy).
+  var brand = document.createElement('div');
+  brand.className = 'browsing-hub-brand';
+  brand.setAttribute('aria-hidden', 'true');
+  brand.innerHTML =
+    '<span class="browsing-hub-brand__mark"></span>' +
+    '<span class="browsing-hub-brand__name">Plax</span>';
+  host.appendChild(brand);
+
+  // Expand-on-focus via a JS class. CSS :focus-within is Chrome 60+, but the B8
+  // is Chromium 53, so the rail never expanded there — focusin/out works on 53.
+  function syncExpanded() {
+    var inside = document.activeElement && host.contains(document.activeElement);
+    host.classList.toggle('browsing-hub-nav-host--expanded', !!inside);
+  }
+  host.addEventListener('focusin', syncExpanded);
+  host.addEventListener('focusout', function () { setTimeout(syncExpanded, 0); });
 
   function onItemSelect(item) {
     handleHubNavSelect(item, options.navigate, {
@@ -219,8 +237,8 @@ function mountBrowsingHubNav(host, options) {
   renderHubSection(host, 'browsing-hub-section--system', 'System', settingsItems, activeId, onItemSelect);
   refreshHubNavIcons(host, activeId);
 
-  // One-shot entry hint: briefly reveal the rail on a cold landing, then collapse.
-  var cancelPeek = playSidebarPeekHint(host);
+  // No auto "peek" on landing: the rail expands ONLY when the user explicitly
+  // moves focus into it (syncExpanded on focusin/focusout above).
 
   return {
     mediaItems: mediaItems,
@@ -234,9 +252,7 @@ function mountBrowsingHubNav(host, options) {
     focusSidebar: function () {
       return focusSidebarHub(host, activeId);
     },
-    destroy: function () {
-      if (cancelPeek) cancelPeek();
-    }
+    destroy: function () {}
   };
 }
 

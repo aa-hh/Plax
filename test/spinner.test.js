@@ -8,11 +8,11 @@ installMinimalDom();
 
 test('createSpinner: default medium markup and aria', function () {
   var el = createSpinner();
-  assert.equal(el.className.indexOf('xplay-spinner-wrap') >= 0, true);
-  assert.equal(el.className.indexOf('xplay-spinner-medium') >= 0, true);
+  assert.equal(el.className.indexOf('plax-spinner-wrap') >= 0, true);
+  assert.equal(el.className.indexOf('plax-spinner-medium') >= 0, true);
   assert.equal(el.hidden, false);
 
-  var ring = el.querySelector('.xplay-spinner');
+  var ring = el.querySelector('.plax-spinner');
   assert.ok(ring);
   assert.equal(ring.getAttribute('role'), 'status');
   assert.equal(ring.getAttribute('aria-label'), 'Loading');
@@ -25,8 +25,8 @@ test('createSpinner: size, label, hidden, and extra class', function () {
     hidden: true,
     className: 'my-spinner'
   });
-  assert.equal(el.className.indexOf('xplay-spinner-large') >= 0, true);
+  assert.equal(el.className.indexOf('plax-spinner-large') >= 0, true);
   assert.equal(el.className.indexOf('my-spinner') >= 0, true);
   assert.equal(el.hidden, true);
-  assert.equal(el.querySelector('.xplay-spinner').getAttribute('aria-label'), 'Buffering');
+  assert.equal(el.querySelector('.plax-spinner').getAttribute('aria-label'), 'Buffering');
 });

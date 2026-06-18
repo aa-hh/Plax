@@ -93,7 +93,9 @@ function detailScreen(root, params, navigate) {
     if (!iso) return '';
     var d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    // Force en-US — undefined locale falls back to the TV's system locale,
+    // which surfaced Korean dates ("2005년 5월 8일") on a Korean-region B8.
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function formatTimeRemaining(item) {
@@ -335,8 +337,8 @@ function detailScreen(root, params, navigate) {
 
   function wireQualityBtn() {
     var btn = screen.querySelector('#btn-quality');
-    if (!btn || btn._xplayQualityWired) return;
-    btn._xplayQualityWired = true;
+    if (!btn || btn._plaxQualityWired) return;
+    btn._plaxQualityWired = true;
     updateQualityBtnLabel();
     btn.addEventListener('click', function () {
       openDetailModal('quality', 'Quality', listProfiles().map(function (p) {
@@ -629,12 +631,8 @@ function detailScreen(root, params, navigate) {
     if (!item.artPath || !server) return;
 
     loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
-      if (!backdrop) return;
-      if (backdrop.imageUrl) {
-        setDetailBackgroundImage(backdrop.imageUrl);
-        return;
-      }
-      if (backdrop.colors) setDetailBackgroundColors(backdrop.colors);
+      if (!backdrop || !backdrop.imageUrl) return;
+      setDetailBackgroundImage(backdrop.imageUrl);
     });
   }
 

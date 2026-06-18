@@ -1,5 +1,5 @@
 /**
- * Packages dist/ into a webOS IPK (requires ares-package from @webos-tools/cli).
+ * Packages dist/ into a Plax webOS IPK (requires ares-package from @webos-tools/cli).
  */
 var fs = require('fs');
 var path = require('path');

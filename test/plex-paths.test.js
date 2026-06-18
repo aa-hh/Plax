@@ -11,7 +11,7 @@ var mockServer = {
 };
 
 test('normalizePlexPath strips Part key query params', function () {
-  var dirty = '/library/parts/231208/1779142932/file.mkv?checkFiles=1&includeBandwidths=1&offset=454&X-Plex-Incomplete-Segments=1&X-Plex-Session-Identifier=xplay-pap12mhbajmpbi0zij';
+  var dirty = '/library/parts/231208/1779142932/file.mkv?checkFiles=1&includeBandwidths=1&offset=454&X-Plex-Incomplete-Segments=1&X-Plex-Session-Identifier=plax-pap12mhbajmpbi0zij';
   assert.equal(
     normalizePlexPath(dirty),
     '/library/parts/231208/1779142932/file.mkv'
@@ -37,7 +37,7 @@ test('buildPlaybackUrl path param excludes Part key query string', function () {
   var partKey = '/library/parts/231208/1779142932/file.mkv?checkFiles=1&includeBandwidths=1&offset=454';
   var session = {
     server: mockServer,
-    sessionId: 'xplay-pap12mhbajmpbi0zij',
+    sessionId: 'plax-pap12mhbajmpbi0zij',
     transcodeSessionId: 'plex-transcode-sess-paths',
     offset: 454000,
     mediaIndex: 0,
@@ -61,14 +61,14 @@ test('summarizeTranscodeUrl decodes path and key transcode params', function () 
     + '?X-Plex-Token=secret'
     + '&path=%2Flibrary%2Fparts%2F231208%2F1779142932%2Ffile.mkv'
     + '&protocol=hls&directPlay=0&directStream=1'
-    + '&session=xplay-1779808567461&location=wan&offset=454'
+    + '&session=plax-1779808567461&location=wan&offset=454'
     + '&subtitleStreamID=1894445&subtitles=auto';
   var info = summarizeTranscodeUrl(url);
   assert.equal(info.path, '/library/parts/231208/1779142932/file.mkv');
   assert.equal(info.protocol, 'hls');
   assert.equal(info.directPlay, '0');
   assert.equal(info.directStream, '1');
-  assert.equal(info.session, 'xplay-1779808567461');
+  assert.equal(info.session, 'plax-1779808567461');
   assert.equal(info.location, 'wan');
   assert.equal(info.offset, '454');
   assert.equal(info.subtitleStreamID, '1894445');

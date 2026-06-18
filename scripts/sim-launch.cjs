@@ -1,5 +1,5 @@
 /**
- * Launch XPlay Lite in the webOS TV Simulator.
+ * Launch Plax in the webOS TV Simulator.
  *
  * Prefers `ares-launch -s <version> <APP_DIR> -sp <INSTALL_DIR>` (official CLI).
  * `-sp` must be the simulator *install folder* (contains a `webOS_TV_*_Simulator_*.app`),
@@ -21,7 +21,7 @@ var path = require('path');
 var fs = require('fs');
 var cp = require('child_process');
 
-var APP_ID = 'com.xplay.lite';
+var APP_ID = 'com.plax';
 var stampLib = require('./build-stamp-lib.cjs');
 
 function parseArg(name, fallback) {
@@ -42,7 +42,7 @@ function hasAresLaunch() {
 function verifyDistBundle(appDir) {
   var appJsPath = path.join(appDir, 'app.js');
   var indexPath = path.join(appDir, 'index.html');
-  var stampPath = path.join(appDir, '.xplay-build-stamp.json');
+  var stampPath = path.join(appDir, '.plax-build-stamp.json');
   var buildInfoPath = path.join(appDir, 'build-info.js');
 
   if (!fs.existsSync(appJsPath)) {
@@ -65,7 +65,7 @@ function verifyDistBundle(appDir) {
   if (fs.existsSync(stampPath)) {
     try { stamp = JSON.parse(fs.readFileSync(stampPath, 'utf8')); } catch (_) {}
   } else {
-    console.warn('No .xplay-build-stamp.json in dist — run `npm run build` for change summary.');
+    console.warn('No .plax-build-stamp.json in dist — run `npm run build` for change summary.');
   }
   if (!fs.existsSync(buildInfoPath)) {
     console.warn('No build-info.js in dist — run `npm run build` (runtime build check unavailable).');
@@ -80,13 +80,13 @@ function printStaleSimHints() {
   console.log('');
   console.log('If the simulator still shows "Who\'s watching?" (old UI):');
   console.log('  1. Simulator menu: File → Close App');
-  console.log('  2. Right-click the XPlay icon on the simulator home screen → Remove');
+  console.log('  2. Right-click the Plax icon on the simulator home screen → Remove');
   console.log('  3. Action → Database Reset, then run `npm run sim` again');
   console.log('  4. Or File → Launch App and pick THIS dist folder:');
   console.log('     ' + path.resolve(process.cwd(), parseArg('app-dir', process.env.WEBOS_APP_DIR || 'dist')));
   console.log('');
   console.log('Do not rely on the home-screen app icon after moving or renaming the project folder.');
-  console.log('In devtools: window.__XPLAY_BUILD__ should match the build stamp above.');
+  console.log('In devtools: window.__PLAX_BUILD__ should match the build stamp above.');
 }
 
 function quitRunningSimulators() {

@@ -127,7 +127,7 @@ function startApp(platformMajor) {
 
   logStartupBuild(typeof window !== 'undefined' ? window : null);
   if (typeof performance !== 'undefined') {
-    console.log('[XPlay Lite] boot ms:', Math.round(performance.now()));
+    console.log('[Plax] boot ms:', Math.round(performance.now()));
   }
   if (isPerfEnabled()) mark('boot:complete', { bootMs: Math.round(performance.now()) });
 }
@@ -138,12 +138,12 @@ function boot() {
   if (isPerfEnabled()) mark('boot:init');
   // Persistent (IndexedDB) cache wiring is OFF by default — it caused a
   // bootstrap hang on a B8 in the wild and we can't reach the log sink to
-  // diagnose. Opt in with localStorage.xplay_enable_persistent = '1' (or
+  // diagnose. Opt in with localStorage.plax_enable_persistent = '1' (or
   // ?persist=1) once we trust it on the target firmware. With the wiring
   // off, cache.remember() is identical to its pre-2026-06-17 behaviour.
   var enablePersistent = false;
   try {
-    if (localStorage.getItem('xplay_enable_persistent') === '1') enablePersistent = true;
+    if (localStorage.getItem('plax_enable_persistent') === '1') enablePersistent = true;
     if (window.location && window.location.search &&
         window.location.search.indexOf('persist=1') >= 0) enablePersistent = true;
   } catch (e) { /* ignore */ }
@@ -172,22 +172,44 @@ function boot() {
     }
     if (isPerfEnabled()) mark('boot:version-gate-ok');
     tvLog('boot', 'version-gate', { major: gate.major, allowed: true });
-    applyMotionCapabilityClass(gate.major, gate.reason);
+    applyMotionCapabilityClass(gate.device, gate.reason);
     startApp(gate.major);
   });
 }
 
 /**
- * Gate focus motion (scale lift on focus) by device capability. Newer webOS
- * (major >= 5), the simulator / unknown stub (major === 0), and the dev browser
- * get the class; webOS 4 keeps the strengthened static focus ring only — its
- * engine can't run the transition without scroll/focus latency. Mirrors the
- * document.body.classList.toggle pattern in motionCursor.js.
+ * Strict webOS PLATFORM major for the motion gate — ONLY versionMajor /
+ * platformVersionMajor (the real OS version), never sdkVersion/firmwareVersion.
+ * The version GATE deliberately maxes across all fields (so a TV clears the >=4
+ * minimum), but LG's firmwareVersion on the 2018 B8 is numbered ~05.xx — using
+ * that for motion wrongly read the webOS 4 B8 as "5+" and turned focus scale ON
+ * (janky grow + 32px-blur repaint = the perf regression). Use the OS field only.
  */
-function applyMotionCapabilityClass(major, reason) {
-  var motionCapable = major >= 5 || major === 0 || reason === 'dev-browser';
+function strictWebosMajor(device) {
+  if (!device) return 0;
+  var c = [];
+  ['versionMajor', 'platformVersionMajor'].forEach(function (k) {
+    if (device[k] != null) {
+      var n = parseInt(device[k], 10);
+      if (!isNaN(n)) c.push(n);
+    }
+  });
+  return c.length ? Math.max.apply(Math, c) : 0;
+}
+
+/**
+ * Enable focus motion for the whole supported range (webOS 4+, incl. the B8) and
+ * the dev browser. webOS 4 / Chromium 53 runs 60fps animation fine AS LONG AS we
+ * only animate GPU-composited properties — transform & opacity — never layout
+ * (width/height/margin) or paint (box-shadow/background). The CSS enforces that:
+ * focus transitions are transform-only, no large-blur shadows. strictWebosMajor
+ * is still logged so we can tell a real OS version from LG's firmware number.
+ */
+function applyMotionCapabilityClass(device, reason) {
+  var osMajor = strictWebosMajor(device);
+  var motionCapable = reason === 'dev-browser' || osMajor >= 4 || osMajor === 0;
   document.documentElement.classList.toggle('caps-motion', motionCapable);
-  tvLog('boot', 'motion-capability', { major: major, reason: reason || null, capsMotion: motionCapable });
+  tvLog('boot', 'motion-capability', { osMajor: osMajor, reason: reason || null, capsMotion: motionCapable });
 }
 
 if (document.readyState === 'loading') {

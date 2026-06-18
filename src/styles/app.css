@@ -1,26 +1,28 @@
-/* XPlay Lite — Plex / XPlay inspired TV UI (1920×1080, webOS TV 4.0+) */
+/* Plax — Plex / Plax inspired TV UI (1920×1080, webOS TV 4.0+) */
 
 :root {
   color-scheme: dark;
-  --bg-base: #0b0d12;
-  --bg-elevated: #141925;
-  --bg-surface: #1b2231;
-  --bg-surface-hover: #232d41;
-  --text-primary: #f3f6ff;
-  --text-secondary: #b3bfd3;
-  --text-muted: #7d889d;
-  --accent: #f0b533;
-  --accent-soft: rgba(240, 181, 51, 0.18);
+  /* Google TV Design Kit — Material 3 TV Compose/sys/dark, pulled from Figma.
+     See docs/google-tv-figma-tokens.md. Adopted wholesale (blue primary). */
+  --bg-base: #131314;            /* sys/dark/surface */
+  --bg-elevated: #1B1B1B;        /* surface-container-low */
+  --bg-surface: #1E1F20;         /* surface-container */
+  --bg-surface-hover: #282A2C;   /* surface-container-high */
+  --text-primary: #E3E3E3;       /* on-surface */
+  --text-secondary: #C4C7C5;     /* on-surface-variant */
+  --text-muted: #8E918F;         /* outline (hints/muted) */
+  --accent: #A8C7FA;             /* primary (Google TV blue) */
+  --accent-soft: rgba(168, 199, 250, 0.18);
   --brand: #e50914;
   --brand-soft: rgba(229, 9, 20, 0.14);
-  --border: #2c2c38;
-  --border-focus: #e5a00d;
+  --border: #444746;             /* outline-variant */
+  --border-focus: #A8C7FA;       /* focus ring = primary */
   --success: #5cb85c;
   --warning: #e5a00d;
   --warning-bg: rgba(229, 160, 13, 0.1);
   --danger: #e50914;
   --danger-bg: rgba(229, 9, 20, 0.1);
-  --color-on-primary: #0a0a0f;
+  --color-on-primary: #062E6F;   /* sys/dark/on-primary (dark blue on primary) */
   --color-error: #ff6b6b;
   --color-error-light: #ffb4b4;
   --radius-sm: 6px;
@@ -37,13 +39,14 @@
   --space-8: 32px;
   --space-9: 40px;
   --space-10: 48px;
-  /* 1080p TV safe area + grid rhythm (based on modern TV guidance) */
-  --safe-x: 96px;
+  /* 1080p TV safe area + 12-col grid (Google TV, ×2 of 960-MDPI 58/52/20dp):
+     116 margin + 12×104 col + 11×40 gutter = 1920 exact tiling. */
+  --safe-x: 116px;
   --safe-y: 54px;
   --layout-cols: 12;
   --layout-col-w: 104px;
   --layout-gutter: 40px;
-  --content-max: 1728px;
+  --content-max: 1688px;
   --pad-screen-x: var(--safe-x);
   --pad-screen-y: var(--safe-y);
   --font-title: 52px;
@@ -76,13 +79,17 @@
   /* Unified focus language + 10-foot targets — see tv-ui-contract.md (Workstream A) */
   --focus-w: 3px;
   --target-min: 52px;
-  --focus-glow: rgba(240, 181, 51, 0.95);  /* bright inner gold ring */
+  --focus-glow: rgba(168, 199, 250, 0.95); /* primary-blue inner focus ring */
   --focus-halo: rgba(0, 0, 0, 0.65);       /* dark outer halo: reads over bright posters */
   --focus-shadow: 0 0 0 3px var(--focus-glow), 0 0 0 7px var(--focus-halo);
+  /* Google TV control focus = light "inverse-surface" pill + dark text (NOT a ring).
+     Posters keep the ring+scale; controls invert. See docs/google-tv-figma-tokens.md. */
+  --focus-fill: #E3E3E3;     /* sys/dark/inverse-surface */
+  --focus-on-fill: #303030;  /* sys/dark/inverse-on-surface */
   --focus-scale: 1.06;       /* applied only under html.caps-motion (newer webOS) */
   --focus-motion-dur: 0.16s;
   /* Space for focus ring + (motion) scale outside poster */
-  --focus-ring-pad: 12px;
+  --focus-ring-pad: 16px;  /* room for the composited focus scale + ring (no clip) */
   /* Precomputed gutter halves — avoid calc() division on webOS 4 Chromium */
   --profile-picker-gap-half: 12px;
   --media-grid-gap-y-half: 12px;
@@ -94,6 +101,94 @@
   --z-hud: 1800;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Google TV / Android TV design-system tokens (--gt-*)
+   See docs/google-tv-foundation.md. Additive layer: new components reference
+   these roles; existing tokens above stay so un-converted screens keep working.
+   Values reuse the current (already dark, high-contrast, gold-accent) palette
+   re-expressed as Material color/type roles, plus Google's focus/elevation model.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Color roles (mapped to existing palette) */
+  --gt-primary: var(--accent);            /* key actions, active state, focus */
+  --gt-on-primary: var(--color-on-primary);
+  --gt-secondary: #7FCFFF;                /* sys/dark/secondary */
+  --gt-tertiary: #6DD58C;                 /* sys/dark/tertiary */
+  --gt-bg: var(--bg-base);
+  --gt-surface-0: var(--bg-base);         /* tonal elevation 0 → 3 */
+  --gt-surface-1: var(--bg-elevated);
+  --gt-surface-2: var(--bg-surface);
+  --gt-surface-3: var(--bg-surface-hover);
+  --gt-outline: var(--border);
+  --gt-text: var(--text-primary);         /* high-emphasis */
+  --gt-text-2: var(--text-secondary);     /* medium */
+  --gt-text-muted: var(--text-muted);     /* disabled/hint */
+  --gt-scrim: rgba(0, 0, 0, 0.6);         /* over imagery for legibility */
+
+  /* Typography — Roboto (TV-scaled Material 3 roles); system fallback on B8.
+     Roboto delivery (bundled subset vs system) decided during component work. */
+  --gt-font: 'Roboto', 'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --gt-weight-regular: 400;
+  --gt-weight-medium: 500;
+  /* Per-role weights (Material 3 TV Compose/sys typescale): display/headline/body
+     are Regular; title & label roles are Medium. */
+  --gt-weight-display: 400;
+  --gt-weight-headline: 400;
+  --gt-weight-title: 500;
+  --gt-weight-body: 400;
+  --gt-weight-label: 500;
+  /* Per-role letter-spacing, normalized to em from the Figma dp tracking values
+     (display -0.25px, title +0.15px, body +0.25px, label +0.1px) so they hold at
+     our larger TV sizes. */
+  --gt-ls-display: -0.01em;
+  --gt-ls-headline: 0;
+  --gt-ls-title: 0.01em;
+  --gt-ls-body: 0.015em;
+  --gt-ls-label: 0.008em;
+  --gt-display: var(--font-title);        /* 52 — screen / hero titles */
+  --gt-headline: var(--font-title-compact); /* 36 */
+  --gt-title: var(--font-row-label);      /* 30 — row labels */
+  --gt-body-lg: var(--font-body);         /* 24 */
+  --gt-body: var(--font-meta);            /* 22 */
+  --gt-label: var(--font-small);          /* 19 — buttons, captions */
+  --gt-card-title: var(--font-card-title);    /* 18 */
+  --gt-card-sub: var(--font-card-subtitle);   /* 16 */
+  --gt-card-meta: var(--font-card-meta);      /* 14 */
+
+  /* Radius */
+  --gt-radius-button: 999px;              /* text/icon buttons fully rounded */
+  --gt-radius-wide: var(--radius-lg);     /* 12px — wide/image buttons + cards */
+  --gt-radius-card: var(--radius-lg);
+
+  /* Focus & elevation (Google: scale + glow + outline; motion gated to webOS5+,
+     static outline-only on webOS4/B8 via the existing caps-motion gate) */
+  --gt-focus-scale: 1.1;                  /* large items (cards) */
+  --gt-focus-scale-med: 1.05;             /* medium items (buttons/chips) */
+  --gt-focus-outline-w: var(--focus-w);   /* 3px */
+  --gt-focus-outline: var(--accent);
+  --gt-focus-ring: var(--focus-shadow);   /* strong static ring (B8 cue) */
+  --gt-focus-glow: 0 12px 32px rgba(168, 199, 250, 0.28); /* elevation glow (webOS5+) */
+
+  /* Card widths from the 12-col grid (×2 of Google dp; 16:9 wide cards) */
+  --gt-card-5up: 248px;
+  --gt-card-4up: 392px;
+  --gt-card-3up: 536px;
+  /* 12-column grid spans (precomputed N*104 + (N-1)*40 — no calc() division on webOS4).
+     Place every element on one of these so D-pad routing follows grid position. */
+  --gt-col-1: 104px;
+  --gt-col-2: 248px;
+  --gt-col-3: 392px;
+  --gt-col-4: 536px;
+  --gt-col-5: 680px;
+  --gt-col-6: 824px;
+  --gt-col-7: 968px;
+  --gt-col-8: 1112px;
+  --gt-col-9: 1256px;
+  --gt-col-10: 1400px;
+  --gt-col-11: 1544px;
+  --gt-col-12: 1688px;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -102,8 +197,10 @@ html, body {
   overflow: hidden;
   background: radial-gradient(circle at 30% -10%, #1d2433 0%, var(--bg-base) 42%);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--gt-font);
   font-size: var(--font-body);
+  font-weight: var(--gt-weight-body);
+  letter-spacing: var(--gt-ls-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -130,6 +227,27 @@ body.cursor-visible .player-skip-intro-prompt {
 }
 
 html { min-width: 1280px; min-height: 720px; }
+
+/* Dither overlay — breaks up gradient BANDING on the 8-bit OLED panel (Chrome 53
+   can't render 10-bit gradients; a faint grayscale noise layer hides the steps).
+   Static, pointer-events none, ~3.5% opacity grayscale SVG noise tiled full-screen.
+   webOS 4 safe: explicit edges (no `inset`), no animation, rasterized once. */
+body.player-active::after { display: none; }
+
+body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 2147483000;
+  opacity: 0.05;
+  background-image: url("data:image/png;base64,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");
+  background-repeat: repeat;
+  mix-blend-mode: soft-light;
+}
 
 #app-root { width: 100%; height: 100%; position: relative; }
 
@@ -221,13 +339,16 @@ html { min-width: 1280px; min-height: 720px; }
 .player-stream-pill:focus,
 .player-media-info-btn:focus,
 #btn-test-connection:focus {
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
+  /* Google TV focus = invert to a light pill with dark text/icons (currentColor),
+     no ring. This IS the focus indicator for controls. */
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* Capability-gated motion (newer webOS / sim / dev browser only — A).
    webOS 4 never gets this class, so it keeps the static ring above. */
-html.caps-motion .btn,
 html.caps-motion .card:not(.media-card),
 html.caps-motion .nav-item,
 html.caps-motion .library-item,
@@ -243,15 +364,28 @@ html.caps-motion .detail-episode-picker,
 html.caps-motion .detail-link,
 html.caps-motion .detail-network-retest,
 html.caps-motion .detail-network-info-btn,
-html.caps-motion .detail-watchlist-btn,
-html.caps-motion .detail-secondary-actions .btn,
-html.caps-motion .player-control-pill,
-html.caps-motion .player-stream-pill,
-html.caps-motion #btn-test-connection {
-  transition: transform var(--focus-motion-dur) ease, box-shadow var(--focus-motion-dur) ease;
+html.caps-motion .detail-watchlist-btn {
+  /* Transform-only = GPU-composited, no per-frame repaint (webOS 4 smooth). The
+     focus ring (box-shadow) applies instantly — cheap, and not animated. */
+  transition: transform var(--focus-motion-dur) ease;
 }
 
-html.caps-motion .btn:focus,
+/* Text-bearing CTA buttons do NOT scale: Chromium 53 rasterises the layer at
+   rest size and GPU-stretches it on scale(>1) → blurry text. Emphasis is the
+   instant focus ring + a composited background lift (matches the player pills). */
+html.caps-motion .btn,
+html.caps-motion #btn-test-connection {
+  transition: background var(--focus-motion-dur) ease;
+}
+
+/* Player pills keep their size on focus (no scale → never clip in tight rows or
+   the menu sheet). Focus is shown by the ring + an elevation drop shadow below;
+   only the shadow/background transition needs smoothing. */
+html.caps-motion .player-control-pill,
+html.caps-motion .player-stream-pill {
+  transition: box-shadow var(--focus-motion-dur) ease, background var(--focus-motion-dur) ease;
+}
+
 html.caps-motion .card:not(.media-card):focus,
 html.caps-motion .nav-item:focus,
 html.caps-motion .library-item:focus,
@@ -267,13 +401,11 @@ html.caps-motion .detail-episode-picker:focus,
 html.caps-motion .detail-link:focus,
 html.caps-motion .detail-network-retest:focus,
 html.caps-motion .detail-network-info-btn:focus,
-html.caps-motion .detail-watchlist-btn:focus,
-html.caps-motion .detail-secondary-actions .btn:focus,
-html.caps-motion .player-control-pill:focus,
-html.caps-motion .player-stream-pill:focus,
-html.caps-motion #btn-test-connection:focus {
+html.caps-motion .detail-watchlist-btn:focus {
   transform: scale(var(--focus-scale));
 }
+
+/* (.btn focus = the W1 light-fill inversion above; no extra motion background.) */
 
 /* ── Screens ── */
 .screen {
@@ -314,7 +446,7 @@ html.caps-motion #btn-test-connection:focus {
 .screen-title {
   font-size: var(--font-title);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--gt-ls-display);
   line-height: 1.1;
   margin-bottom: var(--space-7);
   color: var(--text-primary);
@@ -349,29 +481,35 @@ html.caps-motion #btn-test-connection:focus {
   display: flex;
   flex-direction: column;
   width: 72px;
+  /* Horizontal padding keeps items + focus ring off the rail edges. With that
+     8px inset the ring fits inside the rail, so overflow:hidden is safe again —
+     and it makes the expanding width *reveal* the labels (no display pop). */
+  padding: var(--space-3) var(--space-2);
   overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* Smooth the collapse/expand + entry peek on capable devices; webOS 4 snaps. */
-html.caps-motion .browsing-hub-nav-host {
-  transition: width var(--focus-motion-dur) ease;
+  /* Expanding in-flow PUSHES the content (no overlay/cover). overflow:hidden
+     makes the growing width reveal the labels instead of popping them. Smooth
+     eased width transition on ALL devices incl. webOS 4. */
+  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Expand to full sidebar when any descendant has focus, or during the
    one-shot entry "peek" hint (E) so a cold landing reveals where nav lives. */
-.browsing-hub-nav-host:focus-within,
-.browsing-hub-nav-host--peek {
+/* Expand/collapse is driven by JS classes (--peek, --expanded), NOT :focus-within:
+   Chrome 53 (webOS 4) can't parse :focus-within and drops the WHOLE rule it's in,
+   which previously killed both the expand and the label-hide rules on the B8. */
+.browsing-hub-nav-host--peek,
+.browsing-hub-nav-host--expanded {
   width: 220px;
 }
 
 /* Hide labels and section headings when collapsed. */
-.browsing-hub-nav-host:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item__label,
-.browsing-hub-nav-host:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-section__title {
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item__label,
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-section__title {
   display: none;
 }
 
-.browsing-hub-nav-host:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item {
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
   padding-left: 14px;
   padding-right: 14px;
   justify-content: center;
@@ -381,14 +519,14 @@ html.caps-motion .browsing-hub-nav-host {
    peeking, the active item (aria-current="page") stacks its icon over a compact
    accent label so the current section stays legible from a cold landing. The
    72px width holds it; other items remain icon-only. */
-.browsing-hub-nav-host--label-active:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item[aria-current="page"] {
+.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] {
   flex-direction: column;
   justify-content: center;
   padding-top: var(--space-2);
   padding-bottom: var(--space-2);
 }
 
-.browsing-hub-nav-host--label-active:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item[aria-current="page"] .browsing-hub-item__label {
+.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] .browsing-hub-item__label {
   display: block;
   flex: none;
   width: 100%;
@@ -401,7 +539,7 @@ html.caps-motion .browsing-hub-nav-host {
 }
 
 /* Stacked active item: drop the horizontal icon->label gap. */
-.browsing-hub-nav-host--label-active:not(:focus-within):not(.browsing-hub-nav-host--peek) .browsing-hub-item[aria-current="page"] .browsing-hub-item__icon + .browsing-hub-item__label {
+.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] .browsing-hub-item__icon + .browsing-hub-item__label {
   margin-left: 0;
 }
 
@@ -459,21 +597,21 @@ html.caps-motion .browsing-hub-nav-host {
   width: 100%;
   min-height: var(--target-min);
   text-align: left;
-  padding: var(--space-3) 14px var(--space-3) 10px;
+  padding: var(--space-3) 16px;
   margin-bottom: 2px;
-  border-radius: var(--radius-md);
+  border-radius: var(--gt-radius-button);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--gt-text-2);
   border: none;
-  border-left: 4px solid transparent;
-  font-size: var(--font-meta);
+  font-size: var(--gt-body);
 }
 
 .browsing-hub-item__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
 }
 
@@ -496,9 +634,9 @@ html.caps-motion .browsing-hub-nav-host {
 }
 
 .browsing-hub-item.active {
-  color: var(--accent);
-  border-left-color: var(--accent);
-  font-weight: 600;
+  color: var(--gt-primary);
+  background: var(--accent-soft);
+  font-weight: var(--gt-weight-medium);
 }
 
 .browsing-hub-item.active .hub-icon {
@@ -551,6 +689,98 @@ html.caps-motion .browsing-hub-nav-host {
 .home-feed-host {
   flex: 1;
   min-height: 0;
+  /* Must be a flex column so .home-feed's flex:1/min-height:0 actually bound its
+     height — otherwise the feed grows to full content height, overflow-y never
+     engages, and D-pad scrolls the whole DOCUMENT (dragging the fixed sidebar
+     along and losing each rail's vertical position). The sidebar is a sibling
+     OUTSIDE this scroller, so confining the scroll here keeps it fixed. */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Immersive List hero (home screen backdrop + meta overlay) ── */
+.il-hero {
+  position: relative;
+  width: 100%;
+  height: 480px;
+  overflow: hidden;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+}
+.il-hero__backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-size: cover;
+  background-position: center top;
+  transition: opacity 0.35s ease;
+}
+.il-hero__backdrop--a { opacity: 1; }
+.il-hero__backdrop--b { opacity: 0; }
+.il-hero__scrim {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* cinematic gradient: dark left side for text, dark bottom edge, transparent top-right */
+  background:
+    linear-gradient(to right, rgba(19,19,20,0.97) 28%, rgba(19,19,20,0.6) 55%, transparent 80%),
+    linear-gradient(to top, rgba(19,19,20,0.85) 0%, transparent 40%);
+}
+.il-hero__content {
+  position: absolute;
+  bottom: 36px;
+  left: var(--pad-screen-x);
+  width: 42%;
+}
+.il-hero__label {
+  font-size: var(--gt-label);
+  font-weight: var(--gt-weight-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.il-hero__title {
+  font-size: var(--gt-display);
+  font-weight: 600;
+  letter-spacing: var(--gt-ls-display);
+  line-height: 1.1;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+  overflow: hidden;
+  /* 2-line cap without line-clamp (Chrome 53) */
+  max-height: 122px;
+}
+.il-hero__meta {
+  font-size: var(--gt-body);
+  font-weight: var(--gt-weight-body);
+  letter-spacing: var(--gt-ls-body);
+  color: var(--text-secondary);
+  margin: 0 0 14px;
+}
+.il-hero__overview {
+  font-size: var(--gt-body-lg);
+  font-weight: var(--gt-weight-body);
+  letter-spacing: var(--gt-ls-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+  overflow: hidden;
+  max-height: 110px;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+.il-hero--blur-overview .il-hero__overview {
+  opacity: 0;
+}
+/* Fade the whole hero when sidebar has focus (no relevant card) */
+.il-hero--sidebar-focus .il-hero__content {
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
 }
 
 .home-feed {
@@ -574,29 +804,35 @@ html.caps-motion .browsing-hub-nav-host {
   max-width: 980px;
 }
 
-/* ── Buttons / chips / nav — one base (C) ──
-   Shared padding, radius, font and a 10-foot min target height so a primary
-   action, secondary action, chip and nav pill all read at the same size. */
+/* ── Buttons / chips / nav — one base (C), Google TV styling ──
+   Google TV buttons are fully-rounded (pill). Tonal surface for secondary,
+   gold-filled for primary. Shared 10-foot min target + type so every CTA across
+   all screens reads consistently (they all use .btn / .btn-primary). */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: var(--target-min);
   padding: var(--space-3) var(--space-7);
-  background: var(--bg-surface);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: var(--font-meta);
-  font-weight: 500;
+  background: var(--gt-surface-2);
+  border-radius: var(--gt-radius-button);
+  color: var(--gt-text);
+  font-size: var(--gt-body);
+  font-weight: var(--gt-weight-label);
+  letter-spacing: var(--gt-ls-label);
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--color-on-primary);
+  background: var(--gt-primary);
+  color: var(--gt-on-primary);
   font-weight: 600;
 }
 
-/* .btn-primary uses the shared W1 focus ring (no one-off white border). */
+/* CTA focus = the cheap hard ring (selector). NO large-blur glow — 32px-blur
+   box-shadows repaint badly on the B8 GPU (perf). border-color from the W1 rule. */
+.btn:focus {
+  box-shadow: var(--focus-shadow);
+}
 
 .btn:disabled {
   opacity: 0.4;
@@ -665,9 +901,9 @@ html.caps-motion .browsing-hub-nav-host {
 }
 
 .nav-item.active {
-  background: linear-gradient(180deg, rgba(240, 181, 51, 0.2) 0%, rgba(240, 181, 51, 0.12) 100%);
+  background: linear-gradient(180deg, rgba(168, 199, 250, 0.2) 0%, rgba(168, 199, 250, 0.12) 100%);
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px rgba(240, 181, 51, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(168, 199, 250, 0.6);
 }
 
 .nav-item:focus {
@@ -951,7 +1187,10 @@ html.caps-motion .browsing-hub-nav-host {
 }
 
 .card-text {
-  margin-top: var(--space-2);
+  /* Clearance so the focus ring / focus-grow on the poster never overlaps the
+     title+meta below it. 20px clears both the B8 static ring (7px) and the
+     webOS5+ 1.1x poster grow (~13.5px on a 270px poster) with margin to spare. */
+  margin-top: var(--space-5);
   max-width: 100%;
 }
 
@@ -1006,11 +1245,67 @@ html.caps-motion .browsing-hub-nav-host {
 /* Motion: scale the poster wrap (transform-origin: center). The --focus-ring-pad
    reserved around rails/grids keeps the lifted, ringed poster from clipping. */
 html.caps-motion .media-card .card-poster-wrap {
-  transition: transform var(--focus-motion-dur) ease, box-shadow var(--focus-motion-dur) ease;
+  /* Transform-only = GPU-composited, no per-frame repaint (webOS 4 smooth). The
+     focus ring (box-shadow) applies instantly — cheap, and not animated. */
+  transition: transform var(--focus-motion-dur) ease;
 }
 
 html.caps-motion .media-card:focus .card-poster-wrap {
   transform: scale(var(--focus-scale));
+}
+
+/* ── Google TV redesign — Home (sidebar drawer + rails) ──────────────────── */
+/* App mark at the top of the nav drawer */
+.browsing-hub-brand {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: var(--space-2) 16px;
+  margin-bottom: var(--space-4);
+}
+.browsing-hub-brand__mark {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--gt-primary);
+}
+.browsing-hub-brand__mark::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -8px 0 0 -5px;
+  border-style: solid;
+  border-width: 8px 0 8px 13px;
+  border-color: transparent transparent transparent var(--gt-on-primary);
+}
+.browsing-hub-brand__name {
+  margin-left: var(--space-4);
+  font-size: var(--gt-headline);
+  font-weight: var(--gt-weight-medium);
+  color: var(--gt-text);
+  white-space: nowrap;
+}
+/* Collapsed rail: hide brand name, center the mark */
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand {
+  justify-content: center;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand__name {
+  display: none;
+}
+/* Pin the System (settings) section to the bottom of the drawer */
+.browsing-hub-nav-host > .browsing-hub-section--system {
+  margin-top: auto;
+}
+/* Card focus = Google-style lift via composited scale + the cheap hard ring.
+   No large-blur glow — it repaints badly on the B8 and isn't needed for the cue. */
+html.caps-motion .media-card:focus .card-poster-wrap {
+  transform: scale(var(--gt-focus-scale));
+  box-shadow: var(--focus-shadow);
 }
 
 .media-card .badge {
@@ -1044,7 +1339,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   padding: 0;
   border-radius: var(--radius-sm);
   background: rgba(7, 10, 16, 0.9);
-  color: #fff;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1102,17 +1397,19 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .row-label {
   font-size: var(--font-row-label);
-  font-weight: 600;
+  font-weight: var(--gt-weight-title);
   margin-bottom: 14px;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--gt-ls-title);
 }
 
 .row-scroll {
   display: flex;
   overflow-x: auto;
   overflow-y: visible;
-  padding: 8px var(--focus-ring-pad) 16px;
+  /* Top padding gives the focus-scaled poster room to grow up without clipping
+     against the row label / feed top (1.1x on a 270px poster ≈ 13.5px). */
+  padding: 18px var(--focus-ring-pad) 16px;
   scroll-padding-left: var(--focus-ring-pad);
   scroll-padding-right: var(--focus-ring-pad);
   width: 100%;
@@ -1308,23 +1605,30 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .detail-actions {
-  margin: 0 -6px var(--space-7);
+  margin: 0 -10px var(--space-7);
   display: flex;
   flex-wrap: wrap;
 }
 
 .detail-actions > * {
-  margin: 6px;
+  /* 10px breathing around every CTA so the focus ring (7px) + 1.06x grow never
+     touches a neighbour or clips. */
+  margin: 10px;
 }
 
 .detail-primary-actions {
-  margin: 0 0 var(--space-4);
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  /* Inner padding gives the row's first/last CTA room for its ring + grow so the
+     Play button doesn't clip at the container edge; negative margin keeps the
+     buttons visually aligned to the content column. */
+  margin: 0 -10px var(--space-4);
+  padding: 4px 0;
 }
 
-.detail-primary-actions > * + * {
-  margin-left: var(--space-3);
+.detail-primary-actions > * {
+  margin: 6px 10px;
 }
 
 .detail-actions-secondary {
@@ -1338,7 +1642,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .detail-disclosure-toggle {
   background: transparent;
-  border-color: rgba(240, 181, 51, 0.5);
+  border-color: rgba(168, 199, 250, 0.5);
   color: var(--accent);
 }
 
@@ -1404,7 +1708,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .detail-setting-chip--active {
   background: var(--accent-soft);
-  border-color: rgba(240, 181, 51, 0.45);
+  border-color: rgba(168, 199, 250, 0.45);
   color: var(--accent);
   font-weight: 600;
 }
@@ -1643,11 +1947,14 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .detail-secondary-actions {
   display: flex;
   flex-wrap: wrap;
-  margin-top: var(--space-3);
+  /* Breathing room around each secondary CTA (ring + grow); negative margin keeps
+     alignment. Matches .detail-primary-actions so rows don't clip on focus. */
+  margin: var(--space-2) -10px 0;
+  padding: 4px 0;
 }
 
-.detail-secondary-actions > * + * {
-  margin-left: var(--space-3);
+.detail-secondary-actions > * {
+  margin: 6px 10px;
 }
 
 .detail-secondary-actions .btn {
@@ -2286,7 +2593,6 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   font-size: var(--font-small);
   font-weight: 600;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-muted);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -2328,17 +2634,19 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   font-size: var(--font-body);
 }
 
+/* Selected = blue container fill + accent (checkmark added in markup). */
 .detail-modal-option--active {
   border-left-color: var(--accent);
   color: var(--accent);
-  background: rgba(240, 181, 51, 0.06);
+  background: rgba(168, 199, 250, 0.16);
 }
 
+/* Focused = Google light-fill inversion (overrides selected when both). */
 .detail-modal-option:focus {
   outline: none;
-  border-left-color: var(--accent);
-  background: rgba(240, 181, 51, 0.12);
-  color: var(--accent);
+  border-left-color: transparent;
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
 }
 
 .detail-modal-empty {
@@ -2365,95 +2673,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   border-radius: 6px;
 }
 
-/* ── Exit confirm (H) — reuses the detail-modal look ── */
-.exit-confirm-modal {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: var(--z-loading);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--pad-screen-y) var(--pad-screen-x);
-  background: rgba(0, 0, 0, 0.72);
-}
-
-.exit-confirm-modal[hidden] {
-  display: none !important;
-}
-
-.exit-confirm-sheet {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  max-width: 560px;
-  padding: var(--space-9) var(--space-8) var(--space-8);
-  background: rgba(13, 17, 26, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  text-align: center;
-}
-
-.exit-confirm-title {
-  margin: 0 0 var(--space-7);
-  font-size: var(--font-title-compact);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.exit-confirm-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.exit-confirm-actions > * + * {
-  margin-left: var(--space-4);
-}
-
-.exit-confirm-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--target-min);
-  min-width: 160px;
-  padding: var(--space-3) var(--space-7);
-  border: var(--focus-w) solid transparent;
-  border-radius: var(--radius-md);
-  outline: none;
-  cursor: pointer;
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  font-size: var(--font-meta);
-  font-weight: 600;
-}
-
-.exit-confirm-btn:focus {
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
-}
-
-.exit-confirm-btn--danger {
-  background: var(--danger-bg);
-  color: var(--color-error-light);
-  border-color: rgba(229, 9, 20, 0.45);
-}
-
-.exit-confirm-btn--danger:focus {
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
-}
-
-html.caps-motion .exit-confirm-btn {
-  transition: transform var(--focus-motion-dur) ease, box-shadow var(--focus-motion-dur) ease;
-}
-
-html.caps-motion .exit-confirm-btn:focus {
-  transform: scale(var(--focus-scale));
-}
+/* Exit-confirm modal removed — Google TV prohibits gating back-to-exit behind a
+   confirm screen. Quitting is now a global long-press Back/Exit (see router.js). */
 
 /* ── Player overlay ── */
 .player-overlay {
@@ -2464,11 +2685,16 @@ html.caps-motion .exit-confirm-btn:focus {
   padding: var(--space-7) var(--pad-screen-x) var(--space-9);
   background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 15, 0.92) 40%, rgba(10, 10, 15, 0.98) 100%);
   z-index: var(--z-player-overlay);
+  opacity: 1;
+  transition: opacity 0.22s ease;
 }
 
 .player-overlay--hidden {
+  opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  /* delay visibility:hidden so the opacity fade plays first */
+  transition: opacity 0.22s ease, visibility 0s linear 0.22s;
 }
 
 .player-overlay--hidden.player-overlay--skip-intro-active {
@@ -2672,7 +2898,7 @@ html.caps-motion .exit-confirm-btn:focus {
   border: 3px solid var(--color-error);
   border-radius: var(--radius-md);
   background: rgba(90, 12, 12, 0.94);
-  color: #fff;
+  color: var(--text-primary);
   font-size: 28px;
   font-weight: 600;
   line-height: 1.35;
@@ -2950,8 +3176,11 @@ html.caps-motion .exit-confirm-btn:focus {
 
 .player-control-pill:focus {
   outline: none;
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
+  /* Google focus = light-fill pill + dark icon (currentColor). */
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .player-control-pill--play {
@@ -2995,8 +3224,10 @@ html.caps-motion .exit-confirm-btn:focus {
 
 .player-stream-pill:focus {
   outline: none;
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .player-stream-pill--icon {
@@ -3087,7 +3318,6 @@ html.caps-motion .exit-confirm-btn:focus {
   font-size: var(--font-small);
   font-weight: 600;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-muted);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -3191,18 +3421,18 @@ html.caps-motion .exit-confirm-btn:focus {
 .player-menu-option--active {
   border-left-color: var(--accent);
   color: var(--accent);
-  background: rgba(240, 181, 51, 0.06);
+  background: rgba(168, 199, 250, 0.16);
 }
 
 .player-menu-option:focus {
   outline: none;
-  border-left-color: var(--accent);
-  background: rgba(240, 181, 51, 0.12);
-  color: var(--accent);
+  border-left-color: transparent;
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
 }
 
 .player-menu-option--active:focus {
-  color: var(--accent);
+  color: var(--focus-on-fill);
 }
 
 .player-hint {
@@ -3240,7 +3470,7 @@ html.caps-motion .exit-confirm-btn:focus {
 }
 .player-media-info-btn:hover,
 .player-media-info-btn:focus {
-  background: rgba(240, 181, 51, 0.14);
+  background: rgba(168, 199, 250, 0.14);
   border-color: var(--accent);
   color: var(--accent);
   outline: none;
@@ -3291,7 +3521,6 @@ html.caps-motion .exit-confirm-btn:focus {
   font-size: var(--font-meta);
   font-weight: 600;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -3564,7 +3793,7 @@ html.caps-motion .exit-confirm-btn:focus {
 }
 
 /* Spinner matches compact title cap height (var(--font-title-compact) = 36px) */
-.profile-picker-header .xplay-spinner-wrap {
+.profile-picker-header .plax-spinner-wrap {
   font-size: var(--font-title-compact);
   line-height: 1.1;
 }
@@ -3895,68 +4124,68 @@ video.native-player.subtitle-no-bg ::cue {
 }
 
 /* ── Static loaders (no keyframes / transitions) ── */
-.xplay-loader-wrap {
+.plax-loader-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.xplay-loader-wrap > * + * {
+.plax-loader-wrap > * + * {
   margin-top: 18px;
 }
 
-.xplay-loader {
+.plax-loader {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.xplay-loader > * + * {
+.plax-loader > * + * {
   margin-left: 12px;
 }
 
-.xplay-loader-dot {
+.plax-loader-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--border);
 }
 
-.xplay-loader-dot-active {
+.plax-loader-dot-active {
   background: var(--accent);
   width: 14px;
   height: 14px;
 }
 
-.xplay-loader-large .xplay-loader-dot {
+.plax-loader-large .plax-loader-dot {
   width: 14px;
   height: 14px;
 }
 
-.xplay-loader-large .xplay-loader-dot-active {
+.plax-loader-large .plax-loader-dot-active {
   width: 18px;
   height: 18px;
 }
 
-.xplay-loader-label {
+.plax-loader-label {
   font-size: var(--font-meta);
   color: var(--text-secondary);
   text-align: center;
 }
 
 /* ── Circular spinner (animated ring) ── */
-.xplay-spinner-wrap {
+.plax-spinner-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.xplay-spinner-wrap[hidden] {
+.plax-spinner-wrap[hidden] {
   display: none;
 }
 
-.xplay-spinner {
+.plax-spinner {
   display: block;
   border-radius: 50%;
   border-style: solid;
@@ -3965,25 +4194,25 @@ video.native-player.subtitle-no-bg ::cue {
   animation: xplay-spinner-spin 0.75s linear infinite;
 }
 
-.xplay-spinner-small .xplay-spinner {
+.plax-spinner-small .plax-spinner {
   width: 28px;
   height: 28px;
   border-width: 2px;
 }
 
-.xplay-spinner-medium .xplay-spinner {
+.plax-spinner-medium .plax-spinner {
   width: 40px;
   height: 40px;
   border-width: 3px;
 }
 
-.xplay-spinner-large .xplay-spinner {
+.plax-spinner-large .plax-spinner {
   width: 52px;
   height: 52px;
   border-width: 4px;
 }
 
-.xplay-spinner-em .xplay-spinner {
+.plax-spinner-em .plax-spinner {
   width: 1em;
   height: 1em;
   border-width: 0.085em;
@@ -4075,7 +4304,7 @@ video.native-player.subtitle-no-bg ::cue {
 
 
 /* On-TV debug log (Settings → Debug log overlay, or ares-launch -p '{"debug":1}') */
-.xplay-debug-overlay {
+.plax-debug-overlay {
   position: fixed;
   left: 0;
   right: 0;
@@ -4097,7 +4326,7 @@ video.native-player.subtitle-no-bg ::cue {
 }
 
 /* During playback, pin log strip to top so player chrome cannot obscure it. */
-.xplay-debug-overlay--player {
+.plax-debug-overlay--player {
   top: 0;
   bottom: auto;
   max-height: 30vh;
@@ -4144,4 +4373,273 @@ video.native-player.subtitle-no-bg ::cue {
 .vgrid-spacer {
   pointer-events: none;
   flex-basis: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Google TV component vocabulary (src/ui/components/controls.js)
+   Buttons (variants), chips, pill-tabs, list-items, picker modal. webOS 4 safe:
+   no grid/gap/clamp/inset; motion gated behind html.caps-motion. Focusable as
+   native <button>; focus ring defined per-class below (the base ring rule lists
+   only legacy classes, so gt-* declare their own).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Button variants (extend the base .btn at the top of the file) */
+.btn-outline {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--gt-text-2);
+  font-weight: var(--gt-weight-medium);
+}
+.btn-outline:focus {
+  border-color: var(--border-focus);
+  color: var(--gt-text);
+}
+.btn-icon {
+  min-width: var(--target-min);
+  padding: var(--space-3);
+}
+.btn-wide {
+  border-radius: var(--gt-radius-wide);
+}
+.btn-icon-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+.btn-icon-glyph svg { width: 100%; height: 100%; }
+.btn-icon-glyph + .btn-label { margin-left: var(--space-3); }
+
+/* Chip */
+.gt-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: var(--space-3) 22px;
+  border: var(--focus-w) solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--gt-surface-2);
+  color: var(--gt-text-2);
+  font-size: var(--gt-body);
+  font-weight: var(--gt-weight-label);
+  letter-spacing: var(--gt-ls-label);
+  white-space: nowrap;
+  outline: none;
+}
+.gt-chip--active {
+  background: var(--accent-soft);
+  border-color: rgba(168, 199, 250, 0.45);
+  color: var(--accent);
+  font-weight: 600;
+}
+.gt-chip:focus {
+  border-color: transparent;
+  box-shadow: none;
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+}
+
+/* Pill tab bar */
+.gt-tabs {
+  display: flex;
+  align-items: center;
+}
+.gt-tabs > * + * { margin-left: var(--space-3); }
+.gt-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: var(--space-3) var(--space-7);
+  border: var(--focus-w) solid transparent;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--gt-text-2);
+  font-size: var(--gt-body);
+  font-weight: var(--gt-weight-label);
+  letter-spacing: var(--gt-ls-label);
+  white-space: nowrap;
+  outline: none;
+}
+.gt-tab--active {
+  /* gradient pill + inset gold ring (avoid :focus-within; JS sets the class) */
+  background: linear-gradient(180deg, rgba(168, 199, 250, 0.2) 0%, rgba(168, 199, 250, 0.12) 100%);
+  box-shadow: inset 0 0 0 1px rgba(168, 199, 250, 0.6);
+  color: var(--accent);
+  font-weight: 600;
+}
+.gt-tab:focus {
+  border-color: transparent;
+  box-shadow: none;
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+}
+
+/* Underline tab variant (season tabs): text tabs + a sliding underline bar.
+   The bar slides via transform: translateX (GPU-composited). */
+.gt-tabs--underline {
+  position: relative;
+}
+.gt-tabs--underline .gt-tab {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: var(--space-3) var(--space-4);
+  color: var(--gt-text-2);
+}
+.gt-tabs--underline .gt-tab--active {
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent);
+}
+.gt-tabs--underline .gt-tab:focus {
+  /* keep the light-fill focus pill for the focused tab (consistent control focus) */
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+}
+.gt-tabs__indicator {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: var(--accent);
+  border-radius: 2px;
+  transform: translateX(0);
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), width 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* List item */
+.gt-list-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--target-min);
+  padding: var(--space-4) var(--space-5);
+  border: var(--focus-w) solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--gt-text);
+  font-size: var(--gt-body);
+  text-align: left;
+  outline: none;
+}
+.gt-list-item__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.gt-list-item__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gt-list-item__sublabel {
+  margin-top: var(--space-1);
+  font-size: var(--gt-card-sub);
+  color: var(--gt-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gt-list-item__trailing {
+  margin-left: var(--space-4);
+  flex-shrink: 0;
+  color: var(--gt-text-2);
+}
+/* Selected (not focused) = blue container fill + accent text/check (Google list). */
+.gt-list-item--selected {
+  background: rgba(168, 199, 250, 0.16);
+  color: var(--accent);
+}
+.gt-list-item--selected .gt-list-item__trailing { color: var(--accent); }
+/* Focused = light-fill inversion (overrides selected when both). */
+.gt-list-item:focus {
+  border-color: transparent;
+  box-shadow: none;
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+}
+.gt-list-item:focus .gt-list-item__trailing,
+.gt-list-item:focus .gt-list-item__sublabel { color: var(--focus-on-fill); }
+
+/* Picker modal: selected = light pill + trailing checkmark */
+.gt-modal-option {
+  display: flex;
+  align-items: center;
+}
+.gt-modal-option__label { flex: 1; min-width: 0; }
+.gt-modal-option__detail {
+  margin-left: var(--space-4);
+  color: var(--gt-text-muted);
+  font-size: var(--gt-card-sub);
+}
+.gt-modal-option__check {
+  margin-left: var(--space-4);
+  flex-shrink: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+.gt-modal-option--selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* List items keep the tiny 1.025x lift (text blur imperceptible at that scale).
+   Chips/tabs are text-bearing → no scale (fuzz); ring + background lift instead. */
+html.caps-motion .gt-list-item {
+  transition: transform var(--focus-motion-dur) ease;
+}
+html.caps-motion .gt-list-item:focus {
+  transform: scale(1.025);
+}
+/* gt-chip / gt-tab focus = the W1-style light-fill inversion above; the bg change
+   is instant (cheap). No motion-specific override needed. */
+
+/* ── Modal / picker entrance (compositor-only: opacity + translateY, no scale so
+   text never fuzzes). Plays once when the modal element is inserted/shown. ── */
+@keyframes gt-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes gt-sheet-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+html.caps-motion .detail-modal,
+html.caps-motion .gt-modal,
+html.caps-motion .player-track-modal {
+  animation: gt-overlay-in 0.16s ease;
+}
+html.caps-motion .detail-modal-sheet,
+html.caps-motion .gt-modal-sheet,
+html.caps-motion .player-track-modal-sheet {
+  animation: gt-sheet-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+html.caps-motion .gt-list-item:focus {
+  transform: scale(1.025);
+}
+
+/* ── Text-input modal (openTextInputModal factory) ── */
+.gt-text-input-wrap {
+  padding: var(--space-4) 0;
+}
+.tv-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: var(--font-body);
+  padding: 14px 18px;
+  background: var(--gt-surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  outline: none;
+}
+.tv-text-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }

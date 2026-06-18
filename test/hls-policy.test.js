@@ -36,7 +36,7 @@ test.beforeEach(function () {
   resetPlexDeviceInfoForTest();
   savedPalmSystem = globalThis.PalmSystem;
   savedWebOS = globalThis.webOS;
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   mockTvWebOS({ modelName: 'OLED55B9PUA', version: '4.9.0' });
 });
 

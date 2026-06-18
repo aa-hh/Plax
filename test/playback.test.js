@@ -314,7 +314,7 @@ test('resolveSessionPartPath prefers version partKey over metadata key', functio
 });
 
 test('resolveSessionPartPath strips query string from Plex Part keys', function () {
-  var dirty = '/library/parts/231208/1779142932/file.mkv?checkFiles=1&includeBandwidths=1&offset=454&X-Plex-Incomplete-Segments=1&X-Plex-Session-Identifier=xplay-test';
+  var dirty = '/library/parts/231208/1779142932/file.mkv?checkFiles=1&includeBandwidths=1&offset=454&X-Plex-Incomplete-Segments=1&X-Plex-Session-Identifier=plax-test';
   assert.equal(
     resolveSessionPartPath({ version: { partKey: dirty } }),
     '/library/parts/231208/1779142932/file.mkv'
@@ -389,7 +389,7 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   var session = {
     item: { key: '/library/metadata/999', ratingKey: '999' },
     version: { partKey: '/library/parts/abc/video.mkv' },
-    sessionId: 'xplay-test-session',
+    sessionId: 'plax-test-session',
     playbackSessionId: 'client-playback-session',
     transcodeSessionId: 'plex-subtitle-session',
     subtitleStreamId: 1893985,
@@ -570,7 +570,7 @@ test('buildSubtitleFetchPlan isolates transcode-hls subtitle extraction over HTT
     subtitleStreamId: 2,
     transcodeSessionId: 'plex-server-session',
     playbackSessionId: 'client-session-only',
-    sessionId: 'xplay-should-not-win',
+    sessionId: 'plax-should-not-win',
     mediaIndex: 0,
     partIndex: 0
   };
@@ -612,10 +612,10 @@ test('buildSubtitleFetchPlan keeps transcode-http subtitle session context', fun
 
 test('resolveSubtitleSessionId returns PMS transcode session only', function () {
   assert.equal(
-    resolveSubtitleSessionId({ sessionId: 'xplay-1', transcodeSessionId: 'plex-abc' }),
+    resolveSubtitleSessionId({ sessionId: 'plax-1', transcodeSessionId: 'plex-abc' }),
     'plex-abc'
   );
-  assert.equal(resolveSubtitleSessionId({ sessionId: 'xplay-1' }), null);
+  assert.equal(resolveSubtitleSessionId({ sessionId: 'plax-1' }), null);
 });
 
 test('prepareClientSubtitlePlayback on HLS remux selects part only (no decision prime)', async function () {
@@ -681,7 +681,7 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     var session = {
       item: { key: '/library/metadata/33622', ratingKey: '33622' },
       version: { partKey: '/library/parts/231208/1779142932/file.mkv' },
-      sessionId: 'xplay-1779812905191',
+      sessionId: 'plax-1779812905191',
       subtitleStreamId: 1894444,
       audioStreamId: 1894443,
       playbackOffsetMs: 676730,
@@ -713,7 +713,7 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     assert.equal(q.get('X-Plex-Session-Identifier'), null);
     assert.equal(decision.init.headers.Accept, 'application/xml');
     assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
-    assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'xplay-1779812905191');
+    assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'plax-1779812905191');
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;
@@ -741,7 +741,7 @@ test('prepareClientSubtitlePlayback adopts server resourceSession for subtitle f
     var session = {
       item: { key: '/library/metadata/33622', ratingKey: '33622' },
       version: { partKey: '/library/parts/231208/1779142932/file.mkv' },
-      sessionId: 'xplay-1779812905191',
+      sessionId: 'plax-1779812905191',
       subtitleStreamId: 1894444,
       mediaIndex: 0,
       partIndex: 0
@@ -756,7 +756,7 @@ test('prepareClientSubtitlePlayback adopts server resourceSession for subtitle f
     assert.ok(metaAuto.url.indexOf('transcodeSessionId=plex-sub-session-42') >= 0);
     assert.equal(
       metaAuto.init.headers['X-Plex-Session-Identifier'],
-      'xplay-1779812905191'
+      'plax-1779812905191'
     );
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;

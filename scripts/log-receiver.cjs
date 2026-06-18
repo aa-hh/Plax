@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Mac-side HTTP log sink for XPlay Lite TV debug (webOS 4).
+ * Mac-side HTTP log sink for Plax TV debug (webOS 4).
  * TV POSTs JSON to /log; lines append to logs/tv.log and stdout.
  *
  * Usage: npm run log:receive
@@ -192,7 +192,7 @@ function startServer() {
   server.listen(port, HOST, function () {
     var lan = getLanIpHint();
     var sinkUrl = 'http://' + lan + ':' + port + '/log';
-    console.log('XPlay TV log receiver ready.');
+    console.log('Plax TV log receiver ready.');
     console.log('Tail logs: tail -f logs/tv.log');
     console.log('Log file: ' + LOG_FILE);
     console.log('POST endpoint: http://0.0.0.0:' + port + '/log');

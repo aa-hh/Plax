@@ -5,7 +5,7 @@ import { listWatchlists } from '../../watchlists/store.js';
 import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resolve.js';
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
-import { focusFirst, attachFocusNav } from '../focus.js';
+import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
   hydrateFocusedNeighborhood,
   primeVisiblePosters
@@ -15,6 +15,8 @@ import {
   prefetchLibraryBrowse,
   abortPrefetch
 } from '../../core/idlePrefetch.js';
+import { getArtUrl } from '../../plex/client.js';
+import { loadUltraBlurBackdrop } from '../../plex/ultrablur.js';
 
 function homeScreen(root, params, navigate) {
   var state = getState();
@@ -25,7 +27,17 @@ function homeScreen(root, params, navigate) {
     '<div class="home-layout">' +
     '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
     '<div class="home-main">' +
-    '<h1 class="screen-title screen-title-compact" id="home-hub-title">Home</h1>' +
+    '<div class="il-hero" id="il-hero" aria-hidden="true">' +
+    '<div class="il-hero__backdrop il-hero__backdrop--a" id="il-backdrop-a"></div>' +
+    '<div class="il-hero__backdrop il-hero__backdrop--b" id="il-backdrop-b"></div>' +
+    '<div class="il-hero__scrim"></div>' +
+    '<div class="il-hero__content">' +
+    '<p class="il-hero__label" id="il-hero-label"></p>' +
+    '<h2 class="il-hero__title" id="il-hero-title"></h2>' +
+    '<p class="il-hero__meta" id="il-hero-meta"></p>' +
+    '<p class="il-hero__overview" id="il-hero-overview"></p>' +
+    '</div>' +
+    '</div>' +
     '<div class="home-feed-host" id="home-feed-host">' +
     '<div id="home-feed" class="home-feed"><p class="status-msg">Loading…</p></div>' +
     '</div></div></div>';
@@ -34,11 +46,95 @@ function homeScreen(root, params, navigate) {
   var detachFocus = attachFocusNav(screen);
   var posterFocusToken = 0;
   var posterFocusTimer = null;
+  var ultrablurPrefetchTimer = null;
   var destroyed = false;
   var renderToken = 0;
   var activeHubId = (params && params.hub) || 'home';
   var hubNavHost = screen.querySelector('#browsing-hub-nav-host');
   var hubTitleEl = screen.querySelector('#home-hub-title');
+
+  // ── Immersive List hero state ──────────────────────────────────────────────
+  var ilHeroEl    = screen.querySelector('#il-hero');
+  var ilBackdropA = screen.querySelector('#il-backdrop-a');
+  var ilBackdropB = screen.querySelector('#il-backdrop-b');
+  var ilTitleEl   = screen.querySelector('#il-hero-title');
+  var ilLabelEl   = screen.querySelector('#il-hero-label');
+  var ilMetaEl    = screen.querySelector('#il-hero-meta');
+  var ilOverview  = screen.querySelector('#il-hero-overview');
+  var ilSide      = 'a'; // which backdrop is currently showing
+  var ilHeroToken = 0;
+  var ilHeroTimer = null;
+
+  // Simple LRU for decoded backdrops (just track URLs; Image keeps pixels in mem)
+  var ilCacheKeys = [];
+  var IL_CACHE_MAX = 6;
+  function ilCacheTouch(url) {
+    var i = ilCacheKeys.indexOf(url);
+    if (i >= 0) ilCacheKeys.splice(i, 1);
+    ilCacheKeys.push(url);
+    while (ilCacheKeys.length > IL_CACHE_MAX) ilCacheKeys.shift();
+  }
+
+  function ilBuildArtUrl(item) {
+    if (!item || !state.activeServer) return null;
+    var path = (item.artPath != null ? item.artPath : null) || (item.art != null ? item.art : null);
+    if (!path) return null;
+    return getArtUrl(state.activeServer, path, 960);
+  }
+
+  function ilFormatMeta(item) {
+    if (!item) return '';
+    var parts = [];
+    if (item.year) parts.push(String(item.year));
+    if (item.contentRating) parts.push(item.contentRating);
+    if (item.duration) {
+      var mins = Math.round(item.duration / 60000);
+      var h = Math.floor(mins / 60);
+      var m = mins % 60;
+      parts.push(h > 0 ? h + 'h ' + m + 'm' : m + 'm');
+    }
+    if (item.genre) parts.push(typeof item.genre === 'string' ? item.genre : (item.Genre && item.Genre[0] && item.Genre[0].tag) || '');
+    return parts.filter(Boolean).join('  ·  ');
+  }
+
+  function ilUpdateHero(item) {
+    if (!item || !ilHeroEl) return;
+    ilTitleEl.textContent = item.title || '';
+    var typeLabel = item.type === 'show' ? 'TV Series' : item.type === 'movie' ? 'Movie' : '';
+    ilLabelEl.textContent = typeLabel;
+    ilMetaEl.textContent = ilFormatMeta(item);
+    ilOverview.textContent = item.summary || '';
+
+    var url = ilBuildArtUrl(item);
+    if (!url) return;
+
+    var next = ilSide === 'a' ? ilBackdropB : ilBackdropA;
+    var curr = ilSide === 'a' ? ilBackdropA : ilBackdropB;
+
+    var img = new Image();
+    img.onload = function () {
+      if (destroyed) return;
+      ilCacheTouch(url);
+      next.style.backgroundImage = 'url(' + url + ')';
+      next.style.opacity = '1';
+      curr.style.opacity = '0';
+      ilSide = ilSide === 'a' ? 'b' : 'a';
+    };
+    img.src = url;
+  }
+
+  function ilShowHero(show) {
+    if (!ilHeroEl) return;
+    if (show) {
+      ilHeroEl.style.display = '';
+      ilHeroEl.removeAttribute('aria-hidden');
+    } else {
+      ilHeroEl.style.display = 'none';
+      ilHeroEl.setAttribute('aria-hidden', 'true');
+    }
+  }
+  // Hero hidden until first home-hub card is focused
+  ilShowHero(false);
   var hubNav = mountBrowsingHubNav(hubNavHost, {
     navigate: navigate,
     activeHubId: activeHubId,
@@ -64,10 +160,12 @@ function homeScreen(root, params, navigate) {
     hubNav.setActiveId(activeHubId);
     setHubTitle(item.label);
     if (item.id === 'home') {
+      ilShowHero(false);
       loadHomeHub();
       return;
     }
     if (item.id === 'watchlist') {
+      ilShowHero(false);
       loadWatchlistHub();
     }
   }
@@ -89,6 +187,22 @@ function homeScreen(root, params, navigate) {
 
   screen.addEventListener('focusin', function (e) {
     var card = e.target && e.target.closest ? e.target.closest('.media-card') : null;
+
+    // Immersive list: show/update hero when a card in the home feed is focused
+    if (activeHubId === 'home') {
+      var inFeed = card && e.target.closest ? e.target.closest('#home-feed') : null;
+      if (inFeed) {
+        ilShowHero(true);
+        var tok = ++ilHeroToken;
+        if (ilHeroTimer) clearTimeout(ilHeroTimer);
+        ilHeroTimer = setTimeout(function () {
+          ilHeroTimer = null;
+          if (destroyed || tok !== ilHeroToken) return;
+          ilUpdateHero(card && card._plaxItem);
+        }, 220);
+      }
+    }
+
     if (!card || destroyed) return;
     var token = ++posterFocusToken;
     if (posterFocusTimer) clearTimeout(posterFocusTimer);
@@ -97,6 +211,16 @@ function homeScreen(root, params, navigate) {
       if (destroyed || token !== posterFocusToken) return;
       hydrateFocusedNeighborhood(card, { before: 2, after: 4 });
     }, 80);
+
+    if (ultrablurPrefetchTimer) clearTimeout(ultrablurPrefetchTimer);
+    ultrablurPrefetchTimer = setTimeout(function () {
+      ultrablurPrefetchTimer = null;
+      if (destroyed) return;
+      var item = card && card._plaxItem;
+      var artPath = item && (item.artPath || item.art);
+      var server = getState().activeServer;
+      if (artPath && server) loadUltraBlurBackdrop(server, artPath);
+    }, 250);
   });
 
   function pinContinueWatchingFirst(rows) {
@@ -129,6 +253,12 @@ function homeScreen(root, params, navigate) {
         playbackPrefs: state.playbackPrefs
       });
     });
+    // The feed DOM just changed (skeletons → rows, or deferred rows appended).
+    // focus.js caches focusables/zones per container; invalidate so D-pad RIGHT
+    // from the sidebar finds the freshly-rendered cards instead of locking onto
+    // the now-stale skeleton zones (the "can't go right into the rails after
+    // returning to Home" bug).
+    invalidateFocusableCache();
     primeVisiblePosters(el);
     focusFirstFeedCardIfNeeded();
     // After the visible rows are committed, warm the metadata (and detail
@@ -262,6 +392,7 @@ function homeScreen(root, params, navigate) {
           }
         }
       });
+      invalidateFocusableCache();
       if (!hasRows) {
         el.innerHTML = '<p class="status-msg">Your watchlists are empty. Bookmark titles from detail screens.</p>';
       } else {
@@ -291,10 +422,9 @@ function homeScreen(root, params, navigate) {
       destroyed = true;
       renderToken += 1;
       posterFocusToken += 1;
-      if (posterFocusTimer) {
-        clearTimeout(posterFocusTimer);
-        posterFocusTimer = null;
-      }
+      ilHeroToken += 1;
+      if (posterFocusTimer) { clearTimeout(posterFocusTimer); posterFocusTimer = null; }
+      if (ilHeroTimer) { clearTimeout(ilHeroTimer); ilHeroTimer = null; }
       try { abortPrefetch(); } catch (e) { /* ignore */ }
       detachFocus();
     },

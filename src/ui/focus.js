@@ -551,15 +551,54 @@ function scrollNearestVertical(el) {
     if (oy === 'auto' || oy === 'scroll') {
       var pRect = parent.getBoundingClientRect();
       var eRect = el.getBoundingClientRect();
-      if (eRect.top < pRect.top) {
-        parent.scrollTop -= (pRect.top - eRect.top);
-      } else if (eRect.bottom > pRect.bottom) {
-        parent.scrollTop += (eRect.bottom - pRect.bottom);
+      // Keep the focused element off the container edges by a margin so rows
+      // frame consistently (camera follows focus); clamp to 0 so returning to
+      // the first row restores the original top-of-feed position.
+      var m = 24;
+      if (eRect.top < pRect.top + m) {
+        parent.scrollTop -= (pRect.top + m - eRect.top);
+        if (parent.scrollTop < 0) parent.scrollTop = 0;
+      } else if (eRect.bottom > pRect.bottom - m) {
+        parent.scrollTop += (eRect.bottom - (pRect.bottom - m));
       }
       return;
     }
     parent = parent.parentElement;
   }
+}
+
+// Smooth RAF-based horizontal scroll for carousels. Cancels mid-flight if the
+// same row gets another scroll request (only the newest landing card wins).
+// Falls back to instant scroll in environments without requestAnimationFrame (tests).
+var _carouselRafs = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+function smoothScrollCarousel(row, target, durationMs) {
+  if (typeof requestAnimationFrame === 'undefined') {
+    row.scrollLeft = target;
+    return;
+  }
+  if (_carouselRafs) {
+    var prev = _carouselRafs.get(row);
+    if (prev) { cancelAnimationFrame(prev); _carouselRafs.delete(row); }
+  }
+  var start = row.scrollLeft;
+  var delta = target - start;
+  if (Math.abs(delta) < 2) { row.scrollLeft = target; return; }
+  var startTime = 0;
+  function step(ts) {
+    if (!startTime) startTime = ts;
+    var t = Math.min((ts - startTime) / durationMs, 1);
+    // ease-out cubic
+    var eased = 1 - (1 - t) * (1 - t) * (1 - t);
+    row.scrollLeft = start + delta * eased;
+    if (t < 1) {
+      var raf = requestAnimationFrame(step);
+      if (_carouselRafs) _carouselRafs.set(row, raf);
+    } else if (_carouselRafs) {
+      _carouselRafs.delete(row);
+    }
+  }
+  var raf = requestAnimationFrame(step);
+  if (_carouselRafs) _carouselRafs.set(row, raf);
 }
 
 function scrollFocusedIntoView(el) {
@@ -576,7 +615,8 @@ function scrollFocusedIntoView(el) {
     var cardWidth = el.offsetWidth || 172;
     var containerWidth = rowScroll.offsetWidth;
     var target = cardLeft - Math.floor((containerWidth - cardWidth) / 2);
-    rowScroll.scrollLeft = target < 0 ? 0 : target;
+    target = Math.max(0, Math.min(target, rowScroll.scrollWidth - containerWidth));
+    smoothScrollCarousel(rowScroll, target, 220);
     // Ensure the row itself is vertically visible.
     scrollNearestVertical(rowScroll);
     return;

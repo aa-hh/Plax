@@ -4,10 +4,10 @@ import { persistAuth } from '../../core/storage.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 
 function generateClientId() {
-  var stored = localStorage.getItem('xplay_lite_clientId');
+  var stored = localStorage.getItem('plax_clientId');
   if (stored) return stored;
-  var id = 'xplay-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-  localStorage.setItem('xplay_lite_clientId', id);
+  var id = 'plax-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  localStorage.setItem('plax_clientId', id);
   return id;
 }
 

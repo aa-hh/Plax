@@ -5,6 +5,16 @@ import * as cache from '../core/cache.js';
 var DEFAULT_WIDTH = 1280;
 var DEFAULT_HEIGHT = 720;
 
+// Fixed colors matching the app's dark blue-to-black palette.
+// Used to generate a noise-dithered ultrablur image as the default body
+// background — avoids 8-bit gradient banding on the B8's OLED panel.
+var DEFAULT_BG_COLORS = {
+  topLeft:     '1d2433',
+  topRight:    '161b28',
+  bottomRight: '131314',
+  bottomLeft:  '131314'
+};
+
 function serverScope(server) {
   if (!server) return 'noserver';
   return server.clientIdentifier || server.connectionUri || 'unknown';
@@ -95,10 +105,20 @@ function loadUltraBlurBackground(server, artPath) {
   });
 }
 
+function applyDefaultBackground(server) {
+  if (!server) return;
+  var url = buildUltraBlurImageUrl(server, DEFAULT_BG_COLORS);
+  if (!url) return;
+  document.body.style.backgroundImage = 'url(' + url + ')';
+  document.body.style.backgroundSize = 'cover';
+  document.body.style.backgroundPosition = 'center top';
+}
+
 export {
   fetchUltraBlurColors,
   buildUltraBlurImageUrl,
   buildUltraBlurColorGradient,
   loadUltraBlurBackdrop,
-  loadUltraBlurBackground
+  loadUltraBlurBackground,
+  applyDefaultBackground
 };

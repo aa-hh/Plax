@@ -3,7 +3,7 @@
 Minimum supported platform: **webOS TV 4.0** (2018 LG OLED B8). Co-primary engineering targets: **webOS TV 4.0** (Chromium ~53) and **webOS TV 5.0** (Chromium 68, 2020).  
 Official references: [Platform specifications](https://webostv.developer.lge.com/develop/specifications)
 
-This document maps LG requirements to XPlay Lite implementation.
+This document maps LG requirements to Plax implementation.
 
 ## 1. App Resolution
 
@@ -22,7 +22,7 @@ Source: [Supported App Resolution](https://webostv.developer.lge.com/develop/spe
 
 Source: [Web API and Web Engine](https://webostv.developer.lge.com/develop/specifications/web-api-and-web-engine)
 
-| webOS TV | Chromium (approx.) | XPlay Lite |
+| webOS TV | Chromium (approx.) | Plax |
 |----------|-------------------|------------|
 | 4.0 | ~53 | **Co-primary target** — Babel `chrome 53`; CSS and JS polyfilled for Chromium 53 |
 | 5.0 | 68 | **Co-primary target** — full spec alignment |
@@ -75,7 +75,7 @@ Source: [TLS and Root Certificates](https://webostv.developer.lge.com/develop/sp
 
 Source: [Streaming Protocol and DRM](https://webostv.developer.lge.com/develop/specifications/streaming-protocol-drm)
 
-| Protocol | Use in XPlay Lite |
+| Protocol | Use in Plax |
 |----------|-------------------|
 | **HLS** | Plex server transcode / universal start (`.m3u8`) — primary adaptive path; see [HLS FAQ](https://webostv.developer.lge.com/faq/2014-10-30-http-live-streaming-troubleshooting) |
 | **Progressive HTTP** | Plex Direct Play (MP4/MKV parts) |
@@ -112,7 +112,7 @@ Files above these limits show a **Direct Play not available** notice and play vi
 
 Source: [HTTP Live Streaming Troubleshooting](https://webostv.developer.lge.com/faq/2014-10-30-http-live-streaming-troubleshooting)
 
-| Issue | Mitigation in XPlay Lite |
+| Issue | Mitigation in Plax |
 |-------|--------------------------|
 | Audio-only variants in master playlist without `CODECS` | `applyWebOsHlsTranscodeParams()` in `hlsPolicy.js` |
 | Multiple audio codecs in audio-only `CODECS` | Server-side Plex transcode to AAC/H.264 |
@@ -138,7 +138,7 @@ TV-recommended: `largeIcon`, `resolution`, `bgColor`, `splashBackground`, `disab
 | Screen keep-alive during playback | `luna://com.webos.service.tvpower` keepAlive |
 | Do not rely on setting `Accept-Language` | Not used (webOS 5 limitation) |
 | Splash while app loads | `#splash-screen` + `src/ui/splash.js` |
-| Buffering indicator | Same `.xplay-loader` in splash and `#loading-overlay` |
+| Buffering indicator | Same `.plax-loader` in splash and `#loading-overlay` |
 | In-app caching + video buffer policy | [`docs/caching-and-buffering.md`](caching-and-buffering.md) (LRU TTL cache in `src/core/cache.js`, re-buffer watchdog in `src/playback/playerAdapter.js`) |
 | Skip intro (Plex markers) | `Marker` with `type=intro` from PMS metadata; seek via `video.currentTime`; Channel Up (33) / Yellow (32) |
 
@@ -151,7 +151,7 @@ Source: [CLI Developer Guide](https://webostv.developer.lge.com/develop/tools/cl
 
 ## 9. Plex as metadata source
 
-XPlay Lite uses **Plex Media Server and plex.tv APIs only** for libraries, hubs, artwork, and playback. There is no separate TMDB or public metadata client.
+Plax uses **Plex Media Server and plex.tv APIs only** for libraries, hubs, artwork, and playback. There is no separate TMDB or public metadata client.
 
 | Concern | Implementation |
 |---------|----------------|

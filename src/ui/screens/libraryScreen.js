@@ -57,7 +57,7 @@ function libraryScreen(root, params, navigate) {
     '<button class="library-filter-chip" id="filter-chip-sort" data-sort-index="0" tabindex="0">Sort: Title ▾</button>' +
     '</div>' +
     '<div class="library-grid-host" id="library-grid-host">' +
-    '<div class="media-grid" id="media-grid" data-cols="6"></div>' +
+    '<div class="media-grid" id="media-grid" data-cols="6" data-focus-zone="library-grid"></div>' +
     '</div>' +
     '</div>' +
     '</div>';

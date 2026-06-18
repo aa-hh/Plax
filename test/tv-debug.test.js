@@ -17,7 +17,7 @@ import {
 
 test('shouldEnableDebug: localStorage flag', function () {
   global.localStorage = {
-    _data: { xplay_debug_enabled: '1' },
+    _data: { plax_debug_enabled: '1' },
     getItem: function (k) { return this._data[k] || null; }
   };
   global.window = { location: { search: '' }, __XPLAY_DEBUG__: false, PalmSystem: {} };
@@ -98,7 +98,7 @@ test('refreshDebugFromEnvironment: enables on relaunch params without reload', f
     location: { search: '' },
     __XPLAY_DEBUG__: false,
     PalmSystem: { launchParams: '' },
-    __xplayDebug: null
+    __plaxDebug: null
   };
   global.globalThis = global.window;
   assert.equal(refreshDebugFromEnvironment('boot'), false);
@@ -142,7 +142,7 @@ test('ensureDebugOverlayOnTop: re-appends overlay as last body child', function 
     addEventListener: function () {}
   };
   global.localStorage = {
-    _data: { xplay_debug_enabled: '1' },
+    _data: { plax_debug_enabled: '1' },
     getItem: function (k) { return this._data[k] || null; },
     setItem: function (k, v) { this._data[k] = v; },
     removeItem: function (k) { delete this._data[k]; }
@@ -151,7 +151,7 @@ test('ensureDebugOverlayOnTop: re-appends overlay as last body child', function 
     location: { search: '' },
     __XPLAY_DEBUG__: false,
     PalmSystem: { launchParams: '' },
-    __xplayDebug: null
+    __plaxDebug: null
   };
   global.globalThis = global.window;
   global.console = { log: function () {}, warn: function () {}, error: function () {} };
@@ -160,7 +160,7 @@ test('ensureDebugOverlayOnTop: re-appends overlay as last body child', function 
   var el = document.body.lastChild;
   assert.ok(el);
   setDebugOverlayPlayerMode(true);
-  assert.ok(el.classList._classes['xplay-debug-overlay--player']);
+  assert.ok(el.classList._classes['plax-debug-overlay--player']);
   tvLog('playback', 'test line');
   assert.match(String(el.textContent), /\[playback\] test line/);
 });
@@ -172,7 +172,7 @@ test('tvLog: POSTs to log sink when debug on', function () {
     return { catch: function () {} };
   };
   global.localStorage = {
-    _data: { xplay_debug_enabled: '1', xplay_log_sink_url: 'http://192.168.1.2:8765/log' },
+    _data: { plax_debug_enabled: '1', plax_log_sink_url: 'http://192.168.1.2:8765/log' },
     getItem: function (k) { return this._data[k] || null; },
     setItem: function (k, v) { this._data[k] = v; },
     removeItem: function (k) { delete this._data[k]; }
@@ -193,7 +193,7 @@ test('tvLog: POSTs to log sink when debug on', function () {
     location: { search: '' },
     __XPLAY_DEBUG__: false,
     PalmSystem: { launchParams: '' },
-    __xplayDebug: null
+    __plaxDebug: null
   };
   global.globalThis = global.window;
   global.console = { log: function () {}, warn: function () {}, error: function () {} };
@@ -213,7 +213,7 @@ test('tvLog: POSTs to log sink when debug on', function () {
 
 test('getLogSinkUrl: launchParams logSink wins over storage', function () {
   global.localStorage = {
-    _data: { xplay_log_sink_url: 'http://10.0.0.1:8765/log' },
+    _data: { plax_log_sink_url: 'http://10.0.0.1:8765/log' },
     getItem: function (k) { return this._data[k] || null; }
   };
   global.window = {

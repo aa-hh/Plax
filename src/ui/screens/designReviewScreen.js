@@ -24,7 +24,7 @@ function mockItem(overrides) {
     duration: 7200000,
     viewOffset: 0,
     viewCount: 0,
-    thumb: placeholderPoster('XPlay', '#2a3348', '#f3f6ff')
+    thumb: placeholderPoster('Plax', '#2a3348', '#f3f6ff')
   }, overrides || {});
 }
 

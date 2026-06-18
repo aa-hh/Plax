@@ -1,4 +1,4 @@
-# XPlay Lite
+# Plax
 
 Ultra-lightweight Plex client for **LG webOS TV 4.0+** Smart TVs (including 2018 OLED B8). Playback-first design aligned with [LG platform specifications](https://webostv.developer.lge.com/develop/specifications).
 
@@ -39,7 +39,7 @@ Ultra-lightweight Plex client for **LG webOS TV 4.0+** Smart TVs (including 2018
 ## Build
 
 ```bash
-cd "XPlay 2"
+cd "Plax"
 npm install
 npm run build
 npm run validate
@@ -120,13 +120,13 @@ WEBOS_SIM_PATH="/Applications/webOS_TV_26_Simulator_1.5.0/webOS_TV_26_Simulator_
 You can also open the Simulator manually and use **File → Launch App** on the `dist/` folder (the directory that contains `appinfo.json`) after `npm run build`.
 
 Tips:
-- Each `npm run build` writes `dist/.xplay-build-stamp.json` with a **change summary** (files/areas touched since the last build). `npm run sim` / `npm run sim:launch` print that summary once before launch (not duplicated during `npm run build`).
-- **Verify you are on the latest bundle:** open devtools and check `window.__XPLAY_BUILD__` (also logged at boot as `[XPlay Lite] build …`). `builtAt` / `gitCommit` should match the stamp printed by `npm run sim`. If `build-info missing` appears, the simulator is serving an old folder — remove the home-screen icon, reset the simulator DB, and run `npm run sim` again.
+- Each `npm run build` writes `dist/.plax-build-stamp.json` with a **change summary** (files/areas touched since the last build). `npm run sim` / `npm run sim:launch` print that summary once before launch (not duplicated during `npm run build`).
+- **Verify you are on the latest bundle:** open devtools and check `window.__PLAX_BUILD__` (also logged at boot as `[Plax] build …`). `builtAt` / `gitCommit` should match the stamp printed by `npm run sim`. If `build-info missing` appears, the simulator is serving an old folder — remove the home-screen icon, reset the simulator DB, and run `npm run sim` again.
 - `npm run sim:watch` only rebuilds `dist/`; the simulator does **not** pick up changes until you re-run `npm run sim` or use **File → Launch App** on `dist/` again. Saving files may auto-reload only if that exact folder is already the launched app.
-- If you still see the old **Who's watching?** screen, remove the XPlay icon from the simulator home screen (right-click → Remove), then **Action → Database Reset**, and run `npm run sim` again. Do not launch from an old home-screen icon after renaming the project folder.
+- If you still see the old **Who’s watching?** screen, remove the Plax icon from the simulator home screen (right-click → Remove), then **Action → Database Reset**, and run `npm run sim` again. Do not launch from an old home-screen icon after renaming the project folder.
 - `npm run sim:launch` skips the rebuild step — run `npm run build` first so `dist/` is current.
 
-**HLS / remux in the simulator:** XPlay uses the same native `<video>` + Plex `start.m3u8` path as on a TV (no hls.js). If playback fails, open devtools **Network** and check the `start.m3u8` request first — **HTTP 400/502 from Plex is a server/URL issue**, not “simulator lacks HLS.” A `MediaError` “Stream not supported (check HLS playlist CODECS)” often appears when the manifest never loaded. After a successful manifest, the simulator’s Chromium stack can still differ from a real LG TV’s native HLS decoder — confirm remux/HLS on hardware when in doubt.
+**HLS / remux in the simulator:** Plax uses the same native `<video>` + Plex `start.m3u8` path as on a TV (no hls.js). If playback fails, open devtools **Network** and check the `start.m3u8` request first — **HTTP 400/502 from Plex is a server/URL issue**, not “simulator lacks HLS.” A `MediaError` “Stream not supported (check HLS playlist CODECS)” often appears when the manifest never loaded. After a successful manifest, the simulator’s Chromium stack can still differ from a real LG TV’s native HLS decoder — confirm remux/HLS on hardware when in doubt.
 
 ## Install on TV
 

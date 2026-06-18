@@ -10,6 +10,7 @@ import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resol
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import { openModal, openTextInputModal } from '../components/controls.js';
 import { primeVisiblePosters } from '../posterImages.js';
 
 function watchlistScreen(root, params, navigate) {
@@ -66,17 +67,33 @@ function watchlistScreen(root, params, navigate) {
     '<button class="btn" id="btn-delete-watchlist" tabindex="0">Delete list</button>';
 
   document.getElementById('btn-rename-watchlist').addEventListener('click', function () {
-    var next = prompt('Watchlist name', wl.name);
-    if (!next || next === wl.name) return;
-    renameWatchlist(user, wl.id, next);
-    document.getElementById('watchlist-title').textContent = next;
-    wl.name = next;
+    openTextInputModal({
+      title: 'Rename watchlist',
+      defaultValue: wl.name,
+      onConfirm: function (next) {
+        if (!next || next === wl.name) return;
+        renameWatchlist(user, wl.id, next);
+        document.getElementById('watchlist-title').textContent = next;
+        wl.name = next;
+      }
+    });
   });
 
   document.getElementById('btn-delete-watchlist').addEventListener('click', function () {
-    if (!confirm('Delete "' + wl.name + '"?')) return;
-    deleteWatchlist(user, wl.id);
-    navigate('home', { hub: 'watchlist' });
+    openModal({
+      title: 'Delete "' + wl.name + '"?',
+      options: [
+        { id: 'delete', label: 'Delete' },
+        { id: 'cancel', label: 'Keep' }
+      ],
+      cancelLabel: 'Cancel',
+      onPick: function (id) {
+        if (id === 'delete') {
+          deleteWatchlist(user, wl.id);
+          navigate('home', { hub: 'watchlist' });
+        }
+      }
+    });
   });
 
   var feed = document.getElementById('watchlist-feed');

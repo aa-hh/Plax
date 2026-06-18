@@ -19,7 +19,7 @@ function formatStartupBuildLine(runtimeBuild) {
   var builtAt = metadata ? nonEmptyText(metadata.builtAt, 'unknown-time') : 'unknown-time';
   var commit = metadata ? nonEmptyText(metadata.gitCommit, 'no-git') : 'no-git';
   var summary = metadata ? nonEmptyText(metadata.summary, 'unknown-change-set') : 'build-metadata-missing';
-  return '[XPlay Lite] startup-build buildNumber=' + buildNumber +
+  return '[Plax] startup-build buildNumber=' + buildNumber +
     ' builtAt=' + builtAt +
     ' commit=' + commit +
     ' summary=' + summary;
@@ -28,8 +28,8 @@ function formatStartupBuildLine(runtimeBuild) {
 function logStartupBuild(globalObject) {
   if (startupBuildLogged) return;
   startupBuildLogged = true;
-  var runtimeBuild = globalObject && globalObject.__XPLAY_BUILD__
-    ? globalObject.__XPLAY_BUILD__
+  var runtimeBuild = globalObject && globalObject.__PLAX_BUILD__
+    ? globalObject.__PLAX_BUILD__
     : null;
   console.info(formatStartupBuildLine(runtimeBuild));
 }

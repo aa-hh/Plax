@@ -40,7 +40,7 @@ function showUnsupported(message) {
   root.innerHTML =
     '<div class="screen">' +
     '<h1 class="screen-title">Unsupported TV</h1>' +
-    '<p class="screen-subtitle">XPlay Lite requires webOS TV ' + MIN_WEBOS_TV_MAJOR + '.0 or newer.</p>' +
+    '<p class="screen-subtitle">Plax requires webOS TV ' + MIN_WEBOS_TV_MAJOR + '.0 or newer.</p>' +
     '<p class="status-msg">' + message + '</p>' +
     '</div>';
 }

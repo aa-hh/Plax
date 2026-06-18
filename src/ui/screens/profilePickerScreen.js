@@ -175,7 +175,7 @@ function profilePickerScreen(root, params, navigate) {
     var show = profilesLoading || switching;
     if (!profileSpinner) return;
     profileSpinner.hidden = !show;
-    var ring = profileSpinner.querySelector('.xplay-spinner');
+    var ring = profileSpinner.querySelector('.plax-spinner');
     if (ring) ring.setAttribute('aria-label', spinnerLabel());
   }
 

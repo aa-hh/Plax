@@ -73,7 +73,7 @@ function baseSession(overrides) {
     server: mockServer,
     item: { ratingKey: '12345', key: '/library/metadata/12345' },
     version: { partKey: partKey },
-    sessionId: 'xplay-test-session',
+    sessionId: 'plax-test-session',
     playbackSessionId: 'client-playback-session-id',
     transcodeSessionId: 'plex-test-session',
     mediaIndex: 0,
@@ -149,7 +149,7 @@ test('buildPlaybackUrl HTTP targets universal start without m3u8', function () {
 });
 
 test('buildPlaybackUrl HLS on webOS 4 uses HEVC-capable device profile', function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -171,7 +171,7 @@ test('buildPlaybackUrl HLS on webOS 4 uses HEVC-capable device profile', functio
 });
 
 test('buildPlaybackUrl simulator Plex Web adds webOS HLS profile extra', function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -746,7 +746,7 @@ test('buildDecisionRequestParams sets subtitles=none when no subtitle selected',
 });
 
 test('buildDecisionRequestParams sets subtitles=none on webOS 5+ when no subtitle selected', function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -762,7 +762,7 @@ test('buildDecisionRequestParams sets subtitles=none on webOS 5+ when no subtitl
 });
 
 test('buildFirstDecisionUrl on webOS 4 uses capability probe flags', function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -800,7 +800,7 @@ test('buildFirstDecisionUrl stays optimistic (directPlay=1) for original quality
 });
 
 test('buildPlaybackUrl uses resourceSession from decision on start URL', function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -817,11 +817,11 @@ test('buildPlaybackUrl uses resourceSession from decision on start URL', functio
   assert.equal(q.session, 'ti0aanprmpr6y635rp2ttrbi');
   assert.equal(q['X-Plex-Session-Id'], 'ti0aanprmpr6y635rp2ttrbi');
   assert.equal(q.transcodeSessionId, undefined);
-  assert.notEqual(q.session, 'xplay-test-session');
+  assert.notEqual(q.session, 'plax-test-session');
 });
 
 test('resolveStreamUrl webOS 4 coerces decision-400 http fallback to mpegts HLS', async function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -906,7 +906,7 @@ test('resolveStreamUrl prefers HTTP MP4 remux for MKV Dolby Vision copy', async 
 });
 
 test('resolveStreamUrl on webOS 4 routes forced transcode to mpegts HLS (hls.js), WAN-safe params', async function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {
@@ -963,7 +963,7 @@ test('resolveStreamUrl on webOS 4 routes forced transcode to mpegts HLS (hls.js)
 });
 
 test('resolveStreamUrl on webOS 4 reroutes direct-stream (copy) to progressive HTTP (fMP4 init segment 404s)', async function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {

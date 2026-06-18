@@ -1,4 +1,4 @@
-# Debugging XPlay Lite on a real LG TV (webOS 4.x, e.g. OLED B8)
+# Debugging Plax on a real LG TV (webOS 4.x, e.g. OLED B8)
 
 ## Quick answer for PIN / bootstrap hangs
 
@@ -6,7 +6,7 @@
 
 ```bash
 source ~/.nvm/nvm.sh && nvm use 20
-ares-launch -p '{"debug":1}' --device Alec-TV com.xplay.lite
+ares-launch -p '{"debug":1}' --device Alec-TV com.plax
 ```
 
 You should see a **black log strip at the bottom** (`Debug overlay active`, then `[profile-picker] pin complete`, `switch ok`, `bootstrap start`, etc.). The **status line** above profiles shows the same steps in plain language (`Verifying PIN…`, `Finding Plex servers…`, errors).
@@ -29,7 +29,7 @@ This is **almost always a Chrome ↔ TV Inspector mismatch**, not XPlay code.
 
 | Symptom | Meaning |
 |--------|---------|
-| Only `VM## SyntaxError` and **no** `[XPlay Lite]` / `[profile-picker]` lines | **Inspector is not usable** with that Chrome version — use overlay or older Chrome. |
+| Only `VM## SyntaxError` and **no** `[Plax]` / `[profile-picker]` lines | **Inspector is not usable** with that Chrome version — use overlay or older Chrome. |
 | `VM##` errors **plus** app `console.error` lines | **Harmless DevTools noise** — ignore VM lines, read app logs. |
 | Empty console, no app logs | Wrong target, app not foreground, or broken tunnel — not fixed by app code. |
 
@@ -57,14 +57,14 @@ Practical guidance for **webOS 4.0–4.9 (2018–2019 TVs)**:
 
 | Method | How |
 |--------|-----|
-| **Launch param (best)** | `ares-launch -p '{"debug":1}' -d Alec-TV com.xplay.lite` |
+| **Launch param (best)** | `ares-launch -p '{"debug":1}' -d Alec-TV com.plax` |
 | Settings | Settings → **Debug log overlay** → On → relaunch |
-| Storage | `localStorage` key `xplay_debug_enabled` = `"1"` |
-| API | `window.__xplayDebug.enable()` (only if Console already works) |
+| Storage | `localStorage` key `plax_debug_enabled` = `"1"` |
+| API | `window.__plaxDebug.enable()` (only if Console already works) |
 
 Overlay shows the last ~14 lines; PIN flow also updates **`#profile-status`**.
 
-**Perf HUD** (`xplay_perf_enabled` / `?perf=1`) is separate — it does **not** enable console or this overlay.
+**Perf HUD** (`plax_perf_enabled` / `?perf=1`) is separate — it does **not** enable console or this overlay.
 
 ---
 
@@ -86,7 +86,7 @@ Example: `192.168.4.23`
 ### 2. Start the receiver on the Mac
 
 ```bash
-cd "/Users/alechamilton/XPlay 2"
+cd "/Users/alechamilton/Plax"
 npm run log:receive
 ```
 
@@ -97,8 +97,8 @@ Listens on **`0.0.0.0:8765`** (override with `PORT=9000 npm run log:receive`). E
 | Method | How |
 |--------|-----|
 | **Settings** | Debug log overlay → **On**. **Log sink URL** → `http://192.168.4.23:8765/log` (your Mac IP). |
-| **Launch param** | `ares-launch -p '{"debug":1,"logSink":"http://192.168.4.23:8765/log"}' --device Alec-TV com.xplay.lite` |
-| **Storage** | `localStorage` `xplay_log_sink_url` = full `/log` URL |
+| **Launch param** | `ares-launch -p '{"debug":1,"logSink":"http://192.168.4.23:8765/log"}' --device Alec-TV com.plax` |
+| **Storage** | `localStorage` `plax_log_sink_url` = full `/log` URL |
 | **Build inject** | `window.__XPLAY_LOG_SINK_URL__ = 'http://…/log'` in dev HTML (optional) |
 
 Remote POST requires **debug overlay on** and a non-empty sink URL. Posts are fire-and-forget (XHR fallback if `fetch` is missing).
@@ -116,14 +116,14 @@ Remote POST requires **debug overlay on** and a non-empty sink URL. Posts are fi
 ## ares-inspect workflow (Node 20, Alec-TV)
 
 ```bash
-cd "/Users/alechamilton/XPlay 2"
+cd "/Users/alechamilton/Plax"
 source ~/.nvm/nvm.sh && nvm use 20
 
 # Foreground app on TV first
-ares-launch --device Alec-TV com.xplay.lite
+ares-launch --device Alec-TV com.plax
 
 # Leave this terminal open (SSH tunnel)
-ares-inspect --device Alec-TV --app com.xplay.lite
+ares-inspect --device Alec-TV --app com.plax
 ```
 
 Copy the printed line:
@@ -132,7 +132,7 @@ Copy the printed line:
 
 1. Open that URL in **legacy Chrome 59–79** (not default Chrome 120+).
 2. **Console** → **All levels**; clear filter text.
-3. Reproduce PIN on TV; look for `[XPlay Lite] startup-build`, `[profile-picker] pin complete (4 digits)`.
+3. Reproduce PIN on TV; look for `[Plax] startup-build`, `[profile-picker] pin complete (4 digits)`.
 
 **Tips**
 
@@ -144,8 +144,8 @@ Copy the printed line:
 Optional combined debug:
 
 ```bash
-ares-launch -p '{"debug":1}' --device Alec-TV com.xplay.lite
-ares-inspect --device Alec-TV --app com.xplay.lite
+ares-launch -p '{"debug":1}' --device Alec-TV com.plax
+ares-inspect --device Alec-TV --app com.plax
 ```
 
 ---
@@ -192,9 +192,9 @@ After a failed play, capture from `logs/tv.log` or overlay:
 | Check | Expected |
 |-------|----------|
 | Overlay launch | Bottom strip: `Debug overlay active` |
-| After boot (if inspect works) | `[XPlay Lite] startup-build …`, `[XPlay Lite] boot ms: …` |
+| After boot (if inspect works) | `[Plax] startup-build …`, `[Plax] boot ms: …` |
 | 4 PIN digits | Overlay: `pin complete`, `switch start`, `bootstrap start`; status: `Verifying PIN…` |
-| Neither overlay nor `[XPlay Lite]` in Console | Old IPK not installed, or inspect not connected — redeploy IPK and use overlay |
+| Neither overlay nor `[Plax]` in Console | Old IPK not installed, or inspect not connected — redeploy IPK and use overlay |
 
 ---
 

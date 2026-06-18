@@ -569,7 +569,7 @@ function createSession(item, version, options) {
     version: version,
     server: server,
     offset: offset,
-    sessionId: 'xplay-' + Date.now(),
+    sessionId: 'plax-' + Date.now(),
     playbackSessionId: options.playbackSessionId || generateClientPlaybackSessionId(),
     mediaIndex: options.mediaIndex != null ? options.mediaIndex : 0,
     partIndex: options.partIndex != null ? options.partIndex : 0,

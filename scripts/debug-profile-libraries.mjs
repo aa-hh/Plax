@@ -11,9 +11,9 @@
  *   PROFILE_MATCH=marathon — override title substring (default: first CLI arg or "marathon")
  *
  * Reads owner token from env only (no live TV localStorage in Node). To copy tokens from
- * the TV/simulator: DevTools → Application → localStorage keys `xplay_lite_authToken`,
- * `xplay_lite_ownerAuthToken`, and `xplay_lite_activeHomeUser` (session owner may be in
- * sessionStorage `xplay_lite_session_ownerAuthToken` for restricted profiles).
+ * the TV/simulator: DevTools → Application → localStorage keys `plax_authToken`,
+ * `plax_ownerAuthToken`, and `plax_activeHomeUser` (session owner may be in
+ * sessionStorage `plax_session_ownerAuthToken` for restricted profiles).
  *
  * Prints: raw Plex Directory count, folder-backed count, after profile filter count,
  * plus per-section title/type/shared/accessible/hidden.
@@ -27,7 +27,7 @@ import {
 import { mapHomeUser } from '../src/plex/users/homeUsers.js';
 
 const PLEX_TV = 'https://plex.tv';
-const PRODUCT = 'XPlay Lite';
+const PRODUCT = 'Plax';
 const VERSION = '0.1.0';
 
 function usage() {
@@ -40,7 +40,7 @@ function plexHeaders(token, extra) {
     Accept: 'application/json',
     'X-Plex-Product': PRODUCT,
     'X-Plex-Version': VERSION,
-    'X-Plex-Client-Identifier': 'xplay-debug-script',
+    'X-Plex-Client-Identifier': 'plax-debug-script',
     'X-Plex-Platform': 'Script',
     'X-Plex-Device': 'Debug',
     'X-Plex-Token': token
@@ -270,7 +270,7 @@ async function main() {
   if (!afterFilter.length) {
     console.log(' (empty)');
     if (apiItems === 0) {
-      console.log('\nInterpretation: Plex returned zero sections for this profile token — fix Manage Library Access in Plex, not XPlay.');
+      console.log('\nInterpretation: Plex returned zero sections for this profile token — fix Manage Library Access in Plex, not Plax.');
     } else if (folderBacked.length === 0) {
       console.log('\nInterpretation: Plex returned sections but all were dropped by folder-backed filter (secondary/composite/empty Location/hub keys).');
     } else {

@@ -1,11 +1,11 @@
 # Resource Monitoring Playbook
 
-Use this playbook with LG's [Resource Monitor](https://webostv.developer.lge.com/develop/tools/resource-monitor-introduction) to find performance bottlenecks in XPlay Lite.
+Use this playbook with LG's [Resource Monitor](https://webostv.developer.lge.com/develop/tools/resource-monitor-introduction) to find performance bottlenecks in Plax.
 
 ## 1) Run the app in Simulator
 
 ```bash
-cd "XPlay 2"
+cd "Plax"
 npm run sim:23
 ```
 
@@ -13,20 +13,20 @@ Use the simulator version that matches your target TV generation.
 
 ## 2) Enable in-app perf markers
 
-XPlay Lite includes lightweight telemetry (boot marks, route render time, heap snapshot, video buffer/dropped-frame stats).
+Plax includes lightweight telemetry (boot marks, route render time, heap snapshot, video buffer/dropped-frame stats).
 
 Enable it once in Web Inspector console:
 
 ```js
-localStorage.setItem('xplay_perf_enabled', '1');
+localStorage.setItem('plax_perf_enabled', '1');
 location.reload();
 ```
 
 Inspect runtime stats:
 
 ```js
-window.__xplayPerf.getSnapshot();
-window.__xplayPerf.exportData(); // full samples + marks
+window.__plaxPerf.getSnapshot();
+window.__plaxPerf.exportData(); // full samples + marks
 ```
 
 Perf mode now also shows an on-screen HUD (top-right) with:
@@ -40,12 +40,12 @@ Perf mode now also shows an on-screen HUD (top-right) with:
 HUD controls (only while perf mode is enabled):
 
 - Press `H` (keyCode `72`) to toggle HUD visibility.
-- Enable directly from URL with `?perf=1` or keep using `localStorage.xplay_perf_enabled=1`.
+- Enable directly from URL with `?perf=1` or keep using `localStorage.plax_perf_enabled=1`.
 
 Disable:
 
 ```js
-localStorage.removeItem('xplay_perf_enabled');
+localStorage.removeItem('plax_perf_enabled');
 location.reload();
 ```
 
@@ -64,7 +64,7 @@ Record app + system metrics (CPU, memory) for these repeatable scenarios:
 9. **Episode queue autoplay**: play through 3 episodes.
 10. **Search**: run 10 searches in sequence.
 
-For each scenario, save a Resource Monitor capture and export `window.__xplayPerf.exportData()`.
+For each scenario, save a Resource Monitor capture and export `window.__plaxPerf.exportData()`.
 
 ## 4) Improvement thresholds
 

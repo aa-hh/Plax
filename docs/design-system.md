@@ -1,6 +1,6 @@
-# XPlay Lite TV Design System
+# Plax TV Design System
 
-This design system defines a performance-first, D-pad-first baseline for XPlay Lite on webOS TV 5+.
+This design system defines a performance-first, D-pad-first baseline for Plax on webOS TV 5+.
 
 ## Core principles
 

@@ -293,7 +293,7 @@ test('decideErrorFallback: HLS codec error allows HTTP despite PMS HLS commit', 
 });
 
 test('decideErrorFallback: webOS 4 skips remux after direct play failure', function () {
-  globalThis.PalmSystem = { identifier: 'com.webos.app.xplay-lite' };
+  globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
     deviceInfo: function (cb) {

@@ -9,7 +9,7 @@ var require = createRequire(import.meta.url);
 var stampLib = require('../scripts/build-stamp-lib.cjs');
 
 test('createBuildStamp increments persistent build numbers', function () {
-  var tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xplay-build-stamp-'));
+  var tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'plax-build-stamp-'));
   try {
     fs.mkdirSync(path.join(tmpRoot, 'src'), { recursive: true });
     fs.writeFileSync(path.join(tmpRoot, 'src', 'app.js'), 'console.log("xplay");\n', 'utf8');

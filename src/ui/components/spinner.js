@@ -2,7 +2,7 @@
  * Reusable circular spinner (rotating partial border ring).
  *
  * API:
- *   createSpinner(options?) -> HTMLElement (.xplay-spinner-wrap)
+ *   createSpinner(options?) -> HTMLElement (.plax-spinner-wrap)
  *     options.size   — 'small' | 'medium' | 'large' | 'em' (default 'medium'; 'em' = 1em ring, set font-size on wrap/parent)
  *     options.className — extra class on the wrap element
  *     options.label  — aria-label (default 'Loading')
@@ -16,12 +16,12 @@ function createSpinner(options) {
   var size = options.size || 'medium';
 
   var wrap = document.createElement('span');
-  wrap.className = 'xplay-spinner-wrap xplay-spinner-' + size;
+  wrap.className = 'plax-spinner-wrap plax-spinner-' + size;
   if (options.className) wrap.className += ' ' + options.className;
   if (options.hidden) wrap.hidden = true;
 
   var spinner = document.createElement('span');
-  spinner.className = 'xplay-spinner';
+  spinner.className = 'plax-spinner';
   spinner.setAttribute('role', 'status');
   spinner.setAttribute('aria-label', options.label || 'Loading');
 

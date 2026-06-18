@@ -18,8 +18,8 @@ var TICK_MS = 200;
 var GYRO_THRESHOLD_RAD_S = 0.12;
 var LINEAR_ACCEL_THRESHOLD = 0.75;
 
-export var MOTION_CURSOR_SHOW_EVENT = 'xplay-motion-cursor-show';
-export var MOTION_CURSOR_HIDE_EVENT = 'xplay-motion-cursor-hide';
+export var MOTION_CURSOR_SHOW_EVENT = 'plax-motion-cursor-show';
+export var MOTION_CURSOR_HIDE_EVENT = 'plax-motion-cursor-hide';
 
 var BODY_CLASS = 'cursor-visible';
 var initialized = false;

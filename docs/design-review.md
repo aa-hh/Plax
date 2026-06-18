@@ -1,4 +1,4 @@
-# XPlay 2 — UI Design Review
+# Plax — UI Design Review
 
 **Date:** 2026-06-17  
 **Scope:** Full UI audit — CSS, components, screens  

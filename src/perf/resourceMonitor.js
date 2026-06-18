@@ -2,7 +2,7 @@
  * Lightweight runtime telemetry for webOS TV performance sessions.
  * Enabled only when:
  *  - URL contains ?perf=1, or
- *  - localStorage.xplay_perf_enabled === "1"
+ *  - localStorage.plax_perf_enabled === "1"
  */
 
 var enabled = false;
@@ -25,7 +25,7 @@ function shouldEnable() {
     if (window.location && window.location.search && window.location.search.indexOf('perf=1') >= 0) {
       return true;
     }
-    return localStorage.getItem('xplay_perf_enabled') === '1';
+    return localStorage.getItem('plax_perf_enabled') === '1';
   } catch (e) {
     return false;
   }
@@ -136,14 +136,14 @@ function exportData() {
 
 function initResourceMonitor() {
   enabled = shouldEnable();
-  window.__xplayPerf = {
+  window.__plaxPerf = {
     isEnabled: function () { return enabled; },
     enable: function () {
-      try { localStorage.setItem('xplay_perf_enabled', '1'); } catch (e) { /* ignore */ }
+      try { localStorage.setItem('plax_perf_enabled', '1'); } catch (e) { /* ignore */ }
       enabled = true;
     },
     disable: function () {
-      try { localStorage.removeItem('xplay_perf_enabled'); } catch (e) { /* ignore */ }
+      try { localStorage.removeItem('plax_perf_enabled'); } catch (e) { /* ignore */ }
       enabled = false;
       stopSampling();
     },
@@ -156,7 +156,7 @@ function initResourceMonitor() {
     }
   };
   if (enabled) {
-    console.log('[XPlay Lite] Perf mode enabled. Use window.__xplayPerf.exportData()');
+    console.log('[Plax] Perf mode enabled. Use window.__plaxPerf.exportData()');
   }
   return enabled;
 }

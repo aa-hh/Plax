@@ -1,6 +1,33 @@
-var PREFIX = 'xplay_lite_';
+var PREFIX = 'plax_';
 var SESSION_OWNER_KEY = PREFIX + 'session_ownerAuthToken';
 var SESSION_HOME_SIZE_KEY = PREFIX + 'session_homeSize';
+var OLD_PREFIX = 'xplay_lite_';
+var MIGRATION_MARKER_KEY = PREFIX + '_migrated_from_xplay_lite';
+
+function migrateFromOldAppId() {
+  try {
+    if (localStorage.getItem(MIGRATION_MARKER_KEY) === '1') return;
+    var keysToMigrate = ['authToken', 'ownerAuthToken', 'clientId', 'user', 'activeHomeUser', 'networkPrefs', 'playbackPrefs'];
+    var migrated = false;
+    keysToMigrate.forEach(function (key) {
+      var oldKey = OLD_PREFIX + key;
+      var newKey = PREFIX + key;
+      if (!localStorage.getItem(newKey) && localStorage.getItem(oldKey)) {
+        var val = localStorage.getItem(oldKey);
+        if (val) {
+          localStorage.setItem(newKey, val);
+          migrated = true;
+        }
+      }
+    });
+    localStorage.setItem(MIGRATION_MARKER_KEY, '1');
+    if (migrated) console.log('Plax: migrated auth data from previous installation');
+  } catch (e) {
+    console.warn('Plax: migration from old app ID failed', e);
+  }
+}
+
+migrateFromOldAppId();
 
 function get(key) {
   try {

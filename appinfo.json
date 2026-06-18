@@ -1,10 +1,10 @@
 {
-  "id": "com.xplay.lite",
+  "id": "com.plax",
   "version": "0.1.0",
-  "vendor": "XPlayLite",
+  "vendor": "Plax",
   "type": "web",
   "main": "index.html",
-  "title": "XPlay Lite",
+  "title": "Plax",
   "icon": "assets/icon.png",
   "largeIcon": "assets/icon-large.png",
   "resolution": "1920x1080",

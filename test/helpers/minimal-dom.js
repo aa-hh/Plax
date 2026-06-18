@@ -114,8 +114,8 @@ function createElement(tag) {
       return false;
     },
     focus: function () {
-      if (globalThis.document && globalThis.document.__xplaySetActive) {
-        globalThis.document.__xplaySetActive(el);
+      if (globalThis.document && globalThis.document.__plaxSetActive) {
+        globalThis.document.__plaxSetActive(el);
       }
     },
     appendChild: function (child) {
@@ -222,7 +222,7 @@ function queryTree(node, sel, all) {
 }
 
 function installMinimalDom() {
-  if (globalThis.document && globalThis.document.__xplayMinimal) return;
+  if (globalThis.document && globalThis.document.__plaxMinimal) return;
   var byId = Object.create(null);
   var body = createElement('body');
   var activeElement = null;
@@ -239,7 +239,7 @@ function installMinimalDom() {
   }
 
   var document = {
-    __xplayMinimal: true,
+    __plaxMinimal: true,
     body: body,
     activeElement: null,
     getElementById: function (id) {
@@ -248,7 +248,7 @@ function installMinimalDom() {
     createElement: function (tag) {
       return createElement(tag);
     },
-    __xplaySetActive: function (el) {
+    __plaxSetActive: function (el) {
       activeElement = el;
       document.activeElement = el;
     }
