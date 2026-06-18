@@ -3896,11 +3896,43 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .profile-card-name {
   font-size: var(--font-body);
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  font-weight: var(--gt-weight-body);
+  letter-spacing: var(--gt-ls-body);
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 0.18s ease;
+}
+
+/* ── Profile picker focus/selected states (Google "Who's watching" guidance) ──
+   Avatar tiles do NOT use the generic light-fill control treatment — that turned
+   the tile into a white block and washed the name out. Instead:
+   • FOCUS (hover) = BLUE — blue ring on the avatar, blue name, subtle blue tile.
+   • SELECTED = WHITE — bright/white ring on the avatar, bright name.
+   These override the generic .profile-card:focus rule above by source order
+   (equal specificity, declared later). Name color follows each state so it is
+   always legible (the bug was the name keeping its own light color on focus). */
+.profile-card:focus {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+.profile-card:focus .profile-card-avatar {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+.profile-card:focus .profile-card-name {
+  color: var(--accent);
+}
+.profile-card--selected {
+  background: rgba(227, 227, 227, 0.12);
+}
+.profile-card--selected .profile-card-avatar {
+  box-shadow: 0 0 0 3px var(--text-primary);
+}
+.profile-card--selected .profile-card-name {
+  color: var(--text-primary);
 }
 
 .profile-card-lock {
