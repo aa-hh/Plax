@@ -5,6 +5,7 @@
   /* Google TV Design Kit — Material 3 TV Compose/sys/dark, pulled from Figma.
      See docs/google-tv-figma-tokens.md. Adopted wholesale (blue primary). */
   --bg-base: #131314;            /* sys/dark/surface */
+  --surface-dim: #131313;        /* sys/dark/surface-dim — flat app background */
   --bg-elevated: #1B1B1B;        /* surface-container-low */
   --bg-surface: #1E1F20;         /* surface-container */
   --bg-surface-hover: #282A2C;   /* surface-container-high */
@@ -87,6 +88,11 @@
   /* Unified focus language + 10-foot targets — see tv-ui-contract.md (Workstream A) */
   --focus-w: 3px;
   --target-min: 52px;
+  /* Player circular icon buttons, sized to the Figma example (40dp ×2 = 80px;
+     play slightly larger). Glyph ≈ Material 24dp ×~0.83 for visual balance. */
+  --player-icon-btn: 80px;
+  --player-icon-btn-lg: 88px;
+  --player-icon-glyph: 40px;
   --focus-glow: rgba(168, 199, 250, 0.95); /* primary-blue inner focus ring */
   --focus-halo: rgba(0, 0, 0, 0.65);       /* dark outer halo: reads over bright posters */
   --focus-shadow: 0 0 0 3px var(--focus-glow), 0 0 0 7px var(--focus-halo);
@@ -211,7 +217,9 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: radial-gradient(circle at 30% -10%, #1d2433 0%, var(--bg-base) 42%);
+  /* Flat Material surface-dim — neutral near-black, no blue tint (the old
+     #1d2433 radial was a leftover from the gold/blue theme). */
+  background: var(--surface-dim);
   color: var(--text-primary);
   font-family: var(--gt-font);
   font-size: var(--font-body);
@@ -777,6 +785,9 @@ html.caps-motion .detail-watchlist-btn:focus {
   width: 100%;
   height: 480px;
   overflow: hidden;
+  /* Layer C (Google anatomy): neutral background-color behind the poster, shown
+     before art loads / where the 16:9 art doesn't cover. */
+  background: var(--surface-dim);
   -webkit-flex-shrink: 0;
   flex-shrink: 0;
 }
@@ -3348,12 +3359,14 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--target-min);
-  min-width: 74px;
+  min-height: var(--player-icon-btn);
+  min-width: 88px;
   padding: 10px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
+  /* All player buttons share one CTA pattern: dark translucent rest → light-fill
+     (white) on focus, matching the rest of the app. */
+  background: rgba(0, 0, 0, 0.42);
   color: var(--text-primary);
   font-size: 20px;
   font-weight: 500;
@@ -3361,13 +3374,15 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-control-pill--icon {
-  min-width: var(--target-min);
-  padding: 12px;
+  width: var(--player-icon-btn);
+  height: var(--player-icon-btn);
+  min-width: var(--player-icon-btn);
+  padding: 0;
 }
 
 .player-control-icon {
-  width: 28px;
-  height: 28px;
+  width: var(--player-icon-glyph);
+  height: var(--player-icon-glyph);
   flex-shrink: 0;
   display: block;
 }
@@ -3382,15 +3397,18 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-control-pill--play {
-  min-width: 56px;
-  background: var(--accent-soft);
+  width: var(--player-icon-btn-lg);
+  height: var(--player-icon-btn-lg);
+  min-width: var(--player-icon-btn-lg);
+  /* primary action: same dark rest as the rest, marked by an accent ring (still
+     inverts to the white light-fill on focus like every other control) */
   border-color: var(--accent);
   color: var(--text-primary);
 }
 
 .player-control-pill--play .player-control-icon {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
 }
 
 .player-control-pill--danger {
@@ -3429,12 +3447,12 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-stream-pill--icon {
-  /* Player spec: secondary cluster = circular icon buttons (52px circle,
-     translucent-dark resting fill, light glyph). Focus inverts to a light fill
+  /* Secondary cluster = circular icon buttons sized per the Figma example (40dp
+     → 80px at our 2× scale). Dark translucent rest; focus inverts to a light fill
      + dark glyph via the shared .player-stream-pill:focus rule above. */
-  width: var(--target-min);
-  height: var(--target-min);
-  min-width: var(--target-min);
+  width: var(--player-icon-btn);
+  height: var(--player-icon-btn);
+  min-width: var(--player-icon-btn);
   padding: 0;
   justify-content: center;
   border-radius: 50%;
@@ -3467,8 +3485,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-stream-icon {
-  width: 28px;
-  height: 28px;
+  width: var(--player-icon-glyph);
+  height: var(--player-icon-glyph);
   flex-shrink: 0;
 }
 

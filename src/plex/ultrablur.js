@@ -9,11 +9,14 @@ var DEFAULT_HEIGHT = 720;
 // Fixed colors matching the app's dark blue-to-black palette.
 // Used to generate a noise-dithered ultrablur image as the default body
 // background — avoids 8-bit gradient banding on the B8's OLED panel.
+// Neutral Material surface-dim grays (no blue tint). A near-flat dark gradient,
+// kept as a dithered ultrablur image only to avoid 8-bit gradient banding on the
+// B8 OLED — the colors themselves are essentially surface-dim (#131313).
 var DEFAULT_BG_COLORS = {
-  topLeft:     '1d2433',
-  topRight:    '161b28',
-  bottomRight: '131314',
-  bottomLeft:  '131314'
+  topLeft:     '1b1b1b',
+  topRight:    '171717',
+  bottomRight: '131313',
+  bottomLeft:  '131313'
 };
 
 function serverScope(server) {

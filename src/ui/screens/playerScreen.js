@@ -673,6 +673,7 @@ function playerScreen(root, params, navigate) {
   }
 
   function setOverlayVisible(visible) {
+    var wasVisible = overlayVisible;
     overlayVisible = visible;
     overlay.classList.toggle('player-overlay--hidden', !visible);
     if (visible) {
@@ -681,6 +682,12 @@ function playerScreen(root, params, navigate) {
       // the cache now that they're visible again, or D-pad nav finds nothing to
       // move to (sequential nav sees a 1-item list and bails).
       invalidateFocusableCache();
+      // Whenever the overlay OPENS, default the D-pad cursor to play/pause so OK
+      // toggles playback immediately — unless a modal is up or the skip-intro
+      // prompt owns focus.
+      if (!wasVisible && !menuOpen && !mediaInfoOpen && !infoPanelVisible && !skipPromptActive) {
+        focusOverlayDefault();
+      }
       if (shouldScheduleOverlayHideWhenShowing(overlayHideAfterFirstFrame) && !isMotionCursorVisible()) {
         scheduleOverlayHide();
       }
@@ -2524,6 +2531,33 @@ function playerScreen(root, params, navigate) {
     updateSeekUi(true);
     commitSeekBarScrub(e);
   });
+
+  // D-pad bridge for the secondary icon-button cluster, which lives in the
+  // meta-header ROW (top-right) above the full-width seek bar. The generic zone
+  // nav doesn't reliably bridge a full-width row up to a right-offset cluster, so
+  // wire it explicitly (capture phase, before attachFocusNav's bubble handler):
+  //   • UP from the seek bar → the icon-button cluster
+  //   • DOWN from the cluster → the seek bar
+  overlay.addEventListener('keydown', function (e) {
+    if (menuOpen || mediaInfoOpen || infoPanelVisible) return;
+    var key = e.keyCode;
+    var active = document.activeElement;
+    if (!active) return;
+    if (key === 38 && active === seekBar) {
+      var firstAction = overlay.querySelector('.player-actions .player-stream-pill');
+      if (firstAction) {
+        firstAction.focus();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    } else if (key === 40 && active.closest && active.closest('.player-actions')) {
+      if (seekBar && !seekBar.hidden) {
+        seekBar.focus();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    }
+  }, true);
 
   // D-pad bridge between the top-right media-info button and the bottom taskbar.
   // The button lives outside .player-bottom (top-right corner) so the generic
