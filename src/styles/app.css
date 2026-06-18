@@ -2933,9 +2933,11 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-now-playing-title {
-  font-size: 32px;
-  font-weight: 600;
-  line-height: 1.2;
+  /* Player spec: title is display size + regular weight (not bold). */
+  font-size: var(--font-title, 52px);
+  font-weight: var(--gt-weight-display);
+  letter-spacing: var(--gt-ls-display);
+  line-height: 1.1;
   margin: 0;
   color: var(--text-primary);
   white-space: nowrap;
@@ -3130,7 +3132,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   top: 0;
   bottom: 0;
   width: 0;
-  background: var(--accent);
+  /* Player spec: solid-white fill on the translucent-white track. */
+  background: #fff;
   border-radius: 5px;
 }
 
@@ -3143,8 +3146,11 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   margin-top: -14px;
   margin-left: -14px;
   border-radius: 50%;
+  /* Player spec: plain circular white thumb (no blue ring). It rests scaled
+     down (0.643) and grows to 1 on focus — a transform on a non-text element,
+     so it is safe on Chromium 53. */
   background: #fff;
-  border: 2px solid var(--accent);
+  border: none;
   pointer-events: none;
   transform: scale(0.643);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -3152,8 +3158,10 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 .player-seek-bar:focus .player-seek-thumb,
 .player-seek-bar--scrubbing .player-seek-thumb {
+  /* Focus cue = the thumb scaling up (spec), plus a soft dark drop shadow for
+     legibility over bright video — NOT a blue ring. */
   transform: scale(1);
-  box-shadow: var(--focus-shadow);
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.35);
 }
 
 .player-subtitle-delay {
@@ -3322,9 +3330,17 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-stream-pill--icon {
+  /* Player spec: secondary cluster = circular icon buttons (52px circle,
+     translucent-dark resting fill, light glyph). Focus inverts to a light fill
+     + dark glyph via the shared .player-stream-pill:focus rule above. */
+  width: var(--target-min);
+  height: var(--target-min);
   min-width: var(--target-min);
-  padding: 12px;
+  padding: 0;
   justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.42);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .player-stream-pill--icon > * + * {
@@ -3352,8 +3368,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .player-stream-icon {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
 }
 
@@ -3369,6 +3385,9 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   max-width: 180px;
 }
 
+/* Track menu opens UPWARD from the secondary cluster (Player spec): a dark
+   rounded panel anchored bottom-right, ABOVE where the icon buttons sit. The
+   backdrop scrim stays full-screen to dim the video while choosing. */
 .player-track-modal {
   position: fixed;
   top: 0;
@@ -3377,10 +3396,11 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--pad-screen-y) var(--pad-screen-x);
-  background: rgba(0, 0, 0, 0.72);
+  align-items: flex-end;
+  justify-content: flex-end;
+  /* leave room below the panel for the cluster row it rises from */
+  padding: var(--pad-screen-y) var(--pad-screen-x) 220px;
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .player-track-modal[hidden] {
@@ -3391,26 +3411,76 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 560px;
-  max-height: 820px;
+  max-width: 420px;
+  max-height: 560px;
   min-height: 0;
   overflow: hidden;
   padding: 0;
-  background: rgba(13, 17, 26, 0.98);
+  background: rgba(20, 22, 26, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* Category header: ‹ name › — chevrons step between categories without closing. */
+.player-track-modal-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .player-track-modal-title {
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 14px 24px 12px;
-  background: rgba(6, 8, 13, 0.98);
-  font-size: var(--font-small);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 8px;
+  text-align: center;
+  font-size: var(--font-body);
+  font-weight: var(--gt-weight-title);
+  letter-spacing: var(--gt-ls-title);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-menu-chevron {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: var(--focus-w) solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  outline: none;
+}
+
+.player-menu-chevron[hidden] {
+  /* keep the title centered even when a chevron is hidden */
+  display: inline-flex !important;
+  visibility: hidden;
+}
+
+.player-menu-chevron:focus {
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.player-menu-chevron-icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: block;
 }
 
 .player-track-modal-footer {
@@ -3491,38 +3561,66 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 6px 0;
+  /* horizontal padding gives the light-fill option pills breathing room */
+  padding: 6px 12px;
 }
 
+/* List items: selected = light pill + trailing checkmark; others plain. */
 .player-menu-option {
-  justify-content: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   text-align: left;
   width: 100%;
-  min-height: 50px;
+  min-height: 48px;
+  margin: 2px 0;
   font-size: var(--font-body);
-  border-radius: 0;
-  border: none;
-  border-left: 3px solid transparent;
-  padding-left: 21px;
-  padding-right: 24px;
+  font-weight: var(--gt-weight-body);
+  border: var(--focus-w) solid transparent;
+  border-radius: 999px;
+  padding: 8px 18px;
   background: transparent;
   color: var(--text-primary);
 }
 
-.player-menu-option--active {
-  border-left-color: var(--accent);
-  color: var(--accent);
-  background: rgba(168, 199, 250, 0.16);
+.player-menu-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.player-menu-option-check {
+  flex-shrink: 0;
+  margin-left: 12px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Selected (not focused) = soft translucent-light pill + accent checkmark, so it
+   reads as "current" while still distinct from the focused item below. */
+.player-menu-option--active {
+  background: rgba(227, 227, 227, 0.16);
+  color: var(--text-primary);
+  font-weight: var(--gt-weight-medium);
+}
+
+.player-menu-option--active .player-menu-option-check {
+  color: var(--accent);
+}
+
+/* Focus = strong light-fill inversion (the D-pad cursor). Overrides the
+   selected styling when the selected item is the focused one. */
 .player-menu-option:focus {
   outline: none;
-  border-left-color: transparent;
   background: var(--focus-fill);
   color: var(--focus-on-fill);
+  border-color: transparent;
+  box-shadow: none;
 }
 
-.player-menu-option--active:focus {
+.player-menu-option--active:focus,
+.player-menu-option--active:focus .player-menu-option-check {
   color: var(--focus-on-fill);
 }
 
