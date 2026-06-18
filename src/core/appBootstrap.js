@@ -70,7 +70,7 @@ function runAppBootstrap(options) {
     var activeServer = pickActiveServer(servers, discovery.profileResources);
     if (!activeServer) throw new Error('No reachable Plex servers');
     setState({ servers: servers, activeServer: activeServer });
-    warmDefaultBackground(); // fire-and-forget: IDB hit → apply immediately, miss → no-op
+    warmDefaultBackground(activeServer); // fire-and-forget: direct-URL now, swap to cached blob if warm
     console.info('[bootstrap] server selected', {
       name: activeServer.name,
       connectionUri: activeServer.connectionUri,

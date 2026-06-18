@@ -108,26 +108,45 @@ function loadUltraBlurBackground(server, artPath) {
 
 var DEFAULT_BG_BLOB_KEY = 'plax://default-bg/v1';
 
-function _applyBlobToBody(blob) {
-  var blobUrl = URL.createObjectURL(blob);
-  document.body.style.backgroundImage = 'url(' + blobUrl + ')';
+function _applyBgImage(cssUrl) {
+  document.body.style.backgroundImage = cssUrl;
   document.body.style.backgroundSize = 'cover';
   document.body.style.backgroundPosition = 'center top';
 }
 
-// Called at bootstrap: reads IDB only, no network. Instant on warm cache.
-function warmDefaultBackground() {
-  return persistentCache.getBlob(DEFAULT_BG_BLOB_KEY).then(function (blob) {
-    if (blob) _applyBlobToBody(blob);
-  });
+function _applyBlobToBody(blob) {
+  _applyBgImage('url(' + URL.createObjectURL(blob) + ')');
 }
 
-// Called once after profile picker: fetches from Plex, caches blob, applies.
-// Fire-and-forget — does nothing if already cached.
+// Apply the ultrablur straight from its Plex URL — no IndexedDB, no XHR, works
+// everywhere instantly. This is the reliable display path (IDB is gated off on
+// webOS 4 / B8, so the blob cache below is a cosmetic optimisation only — it
+// must NEVER be the sole path or the background silently vanishes on the TV).
+function _applyDefaultBackgroundUrl(server) {
+  if (!server) return false;
+  var url = buildUltraBlurImageUrl(server, DEFAULT_BG_COLORS);
+  if (!url) return false;
+  _applyBgImage('url(' + url + ')');
+  return true;
+}
+
+// Called at bootstrap. Show the background NOW via the direct URL; if a cached
+// blob exists (warm IDB on capable platforms) swap to it to avoid a re-fetch.
+function warmDefaultBackground(server) {
+  _applyDefaultBackgroundUrl(server);
+  return persistentCache.getBlob(DEFAULT_BG_BLOB_KEY).then(function (blob) {
+    if (blob) _applyBlobToBody(blob);
+  }).catch(function () {});
+}
+
+// Called after the profile picker. The direct URL already shows the background;
+// here we additionally cache a blob for the next cold start (best-effort — a
+// failed fetch or a gated cache never affects what's on screen).
 function fetchDefaultBackground(server) {
   if (!server) return;
+  _applyDefaultBackgroundUrl(server);
   persistentCache.getBlob(DEFAULT_BG_BLOB_KEY).then(function (blob) {
-    if (blob) { _applyBlobToBody(blob); return; }
+    if (blob) return; // already cached
     var url = buildUltraBlurImageUrl(server, DEFAULT_BG_COLORS);
     if (!url) return;
     var xhr = new XMLHttpRequest();
@@ -136,11 +155,10 @@ function fetchDefaultBackground(server) {
     xhr.onload = function () {
       if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
         persistentCache.putBlob(DEFAULT_BG_BLOB_KEY, xhr.response);
-        _applyBlobToBody(xhr.response);
       }
     };
     xhr.send();
-  });
+  }).catch(function () {});
 }
 
 export {
