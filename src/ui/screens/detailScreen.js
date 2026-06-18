@@ -13,6 +13,7 @@ import {
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
+import { createTabs, openModal } from '../components/controls.js';
 import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
@@ -58,7 +59,6 @@ function detailScreen(root, params, navigate) {
   screen.innerHTML = '<p class="status-msg">Loading…</p>';
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
-  screen.addEventListener('keydown', onDetailModalKeyDown, true);
 
   var selectedVersion = null;
   var selectedAudio = null;
@@ -341,15 +341,20 @@ function detailScreen(root, params, navigate) {
     btn._plaxQualityWired = true;
     updateQualityBtnLabel();
     btn.addEventListener('click', function () {
-      openDetailModal('quality', 'Quality', listProfiles().map(function (p) {
-        return { id: p.id, label: p.label };
-      }), getDetailQuality(), function (id) {
-        selectedQuality = id;
-        setPlaybackPrefs({ quality: id });
-        updateQualityBtnLabel();
-        updateDirectPlayNotice();
-        if (metadata) {
-          currentProbe = probePlayback(metadata, selectedVersion, null, deviceInfo);
+      openModal({
+        title: 'Quality',
+        selectedId: getDetailQuality(),
+        options: listProfiles().map(function (p) {
+          return { id: p.id, label: p.label };
+        }),
+        onPick: function (id) {
+          selectedQuality = id;
+          setPlaybackPrefs({ quality: id });
+          updateQualityBtnLabel();
+          updateDirectPlayNotice();
+          if (metadata) {
+            currentProbe = probePlayback(metadata, selectedVersion, null, deviceInfo);
+          }
         }
       });
     });
@@ -368,9 +373,15 @@ function detailScreen(root, params, navigate) {
     btn.disabled = !subList.length;
     refreshLabel();
     btn.addEventListener('click', function () {
-      openDetailModal('subtitles', 'Subtitles', subOptions, selectedSubtitle, function (id) {
-        selectedSubtitle = id;
-        refreshLabel();
+      openModal({
+        title: 'Subtitles',
+        options: subOptions.map(function (o) {
+          return { id: o.id, label: o.label, selected: isActiveOption(o.id, selectedSubtitle) };
+        }),
+        onPick: function (id) {
+          selectedSubtitle = id;
+          refreshLabel();
+        }
       });
     });
   }
@@ -387,14 +398,10 @@ function detailScreen(root, params, navigate) {
         if (panel) panel.classList.toggle('hidden');
       });
     }
-    var modalCancel = screen.querySelector('#detail-modal-cancel');
-    if (modalCancel) modalCancel.addEventListener('click', closeDetailModal);
   }
 
   var seasonEpisodes = null;
   var seasonEpisodesLoading = false;
-  var detailModalKind = null;
-  var detailModalReturnFocus = null;
 
   function buildNoticeHtml(probe) {
     if (!probe || !probe.warnings.length) return '';
@@ -692,82 +699,6 @@ function detailScreen(root, params, navigate) {
     return match ? subtitleOptionLabel(match) : 'Off';
   }
 
-  function closeDetailModal() {
-    var modal = screen.querySelector('#detail-modal');
-    var cancelBtn = screen.querySelector('#detail-modal-cancel');
-    if (modal) modal.hidden = true;
-    if (cancelBtn) cancelBtn.textContent = 'Cancel';
-    detailModalKind = null;
-    if (detailModalReturnFocus && detailModalReturnFocus.focus) {
-      detailModalReturnFocus.focus();
-    }
-    detailModalReturnFocus = null;
-  }
-
-  function openDetailModal(kind, title, options, activeId, onSelect) {
-    var modal = screen.querySelector('#detail-modal');
-    var list = screen.querySelector('#detail-modal-list');
-    var titleEl = screen.querySelector('#detail-modal-title');
-    if (!modal || !list) return;
-    detailModalKind = kind;
-    detailModalReturnFocus = document.activeElement;
-    if (titleEl) titleEl.textContent = title;
-    list.className = 'detail-modal-list';
-    list.innerHTML = '';
-    if (!options.length) {
-      list.innerHTML = '<p class="detail-modal-empty">No options available</p>';
-    } else {
-      options.forEach(function (opt) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn detail-modal-option' +
-          (isActiveOption(opt.id, activeId) ? ' detail-modal-option--active' : '');
-        btn.textContent = opt.label + (isActiveOption(opt.id, activeId) ? ' ✓' : '');
-        btn.tabIndex = 0;
-        btn.addEventListener('click', function () {
-          onSelect(opt.id, opt);
-          closeDetailModal();
-        });
-        list.appendChild(btn);
-      });
-    }
-    modal.hidden = false;
-    var activeBtn = list.querySelector('.detail-modal-option--active');
-    if (activeBtn) activeBtn.focus();
-    else focusFirst(screen.querySelector('#detail-modal-sheet') || modal);
-  }
-
-  function onDetailModalKeyDown(e) {
-    if (!detailModalKind) return;
-    var key = e.keyCode;
-    if (key === 461 || key === 27 || key === 8 || e.key === 'GoBack') {
-      e.preventDefault();
-      e.stopPropagation();
-      closeDetailModal();
-      return;
-    }
-    // Trap UP/DOWN in the modal list so attachFocusNav can't move focus to the background.
-    if (key === 38 || key === 40) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      var list = screen.querySelector('#detail-modal-list');
-      var navItems = list ? Array.prototype.slice.call(list.querySelectorAll('.detail-modal-option')) : [];
-      var cancelBtn = screen.querySelector('#detail-modal-cancel');
-      if (cancelBtn) navItems.push(cancelBtn);
-      if (!navItems.length) return;
-      var active = document.activeElement;
-      var idx = navItems.indexOf(active);
-      if (idx < 0) {
-        var fallback = list && list.querySelector('.detail-modal-option--active');
-        if (!fallback && navItems.length) fallback = navItems[0];
-        if (fallback) fallback.focus();
-        return;
-      }
-      var next = key === 40 ? Math.min(navItems.length - 1, idx + 1) : Math.max(0, idx - 1);
-      if (next !== idx) navItems[next].focus();
-    }
-  }
-
   function ensureSeasonEpisodesLoaded(seasonKey) {
     if (seasonEpisodes || seasonEpisodesLoading || !seasonKey) {
       return Promise.resolve(seasonEpisodes || []);
@@ -787,36 +718,23 @@ function detailScreen(root, params, navigate) {
     var seasonKey = item.parentRatingKey || params.seasonKey;
     if (!seasonKey) return;
     ensureSeasonEpisodesLoaded(seasonKey).then(function (episodes) {
-      var modal = screen.querySelector('#detail-modal');
-      var list = screen.querySelector('#detail-modal-list');
-      var titleEl = screen.querySelector('#detail-modal-title');
-      if (!modal || !list) return;
-      detailModalKind = 'episodes';
-      detailModalReturnFocus = document.activeElement;
-      if (titleEl) titleEl.textContent = 'Episodes · ' + seasonLabel(item);
-      list.innerHTML = '';
-      list.className = 'detail-modal-list detail-modal-list--episodes row-scroll';
-      episodes.forEach(function (ep) {
-        var chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'episode-chip detail-modal-option';
-        if (String(ep.ratingKey) === String(item.ratingKey)) {
-          chip.classList.add('detail-modal-option--active');
+      if (destroyed) return;
+      openModal({
+        title: 'Episodes · ' + seasonLabel(item),
+        selectedId: String(item.ratingKey),
+        options: episodes.map(function (ep) {
+          var code = episodeCode(ep);
+          return {
+            id: String(ep.ratingKey),
+            label: (code ? code + ' · ' : '') + (ep.title || 'Episode'),
+            data: ep
+          };
+        }),
+        onPick: function (id, opt) {
+          if (String(id) === String(item.ratingKey)) return;
+          navigate('detail', buildEpisodeNavRoute(opt.data, seasonKey));
         }
-        var code = episodeCode(ep);
-        chip.textContent = (code ? code + ' · ' : '') + (ep.title || 'Episode');
-        chip.tabIndex = 0;
-        chip.addEventListener('click', function () {
-          closeDetailModal();
-          if (String(ep.ratingKey) === String(item.ratingKey)) return;
-          navigate('detail', buildEpisodeNavRoute(ep, seasonKey));
-        });
-        list.appendChild(chip);
       });
-      modal.hidden = false;
-      var active = list.querySelector('.detail-modal-option--active');
-      if (active) active.focus();
-      else focusFirst(list);
     }).catch(function () {
       setWatchMessage('Could not load episodes for this season.', true);
     });
@@ -852,16 +770,6 @@ function detailScreen(root, params, navigate) {
       '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
       '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       '</div>';
-  }
-
-  function buildDetailModalHtml() {
-    return '<div class="detail-modal" id="detail-modal" hidden>' +
-      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">' +
-      '<p class="detail-modal-title" id="detail-modal-title"></p>' +
-      '<div class="detail-modal-list" id="detail-modal-list"></div>' +
-      '<div class="detail-modal-footer">' +
-      '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
-      '</div></div></div>';
   }
 
   function wirePlaybackActions(item) {
@@ -943,8 +851,7 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
       '</div>' +
       '<p class="watch-status-msg" id="watch-status-msg"></p>' +
-      '</div></div>' +
-      buildDetailModalHtml()
+      '</div></div>'
     );
 
     mountDetailHubNav();
@@ -1083,8 +990,7 @@ function detailScreen(root, params, navigate) {
       '<p class="watch-status-msg" id="watch-status-msg"></p>' +
       '</div></div>' +
       '<div class="detail-rails detail-rails--movie" id="detail-rails" data-focus-zone="detail-rails"></div>' +
-      '</div>' +
-      buildDetailModalHtml()
+      '</div>'
     );
 
     mountDetailHubNav();
@@ -1103,6 +1009,151 @@ function detailScreen(root, params, navigate) {
     var playBtn = screen.querySelector('#btn-start');
     if (playBtn) playBtn.focus();
     else focusFirst(screen);
+  }
+
+  // ── Show detail (Google TV concept) ──────────────────────────────────────
+  // Info block (title · meta · overview) over the hero backdrop, an underline
+  // season tab bar (sliding blue indicator), and a 16:9 episode grid that
+  // re-fills in place when a season tab is chosen. Reuses createTabs(underline)
+  // + createMediaCard(episode) so nothing is hand-rolled here.
+  var showSeasons = null;
+  var activeSeasonKey = null;
+  var showEpisodesGen = 0;
+
+  function showMetaLine(item) {
+    var parts = [item.year, item.contentRating].filter(Boolean);
+    if (item.leafCount) parts.push(item.leafCount + ' episodes');
+    if (item.genres && item.genres.length) {
+      parts.push(item.genres.slice(0, 3).map(function (g) { return g.tag; }).join(', '));
+    }
+    return parts.join(' · ');
+  }
+
+  function renderShowDetail(item) {
+    metadata = item;
+    activeDetailRoute = buildActiveDetailRoute(item);
+    showSeasons = null;
+    activeSeasonKey = null;
+    var imdb = formatImdbRating(item);
+
+    screen.innerHTML = wrapDetailShell(
+      '<div class="detail-layout detail-layout--show-v2">' +
+      '<div class="detail-show-info" data-focus-zone="detail-show-info">' +
+      '<div class="detail-show-info-head">' +
+      '<h1 class="detail-show-title">' + escapeHtml(item.title || '') + '</h1>' +
+      buildWatchlistActionHtml(item) +
+      '</div>' +
+      '<p class="detail-show-meta" id="detail-show-meta">' + escapeHtml(showMetaLine(item)) + '</p>' +
+      (imdb ? '<p class="detail-show-meta detail-show-rating">' + escapeHtml(imdb) + '</p>' : '') +
+      (item.summary
+        ? '<p class="detail-show-overview">' + escapeHtml(item.summary) + '</p>'
+        : '') +
+      '</div>' +
+      '<div class="detail-season-tabs" id="detail-season-tabs"></div>' +
+      '<div class="detail-episode-grid row-scroll--episodes" id="detail-episode-grid" ' +
+      'data-focus-zone="detail-episode-grid" data-cols="4">' +
+      '<p class="status-msg detail-episode-grid-empty">Loading seasons…</p>' +
+      '</div>' +
+      '</div>'
+    );
+
+    mountDetailHubNav();
+    applyDetailBackground(detailHomeMainEl(), server, item);
+    if (supportsWatchlistBookmark(item)) wireWatchlistBookmark(screen, item);
+    loadShowSeasons(item.ratingKey);
+  }
+
+  function loadShowSeasons(showKey) {
+    var gen = ++seasonsLoadGen;
+    getChildren(server, showKey).then(function (items) {
+      if (destroyed || gen !== seasonsLoadGen) return;
+      var seasons = (items || []).filter(function (s) {
+        return !isVirtualAllEpisodesSeason(s);
+      });
+      showSeasons = seasons;
+      var tabsHost = screen.querySelector('#detail-season-tabs');
+      var grid = screen.querySelector('#detail-episode-grid');
+      if (!tabsHost) return;
+      if (!seasons.length) {
+        if (grid) grid.innerHTML = '<p class="status-msg detail-episode-grid-empty">No seasons available.</p>';
+        return;
+      }
+      activeSeasonKey = String(seasons[0].ratingKey);
+      var tabs = createTabs({
+        variant: 'underline',
+        zone: 'detail-season-tabs',
+        activeId: activeSeasonKey,
+        tabs: seasons.map(function (s) {
+          return { id: String(s.ratingKey), label: seasonTabLabel(s) };
+        }),
+        onSelect: function (id) {
+          activeSeasonKey = String(id);
+          loadShowEpisodes(activeSeasonKey, showKey);
+        }
+      });
+      tabsHost.innerHTML = '';
+      tabsHost.appendChild(tabs);
+      // positionIndicator reads offsetLeft/offsetWidth, so it needs the tabs
+      // laid out. The host is now in the DOM; defer one frame so layout has
+      // flushed before measuring (the indicator no-ops if offsetParent is null).
+      if (tabs.positionIndicator) {
+        var positionSeasonIndicator = function () {
+          if (destroyed) return;
+          tabs.positionIndicator(activeSeasonKey);
+        };
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(positionSeasonIndicator);
+        } else {
+          positionSeasonIndicator();
+        }
+      }
+      var firstTab = tabs.querySelector('.gt-tab');
+      if (firstTab) firstTab.focus();
+      loadShowEpisodes(activeSeasonKey, showKey);
+    }).catch(function () {
+      if (destroyed) return;
+      var grid = screen.querySelector('#detail-episode-grid');
+      if (grid) grid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Could not load seasons.</p>';
+    });
+  }
+
+  function seasonTabLabel(s) {
+    if (s.index != null && s.index !== '') return 'Season ' + s.index;
+    if (s.title) return s.title;
+    return 'Season';
+  }
+
+  function loadShowEpisodes(seasonKey, showKey) {
+    var grid = screen.querySelector('#detail-episode-grid');
+    if (!grid) return;
+    var gen = ++showEpisodesGen;
+    grid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Loading episodes…</p>';
+    getChildren(server, seasonKey).then(function (items) {
+      if (destroyed || gen !== showEpisodesGen) return;
+      var currentGrid = screen.querySelector('#detail-episode-grid');
+      if (!currentGrid) return;
+      currentGrid.innerHTML = '';
+      if (!items || !items.length) {
+        currentGrid.innerHTML = '<p class="status-msg detail-episode-grid-empty">No episodes in this season.</p>';
+        return;
+      }
+      items.forEach(function (ep) {
+        currentGrid.appendChild(createMediaCard(ep, function (selected, routeParams) {
+          var route = routeParams || { ratingKey: selected.ratingKey };
+          route.seasonKey = seasonKey;
+          route.showKey = showKey || '';
+          route.parentDetail = activeDetailRoute;
+          navigate('detail', route);
+        }, { layout: 'episode' }));
+      });
+      hydrateRowWindow(currentGrid, { start: 0, count: items.length });
+    }).catch(function () {
+      if (destroyed || gen !== showEpisodesGen) return;
+      var currentGrid = screen.querySelector('#detail-episode-grid');
+      if (currentGrid) {
+        currentGrid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Could not load episodes.</p>';
+      }
+    });
   }
 
   function renderStandardDetail(item) {
@@ -1164,14 +1215,7 @@ function detailScreen(root, params, navigate) {
       : topBar + heroHtml;
 
     screen.innerHTML = wrapDetailShell(
-      '<div class="' + layoutClass + '">' + layoutBody + '</div>' +
-      '<div class="detail-modal" id="detail-modal" hidden>' +
-      '<div class="detail-modal-sheet" id="detail-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">' +
-      '<p class="detail-modal-title" id="detail-modal-title"></p>' +
-      '<div class="detail-modal-list" id="detail-modal-list"></div>' +
-      '<div class="detail-modal-footer">' +
-      '<button type="button" class="btn detail-modal-cancel" id="detail-modal-cancel" tabindex="0">Cancel</button>' +
-      '</div></div></div>'
+      '<div class="' + layoutClass + '">' + layoutBody + '</div>'
     );
 
     mountDetailHubNav();
@@ -1293,6 +1337,10 @@ function detailScreen(root, params, navigate) {
     }
     if (item.type === 'movie') {
       renderMovieDetail(item);
+      return;
+    }
+    if (item.type === 'show') {
+      renderShowDetail(item);
       return;
     }
     renderStandardDetail(item);
@@ -1516,8 +1564,8 @@ function detailScreen(root, params, navigate) {
       seasonsLoadGen += 1;
       episodesLoadGen += 1;
       relatedHubsLoadGen += 1;
+      showEpisodesGen += 1;
       try { abortPrefetch(); } catch (e) { /* ignore */ }
-      screen.removeEventListener('keydown', onDetailModalKeyDown, true);
       detachFocus();
     }
   };

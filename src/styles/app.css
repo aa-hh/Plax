@@ -1789,6 +1789,97 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   overflow: hidden;
 }
 
+/* ── Show detail v2 (Google TV concept) ──────────────────────────────────────
+   Vertical stack over the hero backdrop: info block, underline season tabs,
+   then a 16:9 episode grid. No grid/gap/aspect-ratio (Chrome 53): flexbox +
+   explicit edges + the shared --poster-ep-* tokens. */
+.detail-screen-layout .detail-layout--show-v2 {
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.detail-show-info {
+  flex-shrink: 0;
+  max-width: 900px;
+  margin-bottom: var(--space-6);
+}
+
+/* Title row: title fills, bookmark pinned right; flex + margin (no gap). */
+.detail-show-info-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.detail-show-info-head .detail-show-title {
+  margin-bottom: 0;
+  margin-right: var(--space-5);
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-show-info-head .detail-watchlist-btn {
+  flex-shrink: 0;
+}
+
+.detail-show-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--gt-display);
+  font-weight: var(--gt-weight-display);
+  letter-spacing: var(--gt-ls-display);
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.detail-show-meta {
+  margin: 0 0 var(--space-2);
+  font-size: var(--gt-body);
+  font-weight: var(--gt-weight-body);
+  letter-spacing: var(--gt-ls-body);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.detail-show-rating {
+  color: var(--accent);
+}
+
+.detail-show-overview {
+  margin: var(--space-3) 0 0;
+  font-size: var(--gt-body-lg);
+  font-weight: var(--gt-weight-body);
+  letter-spacing: var(--gt-ls-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  max-height: 84px;
+  overflow: hidden;
+}
+
+.detail-season-tabs {
+  flex-shrink: 0;
+  margin-bottom: var(--space-5);
+}
+
+/* Episode grid: 16:9 cards wrapped onto rows. data-cols=4 drives D-pad routing;
+   the visual wrap is flex + margins (no CSS grid). */
+.detail-episode-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+
+.detail-episode-grid .media-card--episode {
+  margin: 0 var(--space-5) var(--space-6) 0;
+}
+
+.detail-episode-grid-empty {
+  width: 100%;
+  margin: var(--space-5) 0;
+  color: var(--text-secondary);
+}
+
 .detail-screen-layout .detail-layout--movie .detail-rails--movie,
 .detail-screen-layout .detail-layout--movie-v2 .detail-rails--movie {
   flex: 1;
