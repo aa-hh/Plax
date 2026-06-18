@@ -5,13 +5,13 @@
 
 import { hydrateRowViewport } from '../posterImages.js';
 
-// One card's horizontal advance: standard poster (--row-poster-w: 180px) +
-// inter-card gap (--row-card-gap: 16px). Used only to size the lead/trail
-// spacers that preserve scroll extent for off-window cards, so it just needs to
-// track the standard card footprint (was 172 for the old 156px poster). Home
-// rows run a slightly wider gap (20px), but the windowed slice is generous
-// enough that the small per-card delta never affects which cards are rendered.
-var ROW_SLOT_WIDTH = 196;
+// One card's horizontal advance: 2-column Google TV poster (--row-poster-w:
+// 248px @1920) + the 20dp grid gutter (--row-card-gap: 40px) = 288px pitch.
+// Used only to size the lead/trail spacers that preserve scroll extent for
+// off-window cards, so an approximate px footprint is fine (the cards are vw so
+// this drifts slightly off 1080p, but the windowed slice is generous enough that
+// the per-card delta never changes which cards are rendered).
+var ROW_SLOT_WIDTH = 288;
 
 function createVirtualRow(container, options) {
   var items = options.items || [];

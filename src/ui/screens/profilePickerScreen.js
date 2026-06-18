@@ -13,6 +13,7 @@ import { focusFirst, attachFocusNav } from '../focus.js';
 import { createSpinner } from '../components/spinner.js';
 import * as cache from '../../core/cache.js';
 import { invalidateRetention } from '../../core/router.js';
+import { fetchDefaultBackground } from '../../plex/ultrablur.js';
 import { tvLog } from '../../utils/tvDebug.js';
 import { isPerfEnabled, mark as perfMark } from '../../perf/resourceMonitor.js';
 import { prefetchAndPersistBlobs, resolvePosterSrc } from '../posterImages.js';
@@ -436,6 +437,7 @@ function profilePickerScreen(root, params, navigate) {
       switching = false;
       syncHeaderSpinner();
       pinFlowLog('navigate home');
+      fetchDefaultBackground(getState().activeServer); // fire-and-forget; caches blob for future loads
       navigate('home', {});
     });
   }
@@ -518,10 +520,19 @@ function profilePickerScreen(root, params, navigate) {
 
   function onProfileSelect(user, card) {
     if (switching) return;
+    // SELECT = white: mark the chosen card the moment it's picked, for BOTH the
+    // PIN path and the no-PIN path (was previously only set inside enterPinMode,
+    // so no-PIN users never got the white selected state before loading in).
+    if (selectedCard && selectedCard !== card) {
+      selectedCard.classList.remove('profile-card--selected');
+    }
+    selectedCard = card;
+    if (card) card.classList.add('profile-card--selected');
     if (user.hasPin || user.protected) {
       enterPinMode(user, card);
       return;
     }
+    // No PIN: stay white while we bootstrap, then drop into the app.
     completeSwitch(user, '');
   }
 
@@ -565,7 +576,23 @@ function profilePickerScreen(root, params, navigate) {
       card.addEventListener('click', function () { onProfileSelect(u, card); });
       rowEl.appendChild(card);
     });
-    focusFirst(screen);
+    // Auto-hover the top-left-most user on load (blue focus state). Focus the
+    // first card explicitly (not generic focusFirst, which could land on any
+    // focusable) with a rAF fallback in case layout hadn't flushed when we
+    // called focus() right after appending the cards (webOS focus timing).
+    var firstCard = rowEl.querySelector('.profile-card');
+    if (firstCard) {
+      firstCard.focus();
+      if (document.activeElement !== firstCard && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () {
+          if (rowEl && rowEl.contains(firstCard) && document.activeElement !== firstCard) {
+            firstCard.focus();
+          }
+        });
+      }
+    } else {
+      focusFirst(screen);
+    }
   }
 
   function onKeyDown(e) {

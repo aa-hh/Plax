@@ -201,6 +201,12 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* No scrollbars anywhere — this is a 10-foot D-pad app, the chrome is never
+   pointer-scrolled. Chrome 53 needs the -webkit pseudo; scrollbar-width covers
+   Gecko/dev. Scrolling still works; only the visual track is removed. */
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
+* { scrollbar-width: none; }
+
 html, body {
   width: 100%;
   height: 100%;
@@ -481,6 +487,54 @@ html.caps-motion .detail-watchlist-btn:focus {
 
 .home-layout > * + * {
   margin-left: var(--space-7);
+}
+
+/* ── Home/Watchlist: collapsed sidebar lives in the LEFT GUTTER (overlay), so
+   the content uses the full 12-column grid (exactly 6 cards) instead of being
+   pushed in by an in-flow rail. The sidebar overlays content when it expands on
+   focus rather than reflowing the grid. ── */
+.screen-home .home-layout {
+  display: block;
+  position: relative;
+}
+.screen-home .home-layout > * + * {
+  margin-left: 0;
+}
+.screen-home .browsing-hub-nav-host {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* pull out of the padded content box into the left safe-area gutter */
+  left: calc(-1 * var(--safe-x));
+  z-index: 5;
+  /* Solid backing under the icons/labels (rail overlays the bled hero), fading
+     only at the very right edge so it blends into the content. */
+  background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
+}
+.screen-home .home-main {
+  margin-left: 0;
+  width: 100%;
+  height: 100%; /* home-layout is now block, so restore the height chain */
+}
+
+/* Immersive hero bleeds full-width into BOTH gutters (backdrop continues to the
+   screen edges); its content block keeps the safe-area inset so text stays on
+   the grid and clears the collapsed rail. */
+.screen-home .il-hero {
+  margin-left: calc(-1 * var(--safe-x));
+  margin-right: calc(-1 * var(--safe-x));
+}
+
+/* Carousels bleed into the RIGHT gutter so the 7th card peeks past the 6-card
+   grid; the feed still clips at the screen edge (overflow-x hidden). */
+.screen-home .home-feed-host {
+  margin-right: calc(-1 * var(--safe-x));
+}
+/* Cancel the row's focus-ring left padding so the first card sits exactly on
+   column 1 (its focus ring overhangs into the empty left gutter, which is fine
+   when the rail is collapsed). */
+.screen-home .home-feed .row-scroll {
+  margin-left: calc(-1 * var(--focus-ring-pad));
 }
 
 .browsing-hub-nav-host {

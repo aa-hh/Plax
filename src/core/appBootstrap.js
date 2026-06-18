@@ -14,6 +14,7 @@ import {
   filterLibrariesForUser,
   isRestrictedProfile
 } from '../security/libraryAccess.js';
+import { warmDefaultBackground } from '../plex/ultrablur.js';
 
 var DEFAULT_HUB_PREFETCH = {
   initialRows: 2,
@@ -69,6 +70,7 @@ function runAppBootstrap(options) {
     var activeServer = pickActiveServer(servers, discovery.profileResources);
     if (!activeServer) throw new Error('No reachable Plex servers');
     setState({ servers: servers, activeServer: activeServer });
+    warmDefaultBackground(); // fire-and-forget: IDB hit → apply immediately, miss → no-op
     console.info('[bootstrap] server selected', {
       name: activeServer.name,
       connectionUri: activeServer.connectionUri,

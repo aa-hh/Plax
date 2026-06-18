@@ -67,8 +67,10 @@ test('webOS 4 CSS: no aspect-ratio, inset, clamp(), or CSS min()/max()', functio
 });
 
 test('webOS 4 CSS: library grid uses margin gutters not gap', function () {
-  assert.match(cssSrc, /\.media-grid[\s\S]*margin:\s*-12px -10px/);
-  assert.match(cssSrc, /\.media-grid > \.media-card[\s\S]*margin:\s*12px 10px/);
+  // Gutter widened to the Google 20dp grid gutter (half = 1.0417vw ≈ 20px each
+  // side → 40px gap); vertical stays 14px. Still margin-based, never `gap:`.
+  assert.match(cssSrc, /\.media-grid[\s\S]*margin:\s*-14px -1\.0417vw/);
+  assert.match(cssSrc, /\.media-grid > \.media-card[\s\S]*margin:\s*14px 1\.0417vw/);
 });
 
 test('webOS 4 CSS: library grid uses grid poster dimensions', function () {

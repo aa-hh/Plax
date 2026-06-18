@@ -1,6 +1,7 @@
 import { fetchPlexJson, serverUrl, getServerToken } from './client.js';
 import { buildQuery } from '../utils/fetch.js';
 import * as cache from '../core/cache.js';
+import * as persistentCache from '../core/persistentCache.js';
 
 var DEFAULT_WIDTH = 1280;
 var DEFAULT_HEIGHT = 720;
@@ -105,13 +106,41 @@ function loadUltraBlurBackground(server, artPath) {
   });
 }
 
-function applyDefaultBackground(server) {
-  if (!server) return;
-  var url = buildUltraBlurImageUrl(server, DEFAULT_BG_COLORS);
-  if (!url) return;
-  document.body.style.backgroundImage = 'url(' + url + ')';
+var DEFAULT_BG_BLOB_KEY = 'plax://default-bg/v1';
+
+function _applyBlobToBody(blob) {
+  var blobUrl = URL.createObjectURL(blob);
+  document.body.style.backgroundImage = 'url(' + blobUrl + ')';
   document.body.style.backgroundSize = 'cover';
   document.body.style.backgroundPosition = 'center top';
+}
+
+// Called at bootstrap: reads IDB only, no network. Instant on warm cache.
+function warmDefaultBackground() {
+  return persistentCache.getBlob(DEFAULT_BG_BLOB_KEY).then(function (blob) {
+    if (blob) _applyBlobToBody(blob);
+  });
+}
+
+// Called once after profile picker: fetches from Plex, caches blob, applies.
+// Fire-and-forget — does nothing if already cached.
+function fetchDefaultBackground(server) {
+  if (!server) return;
+  persistentCache.getBlob(DEFAULT_BG_BLOB_KEY).then(function (blob) {
+    if (blob) { _applyBlobToBody(blob); return; }
+    var url = buildUltraBlurImageUrl(server, DEFAULT_BG_COLORS);
+    if (!url) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.responseType = 'blob';
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+        persistentCache.putBlob(DEFAULT_BG_BLOB_KEY, xhr.response);
+        _applyBlobToBody(xhr.response);
+      }
+    };
+    xhr.send();
+  });
 }
 
 export {
@@ -120,5 +149,6 @@ export {
   buildUltraBlurColorGradient,
   loadUltraBlurBackdrop,
   loadUltraBlurBackground,
-  applyDefaultBackground
+  warmDefaultBackground,
+  fetchDefaultBackground
 };
