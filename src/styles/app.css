@@ -4104,7 +4104,11 @@ html.caps-motion .media-card:focus .card-poster-wrap {
    (equal specificity, declared later). Name color follows each state so it is
    always legible (the bug was the name keeping its own light color on focus). */
 .profile-card:focus {
-  background: var(--accent-soft);
+  /* FOCUS = blue hover: keep the DARK rest tile (a light fill here read as the
+     white "selected" state, so the auto-focused card looked pre-selected and
+     barely changed on pick). The blue avatar ring + blue name ARE the focus cue.
+     This must stay visually distinct from the WHITE selected state below. */
+  background: var(--bg-surface);
   color: var(--text-primary);
   box-shadow: none;
 }
@@ -4114,13 +4118,18 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .profile-card:focus .profile-card-name {
   color: var(--accent);
 }
-.profile-card--selected {
+/* Selected (white) must WIN over focus (blue) when a card is both — e.g. a
+   no-PIN profile stays focused while it loads into the app. The extra `.card`
+   (every card carries it) lifts these to the same specificity as the
+   `.profile-card:focus` rules above; declared later, they take precedence. So a
+   picked card reads WHITE even while still focused. */
+.profile-card--selected.card {
   background: rgba(227, 227, 227, 0.12);
 }
-.profile-card--selected .profile-card-avatar {
+.profile-card--selected.card .profile-card-avatar {
   box-shadow: 0 0 0 3px var(--text-primary);
 }
-.profile-card--selected .profile-card-name {
+.profile-card--selected.card .profile-card-name {
   color: var(--text-primary);
 }
 
