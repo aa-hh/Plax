@@ -126,11 +126,12 @@ test('bookmark icon markup is shared and filled variant differs', function () {
   assert.equal(iconSvgForKind('watchlist', true), filled);
 });
 
-test('supportsWatchlistBookmark allows movie season episode only', function () {
+test('supportsWatchlistBookmark allows movie show season episode', function () {
   assert.equal(supportsWatchlistBookmark({ type: 'movie' }), true);
+  assert.equal(supportsWatchlistBookmark({ type: 'show' }), true);
   assert.equal(supportsWatchlistBookmark({ type: 'season' }), true);
   assert.equal(supportsWatchlistBookmark({ type: 'episode' }), true);
-  assert.equal(supportsWatchlistBookmark({ type: 'show' }), false);
+  assert.equal(supportsWatchlistBookmark({ type: 'collection' }), false);
 });
 
 test('watchlistToHubRow uses on-deck compact presentation', function () {

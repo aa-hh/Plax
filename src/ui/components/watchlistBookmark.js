@@ -20,7 +20,8 @@ function watchlistBookmarkButtonHtml(filled) {
 
 function supportsWatchlistBookmark(item) {
   if (!item) return false;
-  return item.type === 'movie' || item.type === 'season' || item.type === 'episode';
+  return item.type === 'movie' || item.type === 'show' ||
+    item.type === 'season' || item.type === 'episode';
 }
 
 function updateBookmarkButton(btn, filled) {
