@@ -233,9 +233,12 @@ base `168:1226` (`ImageButton/Button/.Base`); component set `ImageButton`
 
 - **`.btn`** = filled button: solid `--button-container` rest, **focus = light-pill
   inversion** (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`)
-  — the focus indicator. Pill radius `--gt-radius-button` 999px. Padding
-  `--space-3`/`--space-7` (12/28px ≈ M3 text-button 24dp). Width hugs content,
+  — the focus indicator. Pill radius `--gt-radius-button` 999px. Width hugs content,
   label centered.
+- **Padding** `--space-5`/`--space-6` (**20px / 24px**) → button height ≈ **71px**.
+  Scaled from the kit container proportion (py12/px16 against a 14px label) to our
+  10-ft 22px label, so the solid container has real internal padding (it was
+  12/28px → 52px, which read as a tight pill with no vertical breathing room).
 - `.btn-primary` = always-blue filled (one primary per screen); still inverts on focus.
 - `.btn-outline` = transparent + 1px outline. ⚠️ **`.btn-outline:focus` is broken**
   in this codebase (sets light text but the shared `.btn:focus` sets a light bg →

@@ -944,7 +944,10 @@ html.caps-motion .detail-watchlist-btn:focus {
   align-items: center;
   justify-content: center;
   min-height: var(--target-min);
-  padding: var(--space-3) var(--space-7);
+  /* Container padding scaled to the kit's proportion (py12/px16 against a 14px
+     label) for our 10-ft 22px label: ~20/24px. Gives the solid container real
+     internal padding instead of a tight pill. */
+  padding: var(--space-5) var(--space-6);
   background: var(--button-container);
   border-radius: var(--gt-radius-button);
   color: var(--gt-text);
