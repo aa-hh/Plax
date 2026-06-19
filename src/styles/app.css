@@ -9,6 +9,7 @@
   --bg-elevated: #1B1B1B;        /* surface-container-low */
   --bg-surface: #1E1F20;         /* surface-container */
   --bg-surface-hover: #282A2C;   /* surface-container-high */
+  --button-container: #303030;   /* inverse-on-surface — M3 TV filled-button container (solid, reads on any surface) */
   --text-primary: #E3E3E3;       /* on-surface */
   --text-secondary: #C4C7C5;     /* on-surface-variant */
   --text-muted: #8E918F;         /* outline (hints/muted) */
@@ -944,7 +945,7 @@ html.caps-motion .detail-watchlist-btn:focus {
   justify-content: center;
   min-height: var(--target-min);
   padding: var(--space-3) var(--space-7);
-  background: var(--gt-surface-2);
+  background: var(--button-container);
   border-radius: var(--gt-radius-button);
   color: var(--gt-text);
   font-size: var(--gt-body);
@@ -5199,18 +5200,11 @@ html.caps-motion .gt-list-item:focus {
   display: flex;
   gap: var(--space-4);
 }
-/* Filled buttons on an elevated card: a tonal step up so they read at rest, but
-   they MUST still invert to the light pill on focus (TV Design Kit: focused
-   filled button = light fill + dark label). The rest-bg override below would
-   otherwise beat the shared `.btn:focus`, so re-assert the inversion. flex:0 0
-   auto keeps the full `.btn` padding from ever being squeezed. */
+/* Buttons inherit the solid .btn container (--button-container #303030), which
+   reads on the card and inverts to the light pill on focus. Just stop them
+   shrinking so the full padding is always honored. */
 .gt-settings-editor__actions .btn {
   flex: 0 0 auto;
-  background: var(--bg-surface-hover);
-}
-.gt-settings-editor__actions .btn:focus {
-  background: var(--focus-fill);
-  color: var(--focus-on-fill);
 }
 
 /* Footer actions (Sign out). */
