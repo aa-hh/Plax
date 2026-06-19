@@ -28,6 +28,7 @@ changes, or a new theme layer is introduced.
 
 ## Related docs
 
+- [docs/design-system/component-registry.md](../../docs/design-system/component-registry.md) — **single source of truth** for component specs + Figma node-ids. Before adding/changing a component, follow the Design decision protocol in the [root AGENTS.md](../../AGENTS.md) and record the result here.
 - [docs/google-tv-figma-tokens.md](../../docs/google-tv-figma-tokens.md) — Material 3 blue token values.
 - [docs/google-tv-foundation.md](../../docs/google-tv-foundation.md) — Google TV design-system adoption.
 - [docs/design-system.md](../../docs/design-system.md) — component specs + 10-foot UX.

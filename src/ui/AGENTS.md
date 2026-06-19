@@ -50,4 +50,5 @@ component/modal is added, or the focus cache invalidation strategy changes.
 
 ## Related docs
 
+- [docs/design-system/component-registry.md](../../docs/design-system/component-registry.md) — **single source of truth** for component specs + Figma node-ids. Before adding a shared component/modal, follow the Design decision protocol in the [root AGENTS.md](../../AGENTS.md) and record the result here.
 - [docs/design-system.md](../../docs/design-system.md) — component specs + 10-foot UX.

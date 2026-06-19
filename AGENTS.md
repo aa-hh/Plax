@@ -71,8 +71,30 @@ Smaller folders without their own AGENTS.md: `src/perf/` (resource monitor + per
 HUD), `src/security/` (Plex Home child-user library access), `src/watchlists/`
 (bookmark store/resolve).
 
+## Design decision protocol (read before adding/changing any UI)
+
+When a **design decision is needed** (new component, or changing a component's
+sizing/spacing/states/focus):
+
+1. **Check the registry first** —
+   [docs/design-system/component-registry.md](docs/design-system/component-registry.md).
+   Listed ✅ → use the recorded spec. Listed 🚧 → the recorded spec is the **target**;
+   reconcile the code up to it (never reproduce the off-spec code).
+2. **Absent?** Read the matching **Android TV guideline**
+   (https://developer.android.com/design/ui/tv — see the registry's guideline map),
+   then pull the exact spec + anatomy from the **TV Design Kit via the Figma MCP**
+   (fileKey `TLtknC3rZXQqWe3uIivt94`; node-id index in the registry) using
+   `get_design_context` (= anatomy) + `get_variable_defs` + `get_metadata`.
+3. **Build to spec**, reconciled with platform constraints (Chrome53, **vertical 2:3
+   cards**, blue Material 3 tokens, gated focus motion, no `:focus-within`).
+4. **Record the resolved spec + anatomy** back into the registry.
+
+This protocol is also auto-injected by `.claude/hooks/design-protocol*.sh` on UI
+prompts and UI-file edits. The registry is the single source of truth.
+
 ## Key docs
 
+- [docs/design-system/component-registry.md](docs/design-system/component-registry.md) — **single source of truth**: per-component spec, anatomy, Figma node-id index, Android TV guideline map
 - [docs/compatibility-matrix.md](docs/compatibility-matrix.md) — codec/bitrate by webOS major
 - [docs/webos-tv-spec-compliance.md](docs/webos-tv-spec-compliance.md) — LG spec mapping
 - [docs/design-system.md](docs/design-system.md) — 10-foot UX + component specs
