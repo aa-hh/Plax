@@ -2,9 +2,9 @@
 #
 # tvpush.sh — build, package, and install XPlay onto the LG TV in one step.
 #
-#   ./tvpush.sh                # build + package + install to Alec-TV
+#   ./tvpush.sh                # build + package + install + relaunch on Alec-TV
 #   ./tvpush.sh -d emulator    # target a different ares device
-#   ./tvpush.sh -r             # also relaunch the app after install
+#   ./tvpush.sh -n             # skip relaunch (install only)
 #   ./tvpush.sh -s             # skip build/package, install existing IPK
 #
 # NOTE: `npm run build` alone never reaches the TV — it only writes dist/.
@@ -17,14 +17,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 DEVICE="Alec-TV"
-RELAUNCH=0
+RELAUNCH=1
 SKIP_BUILD=0
 APP_ID="com.plax"
 
-while getopts "d:rsh" opt; do
+while getopts "d:nsh" opt; do
   case "$opt" in
     d) DEVICE="$OPTARG" ;;
-    r) RELAUNCH=1 ;;
+    n) RELAUNCH=0 ;;
     s) SKIP_BUILD=1 ;;
     h)
       # Print only the leading comment block (stop at the first non-# line
@@ -32,7 +32,7 @@ while getopts "d:rsh" opt; do
       awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
       exit 0
       ;;
-    *) echo "Unknown option. Run with -h for help." >&2; exit 2 ;;
+    *) echo "Unknown option. Run with -h for help. (-r is now the default; use -n to skip relaunch)" >&2; exit 2 ;;
   esac
 done
 
@@ -40,10 +40,17 @@ done
 ARES_INSTALL="node_modules/.bin/ares-install"
 ARES_LAUNCH="node_modules/.bin/ares-launch"
 if [ ! -x "$ARES_INSTALL" ]; then
-  ARES_INSTALL="$(find node_modules -name 'ares-install*' -type f 2>/dev/null | head -1 || true)"
+  ARES_INSTALL="$(find node_modules -name 'ares-install' -type f 2>/dev/null | head -1 || true)"
+fi
+if [ ! -x "$ARES_LAUNCH" ]; then
+  ARES_LAUNCH="$(find node_modules -name 'ares-launch' -type f 2>/dev/null | head -1 || true)"
 fi
 if [ -z "${ARES_INSTALL:-}" ] || [ ! -e "$ARES_INSTALL" ]; then
   echo "✗ ares-install not found. Run: npm install" >&2
+  exit 1
+fi
+if [ -z "${ARES_LAUNCH:-}" ] || [ ! -e "$ARES_LAUNCH" ]; then
+  echo "✗ ares-launch not found. Run: npm install" >&2
   exit 1
 fi
 

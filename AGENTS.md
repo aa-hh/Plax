@@ -36,11 +36,15 @@ shifts.
 | `npm run build` | Rollup bundle → `dist/` (+ assets, `webOSTV.js`, `appinfo.json`) |
 | `npm run validate` | Static spec/packaging checks (`scripts/validate-*`) |
 | `npm run sim` / `sim:5` … | Build + launch a webOS simulator (see README) |
-| `npm run package` | Build + create IPK in `build/` (needs `ares-package`) |
-| `ares-install --device my-tv build/*.ipk` | Deploy to a real TV |
+| `npm run package` | Build + create IPK in `build/` (app ID `com.plax`) |
+| `./tvpush.sh` | **Full TV deploy:** build → package → install → force-quit → relaunch |
+| `./tvpush.sh -n` | Install only (skip relaunch) |
+| `./tvpush.sh -s` | Skip build/package; install existing IPK |
+| `./tvpush.sh -d <device>` | Target a different ares device (default: `Alec-TV`) |
 
-Deploying to the B8 needs package + `ares-install` — a build alone does not reach
-the TV. See memory `xplay-deploy-to-b8` and `tvpush.sh`.
+`npm run build` alone never reaches the TV. Use `./tvpush.sh` — it runs the full
+pipeline and relaunches the app automatically. App ID is `com.plax`. See memory
+`xplay-deploy-to-b8` for IP/device setup and troubleshooting.
 
 ## Top-level layout
 
