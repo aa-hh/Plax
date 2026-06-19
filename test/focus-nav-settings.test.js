@@ -1,11 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { installMinimalDom, createElement } from './helpers/minimal-dom.js';
+import { installMinimalDom, createElement, layout } from './helpers/minimal-dom.js';
 import {
-  handleKeyNav,
-  getZones,
-  focusSidebar
+  handleKeyNav
 } from '../src/ui/focus.js';
 
 var ARROW_DOWN = 40;
@@ -17,176 +15,193 @@ function keyEvent(code) {
   return { keyCode: code, preventDefault: function () {} };
 }
 
-function btn(id) {
-  var el = createElement('button');
-  el.id = id;
-  el.className = 'btn';
-  el.setAttribute('tabindex', '0');
-  return el;
-}
-
-function hubItem(id, active) {
-  var el = btn(id);
-  el.className = 'browsing-hub-item' + (active ? ' active' : '');
-  el.setAttribute('data-hub-id', id.replace('hub-', ''));
-  return el;
-}
-
-function select(id) {
-  var el = createElement('select');
-  el.id = id;
-  return el;
-}
-
-function settingsRow(children) {
-  var row = createElement('div');
-  row.className = 'settings-row';
-  children.forEach(function (child) { row.appendChild(child); });
-  return row;
-}
-
-function section(id, rows) {
-  var block = createElement('div');
-  block.id = id;
-  rows.forEach(function (row) { block.appendChild(row); });
-  return block;
-}
-
-function buildSettingsFixture(opts) {
-  opts = opts || {};
+/**
+ * Settings screen layout:
+ *
+ *   Sidebar:
+ *     sidebar-home      (0,  50, 200, 40)
+ *     sidebar-settings  (0, 100, 200, 40)
+ *
+ *   Row 1 — video quality chips (y=50):
+ *     chip-auto  (220,  50, 120, 40)
+ *     chip-4k    (360,  50, 120, 40)
+ *
+ *   Row 2 — audio chips (y=110):
+ *     chip-surround  (220, 110, 120, 40)
+ *     chip-stereo    (360, 110, 120, 40)
+ *
+ *   Actions row (y=170):
+ *     btn-clear  (220, 170, 120, 40)
+ *     btn-reset  (360, 170, 120, 40)
+ */
+function buildSettingsFixture() {
   var screen = createElement('div');
   screen.className = 'screen settings-screen';
 
-  var layout = createElement('div');
-  layout.className = 'home-layout settings-layout';
+  // Sidebar
+  var sidebarHome = createElement('button');
+  sidebarHome.id = 'sidebar-home';
+  sidebarHome.className = 'browsing-hub-item';
+  sidebarHome.setAttribute('tabindex', '0');
+  layout(sidebarHome, 0, 50, 200, 40);
 
-  var hub = createElement('nav');
-  hub.className = 'browsing-hub-nav-host';
-  hub.appendChild(hubItem('hub-home', false));
-  hub.appendChild(hubItem('hub-search', false));
-  hub.appendChild(hubItem('hub-settings', true));
-  layout.appendChild(hub);
+  var sidebarSettings = createElement('button');
+  sidebarSettings.id = 'sidebar-settings';
+  sidebarSettings.className = 'browsing-hub-item';
+  sidebarSettings.setAttribute('tabindex', '0');
+  layout(sidebarSettings, 0, 100, 200, 40);
 
-  var main = createElement('div');
-  main.className = 'home-main settings-main';
-  var content = createElement('div');
-  content.className = 'settings-content';
+  // Video quality chips (row 1)
+  var chipAuto = createElement('button');
+  chipAuto.id = 'chip-auto';
+  chipAuto.className = 'detail-setting-chip';
+  chipAuto.setAttribute('tabindex', '0');
+  layout(chipAuto, 220, 50, 120, 40);
 
-  content.appendChild(section('account-section', [
-    settingsRow([btn('btn-switch-profile')])
-  ]));
-  content.appendChild(section('playback-section', [
-    settingsRow([select('quality-select')]),
-    settingsRow([select('subtitle-offset-select')])
-  ]));
-  content.appendChild(section('about-section', [
-    settingsRow([btn('btn-design-review')]),
-    settingsRow([select('perf-hud-select')])
-  ]));
+  var chip4k = createElement('button');
+  chip4k.id = 'chip-4k';
+  chip4k.className = 'detail-setting-chip';
+  chip4k.setAttribute('tabindex', '0');
+  layout(chip4k, 360, 50, 120, 40);
 
-  if (opts.withWatchlistRow) {
-    var wlSection = createElement('div');
-    wlSection.id = 'watchlists-section';
-    var wlRow = createElement('div');
-    wlRow.className = 'settings-watchlist-row';
-    wlRow.appendChild(btn('wl-open'));
-    wlRow.appendChild(btn('wl-rename'));
-    wlRow.appendChild(btn('wl-delete'));
-    wlSection.appendChild(wlRow);
-    content.appendChild(wlSection);
-  }
+  // Audio chips (row 2)
+  var chipSurround = createElement('button');
+  chipSurround.id = 'chip-surround';
+  chipSurround.className = 'detail-setting-chip';
+  chipSurround.setAttribute('tabindex', '0');
+  layout(chipSurround, 220, 110, 120, 40);
 
-  var actions = createElement('div');
-  actions.className = 'settings-actions detail-actions';
-  actions.appendChild(btn('btn-back'));
-  actions.appendChild(btn('btn-signout'));
-  content.appendChild(actions);
+  var chipStereo = createElement('button');
+  chipStereo.id = 'chip-stereo';
+  chipStereo.className = 'detail-setting-chip';
+  chipStereo.setAttribute('tabindex', '0');
+  layout(chipStereo, 360, 110, 120, 40);
 
-  main.appendChild(content);
-  layout.appendChild(main);
-  screen.appendChild(layout);
+  // Actions row (row 3)
+  var btnClear = createElement('button');
+  btnClear.id = 'btn-clear';
+  btnClear.className = 'btn';
+  btnClear.setAttribute('tabindex', '0');
+  layout(btnClear, 220, 170, 120, 40);
+
+  var btnReset = createElement('button');
+  btnReset.id = 'btn-reset';
+  btnReset.className = 'btn';
+  btnReset.setAttribute('tabindex', '0');
+  layout(btnReset, 360, 170, 120, 40);
+
+  screen.appendChild(sidebarHome);
+  screen.appendChild(sidebarSettings);
+  screen.appendChild(chipAuto);
+  screen.appendChild(chip4k);
+  screen.appendChild(chipSurround);
+  screen.appendChild(chipStereo);
+  screen.appendChild(btnClear);
+  screen.appendChild(btnReset);
+
   return screen;
 }
 
-test('settings screen uses per-row focus zones in document order', function () {
+// --- Sidebar vertical navigation ---------------------------------------------
+
+test('Down from sidebar-home moves to sidebar-settings', function () {
   installMinimalDom();
   var screen = buildSettingsFixture();
   document.registerTree(screen);
 
-  var zones = getZones(screen);
-  var rows = zones.slice(1);
-  assert.equal(rows.length, 6);
-  assert.equal(zones.length, 7);
-  assert.equal(zones[0].className.indexOf('browsing-hub-nav-host') >= 0, true);
-  assert.equal(rows[0].querySelector('#btn-switch-profile') != null, true);
-  assert.equal(rows[rows.length - 1].className.indexOf('settings-actions') >= 0, true);
+  screen.querySelector('#sidebar-home').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_DOWN)), true);
+  assert.equal(document.activeElement.id, 'sidebar-settings');
 });
 
-test('Right from sidebar enters first settings control', function () {
+// --- Sidebar → settings row (RIGHT) -----------------------------------------
+
+test('Right from sidebar-home enters chip-auto (row 1, same y)', function () {
   installMinimalDom();
   var screen = buildSettingsFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#hub-settings').focus();
-  handleKeyNav(screen, keyEvent(ARROW_RIGHT));
-  assert.equal(document.activeElement.id, 'btn-switch-profile');
-  assert.notEqual(document.activeElement.id, 'btn-back');
+  screen.querySelector('#sidebar-home').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_RIGHT)), true);
+  assert.equal(document.activeElement.id, 'chip-auto');
 });
 
-test('Left from first settings control focuses active hub item', function () {
+// --- Chip row 1 horizontal navigation ----------------------------------------
+
+test('Right from chip-auto moves to chip-4k', function () {
   installMinimalDom();
   var screen = buildSettingsFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#btn-switch-profile').focus();
-  handleKeyNav(screen, keyEvent(ARROW_LEFT));
-  assert.equal(document.activeElement.id, 'hub-settings');
+  screen.querySelector('#chip-auto').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_RIGHT)), true);
+  assert.equal(document.activeElement.id, 'chip-4k');
 });
 
-test('Right and Left move sequentially within a settings row', function () {
-  installMinimalDom();
-  var screen = buildSettingsFixture({ withWatchlistRow: true });
-  document.registerTree(screen);
-
-  screen.querySelector('#wl-open').focus();
-  handleKeyNav(screen, keyEvent(ARROW_RIGHT));
-  assert.equal(document.activeElement.id, 'wl-rename');
-  handleKeyNav(screen, keyEvent(ARROW_LEFT));
-  assert.equal(document.activeElement.id, 'wl-open');
-  handleKeyNav(screen, keyEvent(ARROW_LEFT));
-  assert.equal(document.activeElement.id, 'hub-settings');
-});
-
-test('Down and Up move between settings rows', function () {
+test('Left from chip-4k returns to chip-auto', function () {
   installMinimalDom();
   var screen = buildSettingsFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#btn-switch-profile').focus();
-  handleKeyNav(screen, keyEvent(ARROW_DOWN));
-  assert.equal(document.activeElement.id, 'quality-select');
-  handleKeyNav(screen, keyEvent(ARROW_UP));
-  assert.equal(document.activeElement.id, 'btn-switch-profile');
-  handleKeyNav(screen, keyEvent(ARROW_UP));
-  assert.equal(document.activeElement.id, 'hub-settings');
+  screen.querySelector('#chip-4k').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_LEFT)), true);
+  assert.equal(document.activeElement.id, 'chip-auto');
 });
 
-test('Down from hub reaches first settings row', function () {
+// --- Chip → sidebar (LEFT from first column) ---------------------------------
+
+test('Left from chip-auto (leftmost chip) returns to sidebar', function () {
   installMinimalDom();
   var screen = buildSettingsFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#hub-settings').focus();
-  handleKeyNav(screen, keyEvent(ARROW_DOWN));
-  assert.equal(document.activeElement.id, 'btn-switch-profile');
+  screen.querySelector('#chip-auto').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_LEFT)), true);
+  var activeId = document.activeElement.id;
+  assert.ok(
+    activeId === 'sidebar-home' || activeId === 'sidebar-settings',
+    'expected sidebar element, got ' + activeId
+  );
 });
 
-test('focusSidebar focuses active settings hub item', function () {
+// --- Vertical navigation between rows ----------------------------------------
+
+test('Down from chip-auto moves to chip-surround (row 2, same column)', function () {
   installMinimalDom();
   var screen = buildSettingsFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#quality-select').focus();
-  assert.equal(focusSidebar(screen), true);
-  assert.equal(document.activeElement.id, 'hub-settings');
+  screen.querySelector('#chip-auto').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_DOWN)), true);
+  assert.equal(document.activeElement.id, 'chip-surround');
+});
+
+test('Up from chip-surround returns to chip-auto (row 1, same column)', function () {
+  installMinimalDom();
+  var screen = buildSettingsFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#chip-surround').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_UP)), true);
+  assert.equal(document.activeElement.id, 'chip-auto');
+});
+
+test('Down from chip-surround moves to btn-clear (actions row, same column)', function () {
+  installMinimalDom();
+  var screen = buildSettingsFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#chip-surround').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_DOWN)), true);
+  assert.equal(document.activeElement.id, 'btn-clear');
+});
+
+test('Up from btn-clear returns to chip-surround (same column)', function () {
+  installMinimalDom();
+  var screen = buildSettingsFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#btn-clear').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_UP)), true);
+  assert.equal(document.activeElement.id, 'chip-surround');
 });

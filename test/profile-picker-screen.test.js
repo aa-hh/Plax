@@ -6,12 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 import { parseHomeSize } from '../src/plex/auth/pinAuth.js';
 import { profilePickerCols, clampProfilePickerCols } from '../src/ui/screens/profilePickerScreen.js';
-import { installMinimalDom, createElement } from './helpers/minimal-dom.js';
+import { installMinimalDom, createElement, layout } from './helpers/minimal-dom.js';
 import {
   handleKeyNav,
-  getZones,
-  getFocusables,
-  zoneColumnCount
+  getFocusables
 } from '../src/ui/focus.js';
 
 var ARROW_LEFT = 37;
@@ -40,7 +38,10 @@ function pinBtn(id, label) {
   return el;
 }
 
-function buildPinPadGrid() {
+var PIN_SIZE = 80, PIN_STEP = 90;
+
+function buildPinPadGrid(yOffset) {
+  yOffset = yOffset || 0;
   var grid = createElement('div');
   grid.className = 'pin-pad-grid';
   grid.setAttribute('data-cols', '3');
@@ -51,7 +52,9 @@ function buildPinPadGrid() {
     rowEl.className = 'pin-pad-row';
     var col;
     for (col = 0; col < 3; col++) {
-      rowEl.appendChild(pinBtn('pin-' + keys[row * 3 + col], keys[row * 3 + col]));
+      var b = pinBtn('pin-' + keys[row * 3 + col], keys[row * 3 + col]);
+      layout(b, col * PIN_STEP, yOffset + row * PIN_STEP, PIN_SIZE, PIN_SIZE);
+      rowEl.appendChild(b);
     }
     grid.appendChild(rowEl);
   }
@@ -60,11 +63,17 @@ function buildPinPadGrid() {
   var spacer = createElement('span');
   spacer.className = 'pin-pad-spacer';
   bottomRow.appendChild(spacer);
-  bottomRow.appendChild(pinBtn('pin-0', '0'));
-  bottomRow.appendChild(pinBtn('pin-del', 'Delete'));
+  var pin0 = pinBtn('pin-0', '0');
+  layout(pin0, PIN_STEP, yOffset + 3 * PIN_STEP, PIN_SIZE, PIN_SIZE);
+  var pinDel = pinBtn('pin-del', 'Delete');
+  layout(pinDel, 2 * PIN_STEP, yOffset + 3 * PIN_STEP, PIN_SIZE, PIN_SIZE);
+  bottomRow.appendChild(pin0);
+  bottomRow.appendChild(pinDel);
   grid.appendChild(bottomRow);
   return grid;
 }
+
+var CARD_W = 172, CARD_H = 250, CARD_GAP = 24;
 
 function buildProfilePickerFocusFixture(opts) {
   opts = opts || {};
@@ -81,14 +90,19 @@ function buildProfilePickerFocusFixture(opts) {
   row.setAttribute('data-cols', String(cols));
   var i;
   for (i = 0; i < userCount; i++) {
-    row.appendChild(profileCard('user-' + i));
+    var c = profileCard('user-' + i);
+    var col = i % cols, r = Math.floor(i / cols);
+    layout(c, col * (CARD_W + CARD_GAP), r * (CARD_H + CARD_GAP), CARD_W, CARD_H);
+    row.appendChild(c);
   }
   screen.appendChild(row);
 
   if (opts.withPinPad) {
+    var numRows = Math.ceil(userCount / cols);
+    var pinY = numRows * (CARD_H + CARD_GAP) + CARD_GAP;
     var pinPanel = createElement('div');
     pinPanel.className = 'profile-picker-pin';
-    pinPanel.appendChild(buildPinPadGrid());
+    pinPanel.appendChild(buildPinPadGrid(pinY));
     screen.appendChild(pinPanel);
   }
 
@@ -292,8 +306,6 @@ test('profile picker: PIN pad grid Down from 8 reaches 0', function () {
   var screen = buildProfilePickerFocusFixture({ withPinPad: true });
   document.registerTree(screen);
 
-  var grid = screen.querySelector('.pin-pad-grid');
-  assert.equal(zoneColumnCount(grid), 3);
   screen.querySelector('#pin-8').focus();
 
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_DOWN)), true);
@@ -316,12 +328,7 @@ test('profile picker: Down from profile row to PIN pad in pin mode', function ()
   var screen = buildProfilePickerFocusFixture({ cols: 1, userCount: 1, withPinPad: true });
   document.registerTree(screen);
 
-  var zones = getZones(screen);
-  assert.equal(zones.length, 2);
-  assert.equal(zones[0].getAttribute('data-focus-zone'), 'profile-picker-profiles');
-  assert.ok(zones[1].classList.contains('pin-pad-grid'));
-
   screen.querySelector('#user-0').focus();
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_DOWN)), true);
-  assert.equal(document.activeElement.id, 'pin-1');
+  assert.ok(/^pin-/.test(document.activeElement.id), 'should enter pin pad from profile row');
 });

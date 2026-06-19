@@ -1,124 +1,97 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { installMinimalDom, createElement } from './helpers/minimal-dom.js';
-import {
-  handleKeyNav,
-  getZones,
-  focusSidebar,
-  isAtLeftEdge,
-  preferredColumnIndex
-} from '../src/ui/focus.js';
+import { installMinimalDom, createElement, layout } from './helpers/minimal-dom.js';
+import { handleKeyNav } from '../src/ui/focus.js';
 
-var ARROW_DOWN = 40;
+var ARROW_DOWN  = 40;
+var ARROW_UP    = 38;
 var ARROW_RIGHT = 39;
-var ARROW_LEFT = 37;
-var ARROW_UP = 38;
+var ARROW_LEFT  = 37;
 
 function keyEvent(code) {
   return { keyCode: code, preventDefault: function () {} };
 }
 
-function btn(id, className, attrs) {
-  attrs = attrs || {};
+function focusable(id, className) {
   var el = createElement('button');
   el.id = id;
   el.className = className || 'btn';
   el.setAttribute('tabindex', '0');
-  Object.keys(attrs).forEach(function (name) {
-    el.setAttribute(name, attrs[name]);
-  });
   return el;
 }
 
-function card(id, index) {
-  return btn(id, 'media-card card row-item', { 'data-item-index': String(index) });
-}
-
-function hubRowSection(id, cards, opts) {
-  opts = opts || {};
-  var section = createElement('div');
-  section.className = 'row-section';
-  section.id = id;
-  section.setAttribute('data-focus-zone', 'hub-row');
-  if (opts.labelLink) {
-    var label = createElement('p');
-    label.className = 'row-label';
-    label.appendChild(opts.labelLink);
-    section.appendChild(label);
-  }
-  var wrap = createElement('div');
-  var scroll = createElement('div');
-  scroll.className = 'row-scroll';
-  scroll.setAttribute('data-cols', '12');
-  cards.forEach(function (c) {
-    scroll.appendChild(c);
-  });
-  wrap.appendChild(scroll);
-  section.appendChild(wrap);
-  return section;
-}
-
+/**
+ * Home screen layout:
+ *
+ * Sidebar (x=0, w=200):
+ *   hub-home      (0, 100, 200, 40)   centerY=120
+ *   hub-watchlist (0, 150, 200, 40)   centerY=170
+ *
+ * Row 1 "Continue Watching" (y=300, h=250):
+ *   continue-0  (220, 300, 172, 250)  centerX=306  centerY=425
+ *   continue-1  (402, 300, 172, 250)  centerX=488
+ *   continue-2  (584, 300, 172, 250)  centerX=670
+ *
+ * Row 2 "Recent" label link + cards (y=600, h=250):
+ *   watchlist-link (220, 560, 120, 30) centerX=280  centerY=575
+ *   recent-0  (220, 600, 172, 250)   centerX=306  centerY=725
+ *   recent-1  (402, 600, 172, 250)   centerX=488
+ *   recent-2  (584, 600, 172, 250)   centerX=670
+ *   recent-3  (766, 600, 172, 250)   centerX=852
+ */
 function buildHomeFixture() {
   var screen = createElement('div');
   screen.className = 'screen screen-home';
 
-  var layout = createElement('div');
-  layout.className = 'home-layout';
+  var hubHome      = focusable('hub-home',      'browsing-hub-item active');
+  var hubWatchlist = focusable('hub-watchlist',  'browsing-hub-item');
+  layout(hubHome,      0,   100, 200, 40);
+  layout(hubWatchlist, 0,   150, 200, 40);
 
-  var hub = createElement('nav');
-  hub.className = 'browsing-hub-nav-host';
-  hub.appendChild(btn('hub-home', 'browsing-hub-item active'));
-  hub.appendChild(btn('hub-watchlist', 'browsing-hub-item'));
-  layout.appendChild(hub);
+  var continue0 = focusable('continue-0', 'media-card card row-item');
+  var continue1 = focusable('continue-1', 'media-card card row-item');
+  var continue2 = focusable('continue-2', 'media-card card row-item');
+  layout(continue0, 220, 300, 172, 250);
+  layout(continue1, 402, 300, 172, 250);
+  layout(continue2, 584, 300, 172, 250);
 
-  var main = createElement('div');
-  main.className = 'home-main';
+  var watchlistLink = focusable('watchlist-link', 'watchlist-row-link');
+  layout(watchlistLink, 220, 560, 120, 30);
 
-  var feed = createElement('div');
-  feed.className = 'home-feed';
-  feed.appendChild(hubRowSection('row-continue', [
-    card('continue-0', 0),
-    card('continue-1', 1),
-    card('continue-2', 2)
-  ]));
-  feed.appendChild(hubRowSection('row-recent', [
-    card('recent-0', 0),
-    card('recent-1', 1),
-    card('recent-2', 2),
-    card('recent-3', 3)
-  ], {
-    labelLink: btn('watchlist-link', 'watchlist-row-link')
-  }));
-  main.appendChild(feed);
-  layout.appendChild(main);
-  screen.appendChild(layout);
+  var recent0 = focusable('recent-0', 'media-card card row-item');
+  var recent1 = focusable('recent-1', 'media-card card row-item');
+  var recent2 = focusable('recent-2', 'media-card card row-item');
+  var recent3 = focusable('recent-3', 'media-card card row-item');
+  layout(recent0, 220, 600, 172, 250);
+  layout(recent1, 402, 600, 172, 250);
+  layout(recent2, 584, 600, 172, 250);
+  layout(recent3, 766, 600, 172, 250);
+
+  [hubHome, hubWatchlist,
+   continue0, continue1, continue2,
+   watchlistLink, recent0, recent1, recent2, recent3
+  ].forEach(function (el) { screen.appendChild(el); });
+
   return screen;
 }
 
-test('getZones orders sidebar then hub rows without duplicate row-scroll', function () {
+// ---------------------------------------------------------------------------
+
+test('Right from hub-home focuses nearest content card', function () {
   installMinimalDom();
   var screen = buildHomeFixture();
   document.registerTree(screen);
 
-  var zones = getZones(screen);
-  assert.equal(zones.length, 3);
-  assert.ok(zones[0].classList.contains('browsing-hub-nav-host'));
-  assert.equal(zones[1].id, 'row-continue');
-  assert.equal(zones[2].id, 'row-recent');
-});
-
-test('Right from sidebar focuses first card in first hub row', function () {
-  installMinimalDom();
-  var screen = buildHomeFixture();
-  document.registerTree(screen);
-
-  focusSidebar(screen);
-  handleKeyNav(screen, keyEvent(ARROW_RIGHT));
+  screen.querySelector('#hub-home').focus();
+  var handled = handleKeyNav(screen, keyEvent(ARROW_RIGHT));
+  assert.equal(handled, true);
+  // continue-0 is directly to the right; hub-watchlist is below hub-home in
+  // the sidebar and should NOT win.
   assert.equal(document.activeElement.id, 'continue-0');
 });
 
-test('Right and Left move sequentially within a hub row', function () {
+test('Right from continue-1 focuses continue-2', function () {
   installMinimalDom();
   var screen = buildHomeFixture();
   document.registerTree(screen);
@@ -126,21 +99,40 @@ test('Right and Left move sequentially within a hub row', function () {
   screen.querySelector('#continue-1').focus();
   handleKeyNav(screen, keyEvent(ARROW_RIGHT));
   assert.equal(document.activeElement.id, 'continue-2');
+});
+
+test('Left from continue-2 focuses continue-1', function () {
+  installMinimalDom();
+  var screen = buildHomeFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#continue-2').focus();
   handleKeyNav(screen, keyEvent(ARROW_LEFT));
   assert.equal(document.activeElement.id, 'continue-1');
 });
 
-test('Down between hub rows preserves data-item-index column', function () {
+test('Left from continue-1 focuses continue-0', function () {
+  installMinimalDom();
+  var screen = buildHomeFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#continue-1').focus();
+  handleKeyNav(screen, keyEvent(ARROW_LEFT));
+  assert.equal(document.activeElement.id, 'continue-0');
+});
+
+test('Down from continue-2 focuses recent-2 (same column)', function () {
   installMinimalDom();
   var screen = buildHomeFixture();
   document.registerTree(screen);
 
   screen.querySelector('#continue-2').focus();
   handleKeyNav(screen, keyEvent(ARROW_DOWN));
+  // continue-2 and recent-2 share centerX≈670; misalign penalty picks recent-2
   assert.equal(document.activeElement.id, 'recent-2');
 });
 
-test('Up between hub rows preserves column index', function () {
+test('Up from recent-1 focuses continue-1 (same column)', function () {
   installMinimalDom();
   var screen = buildHomeFixture();
   document.registerTree(screen);
@@ -150,32 +142,57 @@ test('Up between hub rows preserves column index', function () {
   assert.equal(document.activeElement.id, 'continue-1');
 });
 
-test('Left from first card reaches row label link before sidebar', function () {
+test('Left from recent-0 focuses watchlist-link before sidebar', function () {
   installMinimalDom();
   var screen = buildHomeFixture();
   document.registerTree(screen);
 
-  var rowZone = screen.querySelector('#row-recent');
   screen.querySelector('#recent-0').focus();
-  assert.equal(isAtLeftEdge(document.activeElement, rowZone, 1), false);
-
   handleKeyNav(screen, keyEvent(ARROW_LEFT));
+  // watchlist-link cross-offset=150 beats hub-home cross-offset=605
   assert.equal(document.activeElement.id, 'watchlist-link');
+});
 
+test('Left from watchlist-link focuses hub-watchlist (closer Y)', function () {
+  installMinimalDom();
+  var screen = buildHomeFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#watchlist-link').focus();
   handleKeyNav(screen, keyEvent(ARROW_LEFT));
+  // hub-watchlist centerY=170 cross=405; hub-home centerY=120 cross=455
+  assert.equal(document.activeElement.id, 'hub-watchlist');
+});
+
+test('Down from hub-home focuses hub-watchlist (within sidebar)', function () {
+  installMinimalDom();
+  var screen = buildHomeFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#hub-home').focus();
+  handleKeyNav(screen, keyEvent(ARROW_DOWN));
+  assert.equal(document.activeElement.id, 'hub-watchlist');
+});
+
+test('Up from hub-watchlist focuses hub-home (within sidebar)', function () {
+  installMinimalDom();
+  var screen = buildHomeFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#hub-watchlist').focus();
+  handleKeyNav(screen, keyEvent(ARROW_UP));
   assert.equal(document.activeElement.id, 'hub-home');
 });
 
-test('preferredColumnIndex matches cards by data-item-index', function () {
+test('Right from hub-watchlist focuses a content element (not another sidebar item)', function () {
   installMinimalDom();
   var screen = buildHomeFixture();
   document.registerTree(screen);
 
-  var active = screen.querySelector('#continue-2');
-  var targetList = [
-    screen.querySelector('#recent-0'),
-    screen.querySelector('#recent-1'),
-    screen.querySelector('#recent-2')
-  ];
-  assert.equal(preferredColumnIndex(active, 99, targetList), 2);
+  screen.querySelector('#hub-watchlist').focus();
+  var handled = handleKeyNav(screen, keyEvent(ARROW_RIGHT));
+  assert.equal(handled, true);
+  var activeId = document.activeElement.id;
+  assert.notEqual(activeId, 'hub-home');
+  assert.notEqual(activeId, 'hub-watchlist');
 });

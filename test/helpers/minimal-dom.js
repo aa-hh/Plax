@@ -60,6 +60,9 @@ function createElement(tag) {
     attributes: Object.create(null),
     style: Object.create(null),
     parentElement: null,
+    __rect: { x: 0, y: 0, width: 100, height: 40 },
+    scrollTop: 0,
+    scrollLeft: 0,
     disabled: false,
     hidden: false,
     paused: true,
@@ -118,10 +121,31 @@ function createElement(tag) {
         globalThis.document.__plaxSetActive(el);
       }
     },
+    getBoundingClientRect: function () {
+      var r = el.__rect || { x: 0, y: 0, width: 0, height: 0 };
+      return {
+        x: r.x, y: r.y, left: r.x, top: r.y,
+        width: r.width, height: r.height,
+        right: r.x + r.width, bottom: r.y + r.height
+      };
+    },
     appendChild: function (child) {
       el.children.push(child);
       child.parentElement = el;
       return child;
+    },
+    removeChild: function (child) {
+      var i = el.children.indexOf(child);
+      if (i >= 0) {
+        el.children.splice(i, 1);
+        child.parentElement = null;
+      }
+      return child;
+    },
+    remove: function () {
+      if (el.parentElement && el.parentElement.removeChild) {
+        el.parentElement.removeChild(el);
+      }
     },
     set className(value) {
       el._className = value || '';
@@ -157,11 +181,13 @@ function createElement(tag) {
         return entry.fn !== fn;
       });
     },
-    dispatchEvent: function (type) {
+    dispatchEvent: function (type, event) {
+      var evt = event || { type: type };
+      if (evt.target == null) evt.target = el;
       var list = listeners[type] ? listeners[type].slice() : [];
       var i;
       for (i = 0; i < list.length; i++) {
-        list[i].fn();
+        list[i].fn(evt);
         if (list[i].once && listeners[type]) {
           listeners[type] = listeners[type].filter(function (entry) {
             return entry.fn !== list[i].fn;
@@ -185,6 +211,24 @@ function createElement(tag) {
     get: function () {
       if (el.hidden) return null;
       return el.parentElement || el;
+    }
+  });
+  Object.defineProperty(el, 'offsetWidth', { get: function () { return el.__rect.width; } });
+  Object.defineProperty(el, 'offsetHeight', { get: function () { return el.__rect.height; } });
+  Object.defineProperty(el, 'offsetLeft', { get: function () { return el.__rect.x; } });
+  Object.defineProperty(el, 'offsetTop', { get: function () { return el.__rect.y; } });
+  Object.defineProperty(el, 'scrollWidth', { get: function () { return el.__rect.width; } });
+  Object.defineProperty(el, 'scrollHeight', { get: function () { return el.__rect.height; } });
+  Object.defineProperty(el, 'isConnected', {
+    get: function () {
+      var node = el;
+      var doc = globalThis.document;
+      var root = doc && doc.body;
+      while (node) {
+        if (node === root) return true;
+        node = node.parentElement;
+      }
+      return false;
     }
   });
   return el;
@@ -270,4 +314,10 @@ function installMinimalDom() {
   };
 }
 
-export { installMinimalDom, createElement, matchesSelector };
+// Assign a synthetic bounding rect so the geometric focus engine can navigate.
+function layout(el, x, y, w, h) {
+  el.__rect = { x: x, y: y, width: w, height: h };
+  return el;
+}
+
+export { installMinimalDom, createElement, matchesSelector, layout };

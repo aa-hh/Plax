@@ -4,17 +4,19 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { installMinimalDom, createElement } from './helpers/minimal-dom.js';
+import { installMinimalDom, createElement, layout } from './helpers/minimal-dom.js';
 import { handleKeyNav, getFocusables } from '../src/ui/focus.js';
 
-var ARROW_DOWN = 40;
-var ARROW_UP = 38;
+var ARROW_DOWN  = 40;
+var ARROW_UP    = 38;
 var ARROW_RIGHT = 39;
+var ARROW_LEFT  = 37;
 
 var pairingSrc = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '../src/ui/screens/pairingScreen.js'),
   'utf8'
 );
+
 function keyEvent(code) {
   return { keyCode: code, preventDefault: function () {} };
 }
@@ -27,99 +29,151 @@ function btn(id) {
   return el;
 }
 
+// ---------------------------------------------------------------------------
+// Source-level check (attribute is harmless markup now but still present)
+// ---------------------------------------------------------------------------
+
 test('pairing screen uses sequential focus mode', function () {
   assert.match(pairingSrc, /setAttribute\('data-focus-mode',\s*'sequential'\)/);
   assert.match(pairingSrc, /attachFocusNav\(screen\)/);
 });
 
-test('sequential mode: Down moves to next focusable in DOM order', function () {
+// ---------------------------------------------------------------------------
+// Geometric navigation — vertical stack
+//
+//   btn-first  (300, 100, 200, 50)  centerY=125
+//   btn-second (300, 180, 200, 50)  centerY=205
+// ---------------------------------------------------------------------------
+
+test('Down moves to next focusable below', function () {
   installMinimalDom();
   var screen = createElement('div');
-  screen.className = 'screen pairing-screen';
-  screen.setAttribute('data-focus-mode', 'sequential');
-  screen.appendChild(btn('first'));
-  screen.appendChild(btn('second'));
+  screen.className = 'screen';
+
+  var first  = btn('btn-first');
+  var second = btn('btn-second');
+  layout(first,  300, 100, 200, 50);
+  layout(second, 300, 180, 200, 50);
+  screen.appendChild(first);
+  screen.appendChild(second);
   document.registerTree(screen);
 
-  screen.querySelector('#first').focus();
-  var ev = keyEvent(ARROW_DOWN);
-  var handled = handleKeyNav(screen, ev);
+  first.focus();
+  var handled = handleKeyNav(screen, keyEvent(ARROW_DOWN));
   assert.equal(handled, true);
-  assert.equal(document.activeElement.id, 'second');
+  assert.equal(document.activeElement.id, 'btn-second');
 });
 
-test('sequential mode: Up moves to previous focusable', function () {
+test('Up moves to previous focusable above', function () {
   installMinimalDom();
   var screen = createElement('div');
-  screen.setAttribute('data-focus-mode', 'sequential');
-  screen.appendChild(btn('first'));
-  screen.appendChild(btn('second'));
+  screen.className = 'screen';
+
+  var first  = btn('btn-first');
+  var second = btn('btn-second');
+  layout(first,  300, 100, 200, 50);
+  layout(second, 300, 180, 200, 50);
+  screen.appendChild(first);
+  screen.appendChild(second);
   document.registerTree(screen);
 
-  screen.querySelector('#second').focus();
-  handleKeyNav(screen, keyEvent(ARROW_UP));
-  assert.equal(document.activeElement.id, 'first');
+  second.focus();
+  var handled = handleKeyNav(screen, keyEvent(ARROW_UP));
+  assert.equal(handled, true);
+  assert.equal(document.activeElement.id, 'btn-first');
 });
 
-test('sequential mode: Right advances like Down', function () {
+// ---------------------------------------------------------------------------
+// Seek-bar absorption — player-seek-bar class blocks horizontal arrows
+// ---------------------------------------------------------------------------
+
+test('Right on seek bar does not move focus', function () {
   installMinimalDom();
   var screen = createElement('div');
-  screen.setAttribute('data-focus-mode', 'sequential');
-  screen.appendChild(btn('a'));
-  screen.appendChild(btn('b'));
-  document.registerTree(screen);
+  screen.className = 'screen';
 
-  screen.querySelector('#a').focus();
-  handleKeyNav(screen, keyEvent(ARROW_RIGHT));
-  assert.equal(document.activeElement.id, 'b');
-});
-
-test('sequential mode: single focusable does not trap arrow keys', function () {
-  installMinimalDom();
-  var screen = createElement('div');
-  screen.setAttribute('data-focus-mode', 'sequential');
-  screen.appendChild(btn('only'));
-  document.registerTree(screen);
-
-  screen.querySelector('#only').focus();
-  var ev = keyEvent(ARROW_DOWN);
-  assert.equal(handleKeyNav(screen, ev), false);
-  assert.equal(document.activeElement.id, 'only');
-});
-
-test('sequential root requires active element inside sequential zone', function () {
-  installMinimalDom();
-  var overlay = createElement('div');
-  overlay.className = 'player-overlay';
-  var seek = btn('player-seek');
+  var seek = createElement('div');
+  seek.id = 'seek';
   seek.className = 'player-seek-bar';
-  var taskbar = createElement('div');
-  taskbar.setAttribute('data-focus-mode', 'sequential');
-  taskbar.appendChild(btn('btn-pause'));
-  overlay.appendChild(seek);
-  overlay.appendChild(taskbar);
-  document.registerTree(overlay);
+  seek.setAttribute('tabindex', '0');
+  layout(seek, 100, 100, 400, 20);
+
+  var other = btn('other');
+  layout(other, 520, 100, 100, 20);
+
+  screen.appendChild(seek);
+  screen.appendChild(other);
+  document.registerTree(screen);
 
   seek.focus();
-  var ev = keyEvent(ARROW_RIGHT);
-  var handled = handleKeyNav(overlay, ev);
+  var handled = handleKeyNav(screen, keyEvent(ARROW_RIGHT));
+  // The seek bar should absorb horizontal arrows
   assert.equal(handled, false);
-  assert.equal(document.activeElement.id, 'player-seek');
+  assert.equal(document.activeElement.id, 'seek');
 });
 
-test('sequential mode: zone nav does not apply on pairing fixture', function () {
+test('Left on seek bar does not move focus', function () {
   installMinimalDom();
   var screen = createElement('div');
-  screen.className = 'screen screen-center pairing-screen';
-  screen.setAttribute('data-focus-mode', 'sequential');
-  var actions = createElement('div');
-  actions.className = 'pairing-actions';
-  actions.appendChild(btn('retry'));
-  screen.appendChild(actions);
+  screen.className = 'screen';
+
+  var other = btn('other');
+  layout(other, 0, 100, 100, 20);
+
+  var seek = createElement('div');
+  seek.id = 'seek';
+  seek.className = 'player-seek-bar';
+  seek.setAttribute('tabindex', '0');
+  layout(seek, 110, 100, 400, 20);
+
+  screen.appendChild(other);
+  screen.appendChild(seek);
   document.registerTree(screen);
 
-  assert.equal(getFocusables(screen).length, 1);
-  screen.querySelector('#retry').focus();
-  var ev = keyEvent(ARROW_DOWN);
-  assert.equal(handleKeyNav(screen, ev), false);
+  seek.focus();
+  var handled = handleKeyNav(screen, keyEvent(ARROW_LEFT));
+  assert.equal(handled, false);
+  assert.equal(document.activeElement.id, 'seek');
+});
+
+// ---------------------------------------------------------------------------
+// Edge cases
+// ---------------------------------------------------------------------------
+
+test('No candidates in direction returns false without crash', function () {
+  installMinimalDom();
+  var screen = createElement('div');
+  screen.className = 'screen';
+
+  var lone = btn('lone');
+  layout(lone, 300, 100, 200, 50);
+  screen.appendChild(lone);
+  document.registerTree(screen);
+
+  lone.focus();
+  var handled = handleKeyNav(screen, keyEvent(ARROW_RIGHT));
+  assert.equal(handled, false);
+  assert.equal(document.activeElement.id, 'lone');
+});
+
+test('getFocusables excludes elements with tabindex=-1', function () {
+  installMinimalDom();
+  var screen = createElement('div');
+  screen.className = 'screen';
+
+  var visible = btn('visible');
+  layout(visible, 100, 100, 200, 50);
+
+  var hidden = btn('excluded');
+  hidden.setAttribute('tabindex', '-1');
+  layout(hidden, 100, 200, 200, 50);
+
+  screen.appendChild(visible);
+  screen.appendChild(hidden);
+  document.registerTree(screen);
+
+  var focusables = getFocusables(screen);
+  var ids = focusables.map(function (el) { return el.id; });
+  assert.ok(ids.indexOf('visible') >= 0, 'visible element should be focusable');
+  assert.equal(ids.indexOf('excluded'), -1, 'tabindex=-1 element should be excluded');
 });

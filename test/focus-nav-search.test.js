@@ -1,12 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { installMinimalDom, createElement } from './helpers/minimal-dom.js';
+import { installMinimalDom, createElement, layout } from './helpers/minimal-dom.js';
 import {
-  handleKeyNav,
-  getZones,
-  focusSearchInput,
-  focusSearchResults
+  handleKeyNav
 } from '../src/ui/focus.js';
 
 var ARROW_RIGHT = 39;
@@ -17,86 +14,79 @@ function keyEvent(code) {
   return { keyCode: code, preventDefault: function () {} };
 }
 
-function hubItem(id) {
-  var el = createElement('button');
-  el.id = id;
-  el.className = 'browsing-hub-item';
-  el.setAttribute('tabindex', '0');
-  return el;
-}
-
-function rowCard(id, index) {
-  var el = createElement('button');
-  el.id = id;
-  el.className = 'card row-item';
-  el.setAttribute('tabindex', '0');
-  el.setAttribute('data-item-index', String(index));
-  return el;
-}
-
+/**
+ * Search screen layout (all elements at y≈50 so they are horizontally aligned):
+ *
+ *   Sidebar:
+ *     hub-search  (0,  50, 200, 40)
+ *     hub-movies  (0, 100, 200, 40)
+ *
+ *   Search input:
+ *     search-input (220, 50, 400, 40)
+ *
+ *   Result cards:
+ *     result-0  (640,  50, 172, 250)
+ *     result-1  (832,  50, 172, 250)
+ *     result-2  (1024, 50, 172, 250)
+ */
 function buildSearchFixture() {
   var screen = createElement('div');
   screen.className = 'screen search-screen';
 
-  var layout = createElement('div');
-  layout.className = 'home-layout search-layout';
+  var hubSearch = createElement('button');
+  hubSearch.id = 'hub-search';
+  hubSearch.className = 'browsing-hub-item';
+  hubSearch.setAttribute('tabindex', '0');
+  layout(hubSearch, 0, 50, 200, 40);
 
-  var hub = createElement('nav');
-  hub.className = 'browsing-hub-nav-host';
-  hub.appendChild(hubItem('hub-home'));
-  hub.appendChild(hubItem('hub-search'));
-  layout.appendChild(hub);
+  var hubMovies = createElement('button');
+  hubMovies.id = 'hub-movies';
+  hubMovies.className = 'browsing-hub-item';
+  hubMovies.setAttribute('tabindex', '0');
+  layout(hubMovies, 0, 100, 200, 40);
 
-  var main = createElement('div');
-  main.className = 'home-main search-main';
-
-  var inputRow = createElement('div');
-  inputRow.className = 'search-input-row';
   var input = createElement('input');
   input.id = 'search-input';
   input.className = 'search-input';
   input.setAttribute('tabindex', '0');
-  inputRow.appendChild(input);
-  main.appendChild(inputRow);
+  layout(input, 220, 50, 400, 40);
 
-  var results = createElement('div');
-  results.className = 'search-results';
-  var section = createElement('div');
-  section.className = 'row-section';
-  var scroll = createElement('div');
-  scroll.className = 'row-scroll';
-  scroll.setAttribute('data-cols', '10');
-  scroll.appendChild(rowCard('card-a', 0));
-  scroll.appendChild(rowCard('card-b', 1));
-  section.appendChild(scroll);
-  results.appendChild(section);
-  main.appendChild(results);
+  var result0 = createElement('button');
+  result0.id = 'result-0';
+  result0.className = 'card row-item';
+  result0.setAttribute('tabindex', '0');
+  layout(result0, 640, 50, 172, 250);
 
-  layout.appendChild(main);
-  screen.appendChild(layout);
+  var result1 = createElement('button');
+  result1.id = 'result-1';
+  result1.className = 'card row-item';
+  result1.setAttribute('tabindex', '0');
+  layout(result1, 832, 50, 172, 250);
+
+  var result2 = createElement('button');
+  result2.id = 'result-2';
+  result2.className = 'card row-item';
+  result2.setAttribute('tabindex', '0');
+  layout(result2, 1024, 50, 172, 250);
+
+  screen.appendChild(hubSearch);
+  screen.appendChild(hubMovies);
+  screen.appendChild(input);
+  screen.appendChild(result0);
+  screen.appendChild(result1);
+  screen.appendChild(result2);
+
   return screen;
 }
 
-test('search getZones orders sidebar, input, row-scroll without results host duplicate', function () {
+// --- Sidebar → input → results (RIGHT) ---------------------------------------
+
+test('Right from hub-search focuses search input', function () {
   installMinimalDom();
   var screen = buildSearchFixture();
   document.registerTree(screen);
 
-  var zones = getZones(screen);
-  assert.equal(zones[0].className.indexOf('browsing-hub-nav-host') >= 0, true);
-  assert.equal(zones[1].className.indexOf('search-input-row') >= 0, true);
-  assert.equal(zones[2].className.indexOf('row-scroll') >= 0, true);
-  assert.equal(zones.some(function (z) {
-    return z.className && z.className.indexOf('search-results') >= 0;
-  }), false);
-});
-
-test('Right from sidebar focuses search input', function () {
-  installMinimalDom();
-  var screen = buildSearchFixture();
-  document.registerTree(screen);
-
-  screen.querySelector('#hub-home').focus();
+  screen.querySelector('#hub-search').focus();
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_RIGHT)), true);
   assert.equal(document.activeElement.id, 'search-input');
 });
@@ -108,46 +98,49 @@ test('Right from search input focuses first result card', function () {
 
   screen.querySelector('#search-input').focus();
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_RIGHT)), true);
-  assert.equal(document.activeElement.id, 'card-a');
+  assert.equal(document.activeElement.id, 'result-0');
 });
 
-test('Left from first result card focuses search input', function () {
+test('Right from result-0 moves to result-1', function () {
   installMinimalDom();
   var screen = buildSearchFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#card-a').focus();
+  screen.querySelector('#result-0').focus();
+  assert.equal(handleKeyNav(screen, keyEvent(ARROW_RIGHT)), true);
+  assert.equal(document.activeElement.id, 'result-1');
+});
+
+// --- Results → input → sidebar (LEFT) ----------------------------------------
+
+test('Left from result-0 returns to search input', function () {
+  installMinimalDom();
+  var screen = buildSearchFixture();
+  document.registerTree(screen);
+
+  screen.querySelector('#result-0').focus();
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_LEFT)), true);
   assert.equal(document.activeElement.id, 'search-input');
 });
 
-test('Left from search input focuses sidebar', function () {
+test('Left from search input returns to hub-search', function () {
   installMinimalDom();
   var screen = buildSearchFixture();
   document.registerTree(screen);
 
   screen.querySelector('#search-input').focus();
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_LEFT)), true);
-  assert.equal(document.activeElement.id, 'hub-home');
+  assert.equal(document.activeElement.id, 'hub-search');
 });
 
-test('Down from search input focuses first result row', function () {
+// --- Sidebar vertical navigation ---------------------------------------------
+
+test('Down from hub-search moves to hub-movies', function () {
   installMinimalDom();
   var screen = buildSearchFixture();
   document.registerTree(screen);
 
-  screen.querySelector('#search-input').focus();
+  screen.querySelector('#hub-search').focus();
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_DOWN)), true);
-  assert.equal(document.activeElement.id, 'card-a');
-});
-
-test('focusSearchResults and focusSearchInput helpers', function () {
-  installMinimalDom();
-  var screen = buildSearchFixture();
-  document.registerTree(screen);
-
-  assert.equal(focusSearchResults(screen, 1), true);
-  assert.equal(document.activeElement.id, 'card-b');
-  assert.equal(focusSearchInput(screen), true);
-  assert.equal(document.activeElement.id, 'search-input');
+  assert.equal(document.activeElement.id, 'hub-movies');
 });
