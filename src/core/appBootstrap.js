@@ -14,7 +14,6 @@ import {
   filterLibrariesForUser,
   isRestrictedProfile
 } from '../security/libraryAccess.js';
-import { warmDefaultBackground } from '../plex/ultrablur.js';
 
 var DEFAULT_HUB_PREFETCH = {
   initialRows: 2,
@@ -70,7 +69,8 @@ function runAppBootstrap(options) {
     var activeServer = pickActiveServer(servers, discovery.profileResources);
     if (!activeServer) throw new Error('No reachable Plex servers');
     setState({ servers: servers, activeServer: activeServer });
-    warmDefaultBackground(activeServer); // fire-and-forget: direct-URL now, swap to cached blob if warm
+    // Default background is now a flat Material surface-dim (CSS); no ultrablur
+    // image on <body> — the dithered gradient showed visible seams on the B8.
     console.info('[bootstrap] server selected', {
       name: activeServer.name,
       connectionUri: activeServer.connectionUri,

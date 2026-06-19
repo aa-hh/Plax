@@ -149,11 +149,18 @@ For browser dev, serve `dist/` over HTTP (version gate skipped outside TV runtim
 
 ## Project layout
 
-- `src/core/` — app bootstrap, router, store
-- `src/platform/` — webOSTV.js wrappers, version gate, display metrics
-- `src/plex/` — Plex API (auth, servers, library, hubs); metadata and images from PMS only
-- `src/playback/` — player adapter, sessions, quality
-- `src/ui/` — TV-focused screens and components
+Each module below has an `AGENTS.md` with deeper, agent-oriented context; the
+repo-root [AGENTS.md](AGENTS.md) is the index and lists the platform constraints.
+
+- `src/core/` — app bootstrap, router (screen-retention stack), store, caching, Chrome53 polyfills
+- `src/platform/` — webOSTV.js wrappers, version gate, motion cursor, display metrics
+- `src/plex/` — Plex API (client, auth, servers, library, hubs, search); metadata and images from PMS only
+- `src/playback/` — player adapter, sessions, quality/transcode decision, HLS, capabilities, audio/subtitle tracks
+- `src/ui/` — D-pad focus engine, poster images, modals; `screens/` (per route) and `components/`
+- `src/styles/` — single `app.css` (Material 3 blue token system)
+- `src/settings/` — playback/network preference stores (localStorage)
+- `src/utils/` — fetch wrapper, remote logging (`tvDebug`), XML/QR/DOM helpers
+- `src/perf/`, `src/security/`, `src/watchlists/` — resource monitor, Plex Home access control, watchlist store
 
 ## Known limitations
 

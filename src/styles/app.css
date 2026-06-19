@@ -545,16 +545,44 @@ html.caps-motion .detail-watchlist-btn:focus {
   left: 0;
 }
 
+/* First rail rides UP and overlaps the hero's lower (scrimmed) portion — the
+   Plex-style immersive overlap. The feed paints over the hero by DOM order; the
+   scrim keeps the rail label + card gaps legible against the art. */
+.screen-home .home-feed-host {
+  margin-top: -170px;
+  position: relative;
+  z-index: 2;
+}
+/* Home rail cards are POSTER-ONLY — the focused item's title/metadata already
+   live in the hero, so dropping the per-card text reclaims vertical space and
+   lets the next rail peek more (matches Plex). Progress bar stays (it's on the
+   poster, not in the text block). */
+.screen-home .home-feed .card-text {
+  display: none;
+}
+/* Tighten the rail-label → cards gap (was 14 + 18 = 32px). */
+.screen-home .home-feed .row-label {
+  margin-bottom: 6px;
+}
 /* Carousels bleed into the RIGHT gutter so the 7th card peeks past the 6-card
    grid; the feed still clips at the screen edge (overflow-x hidden). */
 .screen-home .home-feed-host {
   margin-right: calc(-1 * var(--safe-x));
 }
-/* Cancel the row's focus-ring left padding so the first card sits exactly on
-   column 1 (its focus ring overhangs into the empty left gutter, which is fine
-   when the rail is collapsed). */
+/* Extend the rail fully into the LEFT gutter: the row's clip boundary moves to the
+   screen edge, so the leftmost card's focus grow/ring expands INTO the empty gutter
+   (clear when the rail is collapsed) instead of being clipped against it. padding-left
+   keeps the first card on column 1. padding-top gives the ring/scale vertical headroom. */
 .screen-home .home-feed .row-scroll {
-  margin-left: calc(-1 * var(--focus-ring-pad));
+  margin-left: calc(-1 * var(--safe-x));
+  padding-left: var(--safe-x);
+  padding-top: 12px;
+}
+/* Vertical headroom so the focus grow on the first/last visible rows isn't clipped
+   at the feed's scroll edges (between-row grow is already visible). */
+.screen-home .home-feed {
+  padding-top: 20px;
+  padding-bottom: 18px;
 }
 
 .browsing-hub-nav-host {
@@ -783,40 +811,56 @@ html.caps-motion .detail-watchlist-btn:focus {
 .il-hero {
   position: relative;
   width: 100%;
-  height: 480px;
+  height: 540px;
   overflow: hidden;
   /* Layer C (Google anatomy): neutral background-color behind the poster, shown
-     before art loads / where the 16:9 art doesn't cover. */
+     before art loads / where the 16:9 art doesn't cover. Surface-dim so the scrim
+     and the solid app background blend with zero visible seam. */
   background: var(--surface-dim);
   -webkit-flex-shrink: 0;
   flex-shrink: 0;
 }
 .il-hero__backdrop {
   position: absolute;
+  /* 16:9 art box pinned to the top-right corner — width = the 5 right-most
+     columns + the right gutter (796px @1920), height = 16:9 of that. Subject sits
+     top-right (Google: "scale and align the subject to the top right corner").
+     Non-16:9 source art is cover-scaled to this box. */
   top: 0;
-  left: 0;
   right: 0;
-  bottom: 0;
+  left: auto;
+  bottom: auto;
+  width: calc(var(--gt-col-5) + var(--safe-x));
+  height: 23.32vw; /* 16:9 of (gt-col-5 + safe-x) */
   background-size: cover;
-  background-position: center top;
+  background-position: top right;
   transition: opacity 0.35s ease;
 }
 .il-hero__backdrop--a { opacity: 1; }
 .il-hero__backdrop--b { opacity: 0; }
 .il-hero__scrim {
   position: absolute;
+  /* Overlays the SAME top-right 16:9 box as the backdrop and dissolves its LEFT
+     and BOTTOM edges into surface-dim, so the art box has no hard rectangle edge —
+     it melts into the flat background and the overlapping rail below. The top and
+     right edges sit flush at the screen corner (subject stays crisp there). Every
+     stop is surface-dim (#131313 = rgb 19,19,19) → one continuous color, no seam. */
   top: 0;
-  left: 0;
   right: 0;
-  bottom: 0;
-  /* cinematic gradient: dark left side for text, dark bottom edge, transparent top-right */
+  left: auto;
+  bottom: auto;
+  width: calc(var(--gt-col-5) + var(--safe-x));
+  height: 23.32vw;
   background:
-    linear-gradient(to right, rgba(19,19,20,0.97) 28%, rgba(19,19,20,0.6) 55%, transparent 80%),
-    linear-gradient(to top, rgba(19,19,20,0.85) 0%, transparent 40%);
+    linear-gradient(to left, rgba(19,19,19,0) 32%, rgba(19,19,19,0.7) 70%, var(--surface-dim) 97%),
+    linear-gradient(to top, var(--surface-dim) 0%, rgba(19,19,19,0.55) 24%, rgba(19,19,19,0) 58%);
 }
 .il-hero__content {
   position: absolute;
-  bottom: 36px;
+  /* Sit the details HIGH (Plex-style) — not bottom-anchored — so the first rail
+     can ride up and overlap the hero's lower portion. */
+  top: 110px;
+  bottom: auto;
   left: var(--pad-screen-x);
   width: 42%;
 }

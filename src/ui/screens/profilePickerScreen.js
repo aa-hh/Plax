@@ -13,7 +13,6 @@ import { focusFirst, attachFocusNav } from '../focus.js';
 import { createSpinner } from '../components/spinner.js';
 import * as cache from '../../core/cache.js';
 import { invalidateRetention } from '../../core/router.js';
-import { fetchDefaultBackground } from '../../plex/ultrablur.js';
 import { tvLog } from '../../utils/tvDebug.js';
 import { isPerfEnabled, mark as perfMark } from '../../perf/resourceMonitor.js';
 import { prefetchAndPersistBlobs, resolvePosterSrc } from '../posterImages.js';
@@ -437,7 +436,6 @@ function profilePickerScreen(root, params, navigate) {
       switching = false;
       syncHeaderSpinner();
       pinFlowLog('navigate home');
-      fetchDefaultBackground(getState().activeServer); // fire-and-forget; caches blob for future loads
       navigate('home', {});
     });
   }
