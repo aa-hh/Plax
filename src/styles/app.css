@@ -5199,8 +5199,18 @@ html.caps-motion .gt-list-item:focus {
   display: flex;
   gap: var(--space-4);
 }
+/* Filled buttons on an elevated card: a tonal step up so they read at rest, but
+   they MUST still invert to the light pill on focus (TV Design Kit: focused
+   filled button = light fill + dark label). The rest-bg override below would
+   otherwise beat the shared `.btn:focus`, so re-assert the inversion. flex:0 0
+   auto keeps the full `.btn` padding from ever being squeezed. */
 .gt-settings-editor__actions .btn {
+  flex: 0 0 auto;
   background: var(--bg-surface-hover);
+}
+.gt-settings-editor__actions .btn:focus {
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
 }
 
 /* Footer actions (Sign out). */

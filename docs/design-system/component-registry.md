@@ -195,3 +195,49 @@ or one-shot → action row, immutable → info row. Picker/action rows expose
 **Impl:** `settingsScreen()` + sub-renderers `renderPlaybackSettings` /
 `renderNetworkSettings`; factories in `src/ui/components/controls.js`; CSS
 `.gt-settings-*` / `.gt-switch` in `src/styles/app.css`.
+
+---
+
+## Button
+
+**Status:** done
+**Figma:** TV Design Kit `TLtknC3rZXQqWe3uIivt94` — Buttons showcase `8677:41929`;
+base `168:1226` (`ImageButton/Button/.Base`); component set `ImageButton`
+`168:1182` (Default `168:1189` / Focused `168:1198` / Pressed).
+
+### Kit spec (from `get_design_context`)
+
+| Property | Kit value | Notes |
+|---|---|---|
+| Shape | **pill** (filled/outline text buttons fully rounded) | confirmed in showcase screenshot |
+| Padding | `12px` vertical · `16px` horizontal (base) | M3; app's pill text `.btn` runs wider (see below) |
+| Radius | image/wide buttons `12px`; text/icon buttons pill | per foundation doc |
+| Gap (icon→label) | `12px` | leading icon only |
+| Label | `label/large` — Roboto Medium 14 / lh 20 / ls 0.1px (`#FFFFFF`/`#E3E3E3`) | TV-scaled up for 10-ft |
+| **Focus** | **invert to a light pill + dark label** (filled); outline gains fill | + `1.1×` scale & outline ring on the kit; B8 gets the inversion only (no motion) |
+
+### App mapping
+
+- **`.btn`** = filled button. Rest `--gt-surface-2`; **focus = light-pill inversion**
+  (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`) — this IS
+  the focus indicator (matches the kit). Pill radius `--gt-radius-button` 999px.
+  Padding `--space-3`/`--space-7` (12px/28px) — wider than the kit base's 16px, a
+  deliberate 10-ft choice; keep consistent app-wide, do not retune per-screen.
+- `.btn-primary` = always-blue filled (one primary per screen); still inverts on focus.
+- `.btn-outline` = transparent + 1px outline. ⚠️ **`.btn-outline:focus` is broken**
+  in this codebase (sets light text but the shared `.btn:focus` sets a light bg →
+  light-on-light). Don't use outline buttons where they can be focused until fixed.
+
+### Buttons on an elevated card (gotcha)
+
+A filled `.btn` rest bg (`--gt-surface-2` `#1E1F20`) equals the settings **card**
+bg, so it's invisible at rest. Bump rest to `--bg-surface-hover` (`#282A2C`) — but
+that override out-specifies the shared `.btn:focus`, so you MUST re-assert the
+inversion on `:focus` or the highlight won't change colour (only the text would).
+See `.gt-settings-editor__actions .btn` / `:focus` in `app.css`.
+
+### Platform notes
+
+- Focus scale/glow motion gated to webOS5+ (`html.caps-motion`); B8 = static
+  inversion only.
+- `min-height: var(--target-min)` (52px) for D-pad target size.
