@@ -41,38 +41,67 @@ function openTextInputModal(opts) {
   var returnFocus = opts.returnFocus || null;
 
   var overlay = document.createElement('div');
-  overlay.className = 'detail-modal';
+  overlay.className = 'detail-modal gt-modal';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-label', title);
 
   overlay.innerHTML =
-    '<div class="detail-modal-sheet" style="max-width:640px;width:100%;">' +
-    '<h2 class="detail-modal-title">' + escapeHtml(title) + '</h2>' +
-    '<div style="padding:var(--space-4) 0;">' +
+    '<div class="detail-modal-sheet gt-modal-sheet" style="max-width:640px;width:100%;">' +
+    '<div class="gt-text-input-wrap" id="tv-text-input-wrap">' +
+    '<span class="tv-text-input-label">' + escapeHtml(title) + '</span>' +
     '<input id="tv-text-input-field" type="text" class="tv-text-input"' +
     ' autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"' +
-    ' style="width:100%;box-sizing:border-box;font-size:var(--font-body);' +
-    'padding:14px 18px;background:var(--bg-surface);color:var(--text-primary);' +
-    'border:1px solid var(--border);border-radius:var(--radius-md);outline:none;"' +
     ' tabindex="0" />' +
     '</div>' +
-    '<div class="detail-modal-footer" style="display:flex;gap:var(--space-3);padding-top:var(--space-4);border-top:1px solid rgba(255,255,255,0.1);">' +
-    '<button type="button" class="btn detail-modal-cancel" id="tv-text-input-confirm" tabindex="0"' +
-    ' style="flex:1;">Confirm</button>' +
-    '<button type="button" class="btn detail-modal-cancel" id="tv-text-input-cancel" tabindex="0"' +
-    ' style="flex:1;background:transparent;">Cancel</button>' +
+    '<div class="detail-modal-footer">' +
+    '<button type="button" class="btn btn-primary" id="tv-text-input-confirm" tabindex="0">Confirm</button>' +
+    '<button type="button" class="btn btn-outline detail-modal-cancel" id="tv-text-input-cancel" tabindex="0">Cancel</button>' +
     '</div>' +
     '</div>';
 
   document.body.appendChild(overlay);
 
   var input = document.getElementById('tv-text-input-field');
+  var inputWrap = document.getElementById('tv-text-input-wrap');
   var confirmBtn = document.getElementById('tv-text-input-confirm');
   var cancelBtn = document.getElementById('tv-text-input-cancel');
   var focusables = [input, confirmBtn, cancelBtn];
 
+  // inputMode: true while the webOS on-screen keyboard is showing / input is active.
+  // The webOS keyboard steals DOM focus but still routes key events here. In that
+  // state, keyCode 461 (webOS Back key) is the keyboard's Delete button and
+  // arrow keys should move the cursor — not close the modal or cycle focusables.
+  var inputMode = true;
+
+  input.addEventListener('focus', function () {
+    inputMode = true;
+    if (inputWrap) inputWrap.classList.add('gt-text-input-wrap--active');
+  });
+  input.addEventListener('blur', function () {
+    if (inputWrap) inputWrap.classList.remove('gt-text-input-wrap--active');
+  });
+  confirmBtn.addEventListener('focus', function () { inputMode = false; });
+  cancelBtn.addEventListener('focus', function () { inputMode = false; });
+
   input.value = defaultValue;
+
+  function deleteChar() {
+    var s = input.selectionStart, end = input.selectionEnd, v = input.value;
+    if (s !== end) {
+      input.value = v.slice(0, s) + v.slice(end);
+      input.setSelectionRange(s, s);
+    } else if (s > 0) {
+      input.value = v.slice(0, s - 1) + v.slice(s);
+      input.setSelectionRange(s - 1, s - 1);
+    }
+  }
+
+  function moveCursor(delta) {
+    var pos = input.selectionStart + delta;
+    pos = Math.max(0, Math.min(pos, input.value.length));
+    input.setSelectionRange(pos, pos);
+  }
 
   function close() {
     activeModalClose = null;
@@ -91,43 +120,51 @@ function openTextInputModal(opts) {
 
   function onKey(e) {
     var code = e.keyCode || e.which;
-    // Allow Backspace to delete characters in the input field
-    if (code === 8 && document.activeElement === input) {
-      return;
-    }
-    // Back key (webOS), Escape, or Backspace from outside input
-    if (code === 461 || code === 27 || code === 8) {
-      e.preventDefault();
-      e.stopPropagation();
-      close();
-      return;
-    }
-    // Enter confirms from any element
-    if (code === 13) {
-      var active = document.activeElement;
-      if (active === cancelBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        close();
-      } else {
-        e.preventDefault();
-        e.stopPropagation();
-        confirm();
+
+    if (inputMode) {
+      // webOS on-screen keyboard sends 461 (Back) for its Delete key.
+      // Treat both 461 and 8 as "delete character" while keyboard is active.
+      if (code === 461 || code === 8) {
+        e.preventDefault(); e.stopPropagation();
+        deleteChar();
+        return;
       }
-      return;
+      // Arrow keys move the cursor, not focus.
+      if (code === 37) { e.preventDefault(); e.stopPropagation(); moveCursor(-1); return; }
+      if (code === 39) { e.preventDefault(); e.stopPropagation(); moveCursor(1); return; }
+      // Escape closes even in input mode.
+      if (code === 27) { e.preventDefault(); e.stopPropagation(); close(); return; }
+      // Up/Down move focus to the action buttons.
+      if (code === 38 || code === 40) {
+        e.preventDefault();
+        confirmBtn.focus();
+        return;
+      }
+    } else {
+      // Buttons focused: Back/Escape/Backspace closes.
+      if (code === 461 || code === 27 || code === 8) {
+        e.preventDefault(); e.stopPropagation(); close(); return;
+      }
+      // Left/Up → prev; Right/Down → next.
+      if (code === 37 || code === 38) {
+        e.preventDefault();
+        var idx = focusables.indexOf(document.activeElement);
+        focusables[(idx - 1 + focusables.length) % focusables.length].focus();
+        return;
+      }
+      if (code === 39 || code === 40) {
+        e.preventDefault();
+        var idx2 = focusables.indexOf(document.activeElement);
+        focusables[(idx2 + 1) % focusables.length].focus();
+        return;
+      }
     }
-    // D-pad left/right and up/down cycle between focusables (not inside the input)
-    if ((code === 37 || code === 38) && document.activeElement !== input) {
-      e.preventDefault();
-      var idx = focusables.indexOf(document.activeElement);
-      var prev = focusables[(idx - 1 + focusables.length) % focusables.length];
-      prev.focus();
-    }
-    if ((code === 39 || code === 40) && document.activeElement !== input) {
-      e.preventDefault();
-      var idx2 = focusables.indexOf(document.activeElement);
-      var next = focusables[(idx2 + 1) % focusables.length];
-      next.focus();
+
+    // Enter confirms from any element.
+    if (code === 13) {
+      e.preventDefault(); e.stopPropagation();
+      if (document.activeElement === cancelBtn) close();
+      else confirm();
     }
   }
 
@@ -137,7 +174,6 @@ function openTextInputModal(opts) {
   confirmBtn.addEventListener('click', confirm);
   cancelBtn.addEventListener('click', close);
 
-  // Focus input on open
   setTimeout(function () { input.focus(); }, 0);
 }
 
