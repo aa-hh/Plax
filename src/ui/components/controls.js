@@ -303,13 +303,15 @@ function openTextInputModal(opts) {
   overlay.setAttribute('aria-modal', 'true');
 
   var sheet = el('div', 'detail-modal-sheet gt-modal-sheet');
-  if (opts.title) {
-    var title = el('p', 'detail-modal-title');
-    title.textContent = String(opts.title);
-    sheet.appendChild(title);
-  }
 
+  // Label sits directly above the input (6px gap via flex), colour toggles blue on active.
+  // No separate header bar — matches TV Design Kit text-field anatomy (nodes 3815:25032 / 3984:26492).
   var inputWrap = el('div', 'gt-text-input-wrap');
+  if (opts.title) {
+    var label = el('span', 'tv-text-input-label');
+    label.textContent = String(opts.title);
+    inputWrap.appendChild(label);
+  }
   var input = document.createElement('input');
   input.type = 'text';
   input.className = 'tv-text-input';
@@ -338,6 +340,38 @@ function openTextInputModal(opts) {
 
   var focusables = [input, confirmBtn, cancelBtn];
 
+  // inputMode: true while the webOS on-screen keyboard is showing / input is active.
+  // The webOS keyboard steals DOM focus but still routes key events here. In that
+  // state, keyCode 461 (webOS Back key) is the keyboard's Delete button and
+  // arrow keys should move the cursor — not close the modal or cycle focusables.
+  var inputMode = true;
+  input.addEventListener('focus', function () {
+    inputMode = true;
+    inputWrap.classList.add('gt-text-input-wrap--active');
+  });
+  input.addEventListener('blur', function () {
+    inputWrap.classList.remove('gt-text-input-wrap--active');
+  });
+  confirmBtn.addEventListener('focus', function () { inputMode = false; });
+  cancelBtn.addEventListener('focus', function () { inputMode = false; });
+
+  function deleteChar() {
+    var s = input.selectionStart, end = input.selectionEnd, v = input.value;
+    if (s !== end) {
+      input.value = v.slice(0, s) + v.slice(end);
+      input.setSelectionRange(s, s);
+    } else if (s > 0) {
+      input.value = v.slice(0, s - 1) + v.slice(s);
+      input.setSelectionRange(s - 1, s - 1);
+    }
+  }
+
+  function moveCursor(delta) {
+    var pos = input.selectionStart + delta;
+    pos = Math.max(0, Math.min(pos, input.value.length));
+    input.setSelectionRange(pos, pos);
+  }
+
   function close() {
     document.removeEventListener('keydown', onKeyDown, true);
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -352,26 +386,43 @@ function openTextInputModal(opts) {
 
   function onKeyDown(e) {
     var code = e.keyCode || e.which;
-    if (code === 8 && document.activeElement === input) return; // allow backspace in input
-    if (code === 461 || code === 27 || code === 8) { // Back / Escape
-      e.preventDefault(); e.stopPropagation();
-      close(); return;
+
+    if (inputMode) {
+      // webOS on-screen keyboard sends 461 (Back) for its Delete key.
+      // Treat both 461 and 8 as "delete character" while keyboard is active.
+      if (code === 461 || code === 8) {
+        e.preventDefault(); e.stopPropagation();
+        deleteChar(); return;
+      }
+      // Arrow keys move the cursor, not focus.
+      if (code === 37) { e.preventDefault(); e.stopPropagation(); moveCursor(-1); return; }
+      if (code === 39) { e.preventDefault(); e.stopPropagation(); moveCursor(1); return; }
+      // Escape closes even in input mode.
+      if (code === 27) { e.preventDefault(); e.stopPropagation(); close(); return; }
+      // Up/Down move focus to the action buttons.
+      if (code === 38 || code === 40) { e.preventDefault(); confirmBtn.focus(); return; }
+    } else {
+      // Buttons focused: Back/Escape/Backspace closes.
+      if (code === 461 || code === 27 || code === 8) {
+        e.preventDefault(); e.stopPropagation(); close(); return;
+      }
+      // Left/Up → prev; Right/Down → next.
+      if (code === 37 || code === 38) {
+        e.preventDefault();
+        var idx = focusables.indexOf(document.activeElement);
+        focusables[(idx - 1 + focusables.length) % focusables.length].focus(); return;
+      }
+      if (code === 39 || code === 40) {
+        e.preventDefault();
+        var idx2 = focusables.indexOf(document.activeElement);
+        focusables[(idx2 + 1) % focusables.length].focus(); return;
+      }
     }
-    if (code === 13) { // Enter
+
+    if (code === 13) { // Enter confirms from any element
       e.preventDefault(); e.stopPropagation();
       if (document.activeElement === cancelBtn) close();
       else confirm();
-      return;
-    }
-    if ((code === 37 || code === 38) && document.activeElement !== input) {
-      e.preventDefault();
-      var idx = focusables.indexOf(document.activeElement);
-      focusables[(idx - 1 + focusables.length) % focusables.length].focus();
-    }
-    if ((code === 39 || code === 40) && document.activeElement !== input) {
-      e.preventDefault();
-      var idx2 = focusables.indexOf(document.activeElement);
-      focusables[(idx2 + 1) % focusables.length].focus();
     }
   }
 

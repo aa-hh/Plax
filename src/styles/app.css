@@ -5004,21 +5004,45 @@ html.caps-motion .gt-list-item:focus {
 }
 
 /* ── Text-input modal (openTextInputModal factory) ── */
+/* Text-field — Figma TV Design Kit nodes 3815:25032 (focused) + 3984:26492 (active)
+   Label color toggle driven by JS class (.gt-text-input-wrap--active); no :focus-within (Chrome53). */
 .gt-text-input-wrap {
-  padding: var(--space-4) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;                    /* spec: 6px between label and field */
+  padding: var(--space-6) 0 var(--space-4);
+}
+.tv-text-input-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0.1px;
+  color: #C4C7C5;              /* TV Compose/sys/dark/on-surface-variant */
+}
+.gt-text-input-wrap--active .tv-text-input-label {
+  color: #A8C7FA;              /* TV Compose/sys/dark/primary */
 }
 .tv-text-input {
   width: 100%;
   box-sizing: border-box;
-  font-size: var(--font-body);
-  padding: 14px 18px;
-  background: var(--gt-surface-2);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  font-size: var(--font-body); /* 24px — scaled up from spec 16px for 10-ft viewing */
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.4;
+  padding: 14px 18px;          /* scaled from spec 12px 16px */
+  background: #303030;         /* TV Compose/sys/dark/inverse-on-surface */
+  color: #E3E3E3;              /* TV Compose/sys/dark/on-surface */
+  border: 1px solid #8E918F;  /* TV Compose/sys/dark/outline */
+  border-radius: 8px;
   outline: none;
+  caret-color: #A8C7FA;       /* TV Compose/sys/dark/primary */
+}
+.tv-text-input::placeholder {
+  color: #8E918F;
+  opacity: 1;
 }
 .tv-text-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  border: 2px solid #A8C7FA;  /* TV Compose/sys/dark/primary, 2px active */
+  background: transparent;
+  box-shadow: none;
 }
