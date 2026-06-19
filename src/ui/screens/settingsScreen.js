@@ -185,37 +185,39 @@ function openTextInputModal(opts) {
 }
 
 /**
- * Inline "Log sink URL" field with a read/edit toggle (TV-safe text entry).
+ * "Log sink URL" setting: a full-width read row + an inline editor (TV-safe).
  *
- * Read state:  disabled <input> shows the saved value; CTA reads "Set" (empty)
- *              or "Edit" (value present). The disabled input is skipped by the
- *              spatial nav, so the CTA is the only focus stop in the row.
- * Edit state:  CTA → "Save". The input is enabled, focused, and select-all'd,
- *              which raises the webOS on-screen keyboard. While the keyboard is
- *              up we trap its keys at the document capture phase so they never
- *              reach the screen's attachFocusNav (which would steal focus):
- *                461/8  → delete char     37/39 → move cursor
- *                13/38/40 → unselect (close keyboard) + focus the Save CTA
- *                27 (Esc) → cancel
- *              With the Save CTA focused, focus is contained: Back/Esc cancels
- *              (reverts), LEFT re-opens the keyboard, other arrows are swallowed,
- *              and Enter commits via the button's native click.
+ * Read state:  a full-width focusable row (label + saved value / "Not set").
+ *              Being full-width it sits on the vertical D-pad column, so travel
+ *              DOWN the settings list always lands on it — unlike a short input
+ *              with a right-aligned CTA, which the geometric nav skipped.
+ * Edit state:  selecting the row reveals the editor (input + Save/Cancel/Test)
+ *              and hides the read row; the input is focused + select-all'd,
+ *              raising the webOS keyboard. Keys are trapped at the document
+ *              capture phase so they never reach the screen's attachFocusNav:
+ *                461/8 → delete · 37/39 → move cursor (input focused)
+ *                13/38/40 → close keyboard + focus Save · 27 → cancel
+ *              On the buttons focus is contained: LEFT/RIGHT cycle Save/Cancel/
+ *              Test, UP re-opens the keyboard, Back/Esc cancels, Enter activates.
+ *              Test pings the value currently in the editor.
  */
 function wireLogSinkField(setStatus) {
-  var row = document.getElementById('log-sink-row');
-  var field = document.getElementById('log-sink-field');
+  var readRow = document.getElementById('log-sink-row');
+  var editor = document.getElementById('log-sink-editor');
   var input = document.getElementById('log-sink-url');
-  var cta = document.getElementById('log-sink-cta');
+  var saveBtn = document.getElementById('log-sink-save');
+  var cancelBtn = document.getElementById('log-sink-cancel');
   var testBtn = document.getElementById('log-sink-test');
-  if (!row || !field || !input || !cta) return;
+  if (!readRow || !editor || !input || !saveBtn || !cancelBtn) return;
+  var valueSpan = readRow.querySelector('.gt-settings-value');
+  var buttons = [saveBtn, cancelBtn, testBtn].filter(Boolean);
 
   var editing = false;
 
   function savedValue() { return getLogSinkUrl() || ''; }
-  function refreshCta() { cta.textContent = savedValue() ? 'Edit' : 'Set'; }
-
-  input.value = savedValue();
-  refreshCta();
+  function refreshRead() { if (valueSpan) valueSpan.textContent = savedValue() || 'Not set'; }
+  function setStatusSafe(msg, isError) { if (typeof setStatus === 'function') setStatus(msg, isError); }
+  refreshRead();
 
   function deleteChar() {
     var s = input.selectionStart, end = input.selectionEnd, v = input.value;
@@ -234,25 +236,30 @@ function wireLogSinkField(setStatus) {
     input.setSelectionRange(pos, pos);
   }
 
+  // Read mode is a full-width row (offset 0 → vertical D-pad always lands on it).
+  // Selecting it opens this inline editor; focus is then contained between the
+  // input and the Save/Cancel/Test buttons until the user commits or backs out.
   function enterEdit() {
+    if (editing) return;
     editing = true;
-    input.disabled = false;
     input.value = savedValue();
-    cta.textContent = 'Save';
-    row.classList.add('log-sink-row--editing');
+    editor.hidden = false;
     document.addEventListener('keydown', onEditKey, true);
+    // Focus the input first, THEN hide the read row, so focus never collapses to
+    // <body> (which would trip the screen's focus watchdog).
     setTimeout(function () {
       input.focus();
       try { input.select(); } catch (e) { /* older Chromium */ }
+      readRow.hidden = true;
     }, 0);
   }
 
   function exitEdit() {
     editing = false;
     document.removeEventListener('keydown', onEditKey, true);
-    input.disabled = true;
-    row.classList.remove('log-sink-row--editing');
-    row.classList.remove('log-sink-row--typing');
+    readRow.hidden = false;
+    editor.hidden = true;
+    readRow.focus();
   }
 
   function commit() {
@@ -261,41 +268,17 @@ function wireLogSinkField(setStatus) {
     if (window.__plaxDebug && window.__plaxDebug.setLogSinkUrl) {
       window.__plaxDebug.setLogSinkUrl(next);
     }
+    refreshRead();
+    setStatusSafe(next ? 'Log sink saved — debug overlay must be on.' : 'Log sink cleared.', false);
     exitEdit();
-    input.value = savedValue();
-    refreshCta();
-    if (typeof setStatus === 'function') {
-      setStatus(next ? 'Log sink saved — debug overlay must be on.' : 'Log sink cleared.', false);
-    }
-    cta.focus();
   }
 
-  function cancel() {
-    exitEdit();
-    input.value = savedValue();
-    refreshCta();
-    cta.focus();
-  }
+  function cancel() { exitEdit(); }
 
-  input.addEventListener('focus', function () { row.classList.add('log-sink-row--typing'); });
-  input.addEventListener('blur', function () { row.classList.remove('log-sink-row--typing'); });
-
-  cta.addEventListener('click', function () {
-    if (editing) commit();
-    else enterEdit();
-  });
-
-  // Test: POST a ping to the saved sink and report Sent/Failed via the screen's
-  // status line (same channel commit() uses). Tests the *saved* value, so it's
-  // disabled while editing — and unreachable anyway since focus is contained
-  // between the input and the Save CTA while the keyboard is up.
+  // Test pings the value currently in the editor (what you're about to save).
   function testSink() {
-    if (editing) return;
-    var url = savedValue();
-    if (!url) {
-      setStatusSafe('Set a Log sink URL first, then Test.', true);
-      return;
-    }
+    var url = input.value.trim();
+    if (!url) { setStatusSafe('Enter a Log sink URL first, then Test.', true); return; }
     var payload;
     try {
       payload = JSON.stringify({
@@ -315,11 +298,8 @@ function wireLogSinkField(setStatus) {
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.timeout = 5000;
       xhr.onload = function () {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setStatusSafe('Test ping sent ✓ → ' + url, false);
-        } else {
-          setStatusSafe('Test ping failed ✗ (HTTP ' + xhr.status + ')', true);
-        }
+        if (xhr.status >= 200 && xhr.status < 300) setStatusSafe('Test ping sent ✓ → ' + url, false);
+        else setStatusSafe('Test ping failed ✗ (HTTP ' + xhr.status + ')', true);
       };
       xhr.onerror = function () { setStatusSafe('Test ping failed ✗ — could not reach sink.', true); };
       xhr.ontimeout = function () { setStatusSafe('Test ping timed out ✗', true); };
@@ -329,11 +309,16 @@ function wireLogSinkField(setStatus) {
     }
   }
 
-  function setStatusSafe(msg, isError) {
-    if (typeof setStatus === 'function') setStatus(msg, isError);
-  }
-
+  readRow.addEventListener('click', enterEdit);
+  saveBtn.addEventListener('click', commit);
+  cancelBtn.addEventListener('click', cancel);
   if (testBtn) testBtn.addEventListener('click', testSink);
+
+  function focusButton(idx) {
+    if (!buttons.length) return;
+    idx = (idx + buttons.length) % buttons.length;
+    buttons[idx].focus();
+  }
 
   function onEditKey(e) {
     if (!editing) return;
@@ -344,19 +329,19 @@ function wireLogSinkField(setStatus) {
       if (code === 461 || code === 8) { e.preventDefault(); e.stopPropagation(); deleteChar(); return; }
       if (code === 37) { e.preventDefault(); e.stopPropagation(); moveCursor(-1); return; }
       if (code === 39) { e.preventDefault(); e.stopPropagation(); moveCursor(1); return; }
-      // Enter / Up / Down → unselect: focusing the CTA closes the keyboard.
-      if (code === 13 || code === 38 || code === 40) {
-        e.preventDefault(); e.stopPropagation(); cta.focus(); return;
-      }
+      // Enter / Up / Down → unselect (close keyboard) + move to the action buttons.
+      if (code === 13 || code === 38 || code === 40) { e.preventDefault(); e.stopPropagation(); saveBtn.focus(); return; }
       if (code === 27) { e.preventDefault(); e.stopPropagation(); cancel(); return; }
       return; // character keys flow through into the input
     }
 
-    // Save CTA focused: contain focus until the user commits or backs out.
+    // A Save/Cancel/Test button is focused — keep focus inside the editor.
     if (code === 461 || code === 27) { e.preventDefault(); e.stopPropagation(); cancel(); return; }
-    if (code === 37) { e.preventDefault(); e.stopPropagation(); input.focus(); return; }
-    if (code === 38 || code === 39 || code === 40) { e.preventDefault(); e.stopPropagation(); return; }
-    // Enter (13) falls through → native button click → commit().
+    if (code === 38) { e.preventDefault(); e.stopPropagation(); input.focus(); return; }       // up → re-open keyboard
+    if (code === 37) { e.preventDefault(); e.stopPropagation(); focusButton(buttons.indexOf(document.activeElement) - 1); return; }
+    if (code === 39) { e.preventDefault(); e.stopPropagation(); focusButton(buttons.indexOf(document.activeElement) + 1); return; }
+    if (code === 40) { e.preventDefault(); e.stopPropagation(); return; }                       // down swallowed (contained)
+    // Enter (13) falls through → native button click (Save / Cancel / Test).
   }
 }
 
@@ -553,22 +538,37 @@ function settingsScreen(root, params, navigate) {
     }
   }));
 
-  // Log sink: TV-safe inline edit-toggle field (wired by wireLogSinkField).
-  var logSinkRow = document.createElement('div');
-  logSinkRow.className = 'gt-settings-stacked';
-  logSinkRow.id = 'log-sink-row';
-  logSinkRow.innerHTML =
+  // Log sink: a full-width read row (so vertical D-pad reaches it) that opens an
+  // inline editor on select. Wired by wireLogSinkField.
+  var logSinkBlock = document.createElement('div');
+  logSinkBlock.id = 'log-sink-block';
+  var logSinkRead = createSettingsActionRow({
+    id: 'log-sink-row',
+    label: 'Log sink URL',
+    sublabel: 'POST debug logs to a receiver on your dev machine.',
+    hint: getLogSinkUrl() || 'Not set',
+    onSelect: function () { /* real handler attached in wireLogSinkField */ }
+  });
+  logSinkBlock.appendChild(logSinkRead);
+
+  var logSinkEditor = document.createElement('div');
+  logSinkEditor.className = 'gt-settings-stacked gt-settings-editor';
+  logSinkEditor.id = 'log-sink-editor';
+  logSinkEditor.hidden = true;
+  logSinkEditor.innerHTML =
     '<label for="log-sink-url">Log sink URL</label>' +
-    '<div class="gt-inline-field" id="log-sink-field">' +
-    '<input id="log-sink-url" class="tv-text-input gt-inline-field__input" type="text" ' +
+    '<input id="log-sink-url" class="tv-text-input" type="text" ' +
     'placeholder="http://192.168.4.1:8765/log" autocomplete="off" autocorrect="off" ' +
-    'autocapitalize="off" spellcheck="false" disabled />' +
-    '<button type="button" class="btn gt-inline-field__cta" id="log-sink-cta" tabindex="0">Set</button>' +
-    '<button type="button" class="btn gt-inline-field__test" id="log-sink-test" tabindex="0">Test</button>' +
+    'autocapitalize="off" spellcheck="false" />' +
+    '<div class="gt-settings-editor__actions">' +
+    '<button type="button" class="btn" id="log-sink-save" tabindex="0">Save</button>' +
+    '<button type="button" class="btn" id="log-sink-cancel" tabindex="0">Cancel</button>' +
+    '<button type="button" class="btn" id="log-sink-test" tabindex="0">Test</button>' +
     '</div>' +
     '<p class="settings-hint">On your Mac run <code>npm run log:receive</code>, then use your Mac\'s LAN IP ' +
     '(System Settings → Network). Requires debug overlay on. Logs append to <code>logs/tv.log</code>.</p>';
-  devCard.body.appendChild(logSinkRow);
+  logSinkBlock.appendChild(logSinkEditor);
+  devCard.body.appendChild(logSinkBlock);
   content.appendChild(devCard);
 
   wireLogSinkField(setStatus);

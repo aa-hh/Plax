@@ -5192,6 +5192,17 @@ html.caps-motion .gt-list-item:focus {
   color: var(--text-primary);
 }
 
+/* Log-sink inline editor: revealed when the read row is selected. Full-width
+   input (offset moot — focus is trapped while editing) + a Save/Cancel/Test
+   button row. Buttons get a visible neutral surface; invert on focus. */
+.gt-settings-editor__actions {
+  display: flex;
+  gap: var(--space-4);
+}
+.gt-settings-editor__actions .btn {
+  background: var(--bg-surface-hover);
+}
+
 /* Footer actions (Sign out). */
 .gt-settings-footer {
   margin: var(--space-6) 0 var(--space-8);

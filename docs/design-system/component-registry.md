@@ -55,91 +55,79 @@ input.addEventListener('blur',  () => wrap.classList.remove('gt-text-input-wrap-
 
 ---
 
-## Inline Edit-Toggle Field (read value + Set/Save/Edit CTA)
+## Inline Edit-Toggle Field (full-width read row → inline editor)
 
 **Status:** done
-**Reuses:** Text Field (outlined) spec for the field itself — only adds row layout
-+ a read (disabled) state + a state machine. No new Figma node; composition of the
-text field + a `btn-primary`.
+**Reuses:** `createSettingsActionRow` for the read row + Text Field (outlined)
+spec for the editor input. No new Figma node.
 
 ### When to use
 
 A single editable setting (e.g. a URL) where text entry is rare and the value is
-mostly read. Gating entry behind an explicit CTA means the webOS on-screen
-keyboard only opens on purpose — the standard TV pattern for text fields buried
-in a settings list.
+mostly read. Selecting the full-width row reveals the editor, so the webOS keyboard
+only opens on an explicit select — the standard TV pattern for text fields in a
+settings list.
 
 ### Anatomy
 
 ```
-.settings-row--stacked#log-sink-row          ← gets --typing while keyboard up
-  label[for]                                  ← turns primary (#A8C7FA) while typing
-  .gt-inline-field                            ← flex row: input grows, CTA + Test fixed right
-    input.tv-text-input.gt-inline-field__input ← disabled in read state
-    button.btn.btn-primary.gt-inline-field__cta ← Set | Save | Edit (the one primary action)
-    button.btn.gt-inline-field__test           ← Test: secondary, pings the saved sink
-  .settings-hint                              ← helper text
+#log-sink-block
+  button.gt-list-item.gt-settings-item#log-sink-row     ← READ row (full-width, focusable)
+    .gt-list-item__main (label + sublabel)
+    .gt-list-item__trailing (.gt-settings-value = value / "Not set", + chevron)
+  .gt-settings-stacked.gt-settings-editor#log-sink-editor[hidden]   ← EDIT mode
+    label[for]
+    input.tv-text-input#log-sink-url
+    .gt-settings-editor__actions (Save · Cancel · Test)
+    .settings-hint
 ```
-
-### Optional Test action
-
-A single inline field may carry a secondary `.btn.gt-inline-field__test`
-alongside the primary CTA when the value addresses a remote endpoint worth
-verifying (the log-sink URL). It POSTs a small ping (5s-timeout `XMLHttpRequest`)
-to the **saved** value and reports Sent ✓ / Failed ✗ / timeout through the
-screen's status line (`setStatus`) — the same channel `commit()` uses, not a
-local status span. It is a no-op while editing (and unreachable then anyway,
-since focus is contained between the input and the Save CTA). Read state exposes
-two focus stops: CTA, then Test (the disabled input is still skipped by nav).
 
 ### State machine
 
-| State | Input | CTA label | Focus stop |
-|---|---|---|---|
-| Read, empty | `disabled`, placeholder | **Set** | CTA only (disabled input skipped by nav) |
-| Read, has value | `disabled`, shows value | **Edit** | CTA only |
-| Editing | enabled, focused, select-all, keyboard up | **Save** | input (keyboard) ↔ CTA |
+| State | DOM | Focus stops |
+|---|---|---|
+| Read | read row visible, editor `hidden` | the read row only |
+| Editing | editor visible, read row `hidden` | input (keyboard) ↔ Save / Cancel / Test |
 
-Transitions: CTA(Set/Edit) → enter edit · Enter/Up/Down on keyboard → unselect
-(close keyboard) + focus Save · Save → commit, re-disable, CTA→Edit/Set · Back/Esc
-→ cancel (revert) · LEFT from Save → re-open keyboard.
+Transitions: select read row → enterEdit (reveal editor, focus + select-all the
+input, raise keyboard) · Enter/Up/Down on keyboard → focus Save · Save → commit +
+back to read · Cancel or Back/Esc → revert + back to read. Focus returns to the
+read row on exit. Test pings the value **currently in the editor**.
+
+### Why a full-width read row (D-pad reachability)
+
+The geometric nav penalises cross-axis offset ×8, so a short input + right-aligned
+CTA below full-width rows got skipped on **Down** (the centred Sign-out scored
+better; you had to arrow sideways to reach it — illogical mid-list). A full-width
+read row sits on the vertical travel column (**offset 0**), so Down always lands on
+it. This replaced the earlier disabled-box + `flex:0 1 380px` CTA, which was fragile.
 
 ### Key trapping (critical)
 
 While editing, a **document capture-phase** `keydown` listener intercepts so the
-screen's `attachFocusNav` never steals focus:
-`461`/`8`=delete · `37`/`39`=move cursor · `13`/`38`/`40`=unselect→Save ·
-`27`=cancel. Character keys flow through to the input. With the Save CTA focused,
-arrows are swallowed (focus contained); Enter commits via the button's native click.
+screen's `attachFocusNav` never steals focus. **Input focused:** `461`/`8`=delete ·
+`37`/`39`=move cursor · `13`/`38`/`40`=close keyboard → focus Save · `27`=cancel;
+character keys pass through. **Button focused:** `37`/`39` cycle Save/Cancel/Test ·
+`38`=re-open keyboard · `40` swallowed · Back/Esc=cancel · Enter=native click. The
+read row is hidden only AFTER the input is focused, so focus never collapses to
+`<body>` (which would trip the screen's focus watchdog).
 
-### Read-state tokens
+### Tokens
 
-| Property | Value |
+| Element | Value |
 |---|---|
-| Disabled bg | `#303030` (inverse-on-surface) |
-| Disabled text | `#C4C7C5` (on-surface-variant) + `-webkit-text-fill-color` (Chrome53 legibility) |
-| Disabled border | 1px `#5F6368` (dimmer than active outline) |
-| Active/focus | inherits `.tv-text-input:focus` (2px `#A8C7FA`, transparent bg) |
+| Read row | `.gt-list-item` (focus = light inversion `#E3E3E3`/`#303030`); value = `.gt-settings-value` |
+| Editor input | Text Field (outlined) spec (`.tv-text-input`, focus 2px `#A8C7FA`) |
+| Editor buttons | `.btn` on `--bg-surface-hover` (visible on card), invert on focus |
 
 ### Platform notes
 
-- Real `disabled` (not `readonly`) so `isNavFocusable()` skips the box and the CTA
-  is the only focus stop in the row.
-- **Layout / D-pad reachability:** the input is fixed at `flex: 0 1 380px` (not
-  `1 1 auto`). A full-width input pushed the CTA to the far right; the geometric
-  nav penalises horizontal offset ×8, so vertical travel from the row above skipped
-  the CTA and landed on the centred Sign-out below. Shortening the input pulls the
-  CTA near the row centre (where the travel column is) so it's reached. Buttons are
-  `flex: 0 0 auto` — full `.btn` padding, never shrink.
-- **CTA is `btn` (neutral), not `btn-primary`** — no permanent blue fill; rest =
-  `--bg-surface-hover` (visible on the card), focus = light inversion via `.btn:focus`.
-- Keyboard-key trapping is the same logic as `openTextInputModal` — reuse, don't
-  re-derive, if this graduates to a shared factory.
-- **Verify on B8:** when the field sits low in a scrolling list, the webOS keyboard
-  can occlude it. If that happens, prefer `openTextInputModal` (dedicated surface).
+- Editor `[hidden]` keeps its buttons out of the nav while in read mode
+  (`isNavFocusable` skips zero-size descendants of a hidden container).
+- Keyboard-key trapping mirrors `openTextInputModal` — reuse if it graduates to a factory.
 
 **Impl:** `wireLogSinkField()` in `src/ui/screens/settingsScreen.js`; CSS
-`.gt-inline-field*` in `src/styles/app.css`.
+`.gt-settings-editor*` + read row (`.gt-list-item` / `.gt-settings-*`) in `src/styles/app.css`.
 
 ---
 
