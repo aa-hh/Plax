@@ -400,7 +400,7 @@ function openTextInputModal(opts) {
       // Escape closes even in input mode.
       if (code === 27) { e.preventDefault(); e.stopPropagation(); close(); return; }
       // Up/Down move focus to the action buttons.
-      if (code === 38 || code === 40) { e.preventDefault(); confirmBtn.focus(); return; }
+      if (code === 38 || code === 40) { e.preventDefault(); e.stopPropagation(); confirmBtn.focus(); return; }
     } else {
       // Buttons focused: Back/Escape/Backspace closes.
       if (code === 461 || code === 27 || code === 8) {
@@ -408,12 +408,12 @@ function openTextInputModal(opts) {
       }
       // Left/Up → prev; Right/Down → next.
       if (code === 37 || code === 38) {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         var idx = focusables.indexOf(document.activeElement);
         focusables[(idx - 1 + focusables.length) % focusables.length].focus(); return;
       }
       if (code === 39 || code === 40) {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         var idx2 = focusables.indexOf(document.activeElement);
         focusables[(idx2 + 1) % focusables.length].focus(); return;
       }

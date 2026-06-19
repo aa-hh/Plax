@@ -136,7 +136,7 @@ function openTextInputModal(opts) {
       if (code === 27) { e.preventDefault(); e.stopPropagation(); close(); return; }
       // Up/Down move focus to the action buttons.
       if (code === 38 || code === 40) {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         confirmBtn.focus();
         return;
       }
@@ -147,13 +147,13 @@ function openTextInputModal(opts) {
       }
       // Left/Up → prev; Right/Down → next.
       if (code === 37 || code === 38) {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         var idx = focusables.indexOf(document.activeElement);
         focusables[(idx - 1 + focusables.length) % focusables.length].focus();
         return;
       }
       if (code === 39 || code === 40) {
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         var idx2 = focusables.indexOf(document.activeElement);
         focusables[(idx2 + 1) % focusables.length].focus();
         return;
