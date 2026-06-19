@@ -5046,3 +5046,262 @@ html.caps-motion .gt-list-item:focus {
   background: transparent;
   box-shadow: none;
 }
+
+/* ── Inline edit-toggle field (Settings → Log sink URL) ──
+   A read-only value (disabled <input>) paired with a Set/Save/Edit CTA on the
+   right. Reuses the .tv-text-input spec; only adds row layout + a read state.
+   Text entry is gated behind the CTA so the on-screen keyboard only opens on
+   an explicit action (TV best practice). */
+.gt-inline-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+}
+/* Shorter field so the buttons keep their full .btn padding AND the Set/Save/Edit
+   CTA sits near the row centre — where vertical D-pad travel lands (the geometric
+   nav penalises horizontal offset, so a far-right CTA gets skipped). */
+.gt-inline-field__input {
+  flex: 0 1 380px;
+  min-width: 0;
+}
+/* CTA + Test: full button padding, never shrink. Neutral surface at rest so
+   they're visible on the card but NOT the always-on blue of btn-primary; they
+   invert to a light pill on focus via the shared .btn:focus rule. */
+.gt-inline-field__cta,
+.gt-inline-field__test {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: var(--bg-surface-hover);
+}
+/* Read state: the saved value reads as a calm, legible summary — clearly
+   inactive but NOT a dead/greyed-out control. */
+.gt-inline-field__input:disabled {
+  background: #303030;        /* inverse-on-surface */
+  color: #C4C7C5;             /* on-surface-variant */
+  -webkit-text-fill-color: #C4C7C5; /* Chrome53 keeps disabled text legible */
+  border: 1px solid #5F6368;  /* dimmer outline than active */
+  opacity: 1;
+  cursor: default;
+}
+/* Label turns primary while the keyboard is up (mirrors text-field active spec). */
+#log-sink-row.log-sink-row--typing > label {
+  color: #A8C7FA;             /* TV Compose/sys/dark/primary */
+}
+
+/* ── Settings vocabulary (grouped cards + list-item rows) ──
+   Single-scroll settings: overline-titled cards group related rows. Multi-choice
+   rows open the openModal picker; binary rows use an inline switch; read-only
+   info rows are non-focusable so D-pad skips them. Built on .gt-list-item. */
+.gt-settings-group {
+  margin: 0 0 var(--space-7);
+  max-width: 1000px;
+}
+.gt-settings-group__title {
+  margin: 0 0 var(--space-3) var(--space-2);
+  font-size: var(--font-small);
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.gt-settings-card {
+  background: var(--bg-surface);          /* surface-container */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+}
+/* Hairline divider between adjacent rows (focus fill sits above it). */
+.gt-settings-card > * + * {
+  border-top: 1px solid var(--border);
+}
+
+/* Read-only info row — matches list-item metrics but is a non-focusable <div>. */
+.gt-settings-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--target-min);
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--gt-body);
+  color: var(--text-primary);
+}
+.gt-settings-info__value {
+  color: var(--text-secondary);
+  text-align: right;
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Trailing value + chevron on picker / action rows. */
+.gt-settings-value {
+  color: inherit;
+  opacity: 0.85;
+}
+.gt-settings-chevron {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-3);
+  opacity: 0.6;
+}
+.gt-list-item:focus .gt-settings-chevron { opacity: 1; }
+.gt-settings-item--destructive .gt-list-item__label { color: var(--danger, #F2B8B5); }
+.gt-settings-item--destructive:focus .gt-list-item__label { color: var(--focus-on-fill); }
+
+/* Binary switch (Material 3 TV). Off = outline track; on = primary track. */
+.gt-switch {
+  position: relative;
+  display: inline-block;
+  width: 64px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--text-muted);          /* outline (off) */
+  flex-shrink: 0;
+}
+.gt-switch__knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-dim);
+}
+.gt-switch--on { background: var(--accent); }
+.gt-switch--on .gt-switch__knob {
+  left: 32px;
+  background: var(--surface-dim);
+}
+/* On focus the row inverts to a light fill; keep the switch readable on it. */
+.gt-list-item:focus .gt-switch { background: rgba(11, 13, 18, 0.35); }
+.gt-list-item:focus .gt-switch--on { background: var(--accent); }
+
+/* Stacked row (label + control + hint), e.g. the log-sink inline field. */
+.gt-settings-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+.gt-settings-stacked > label {
+  font-size: var(--gt-body);
+  color: var(--text-primary);
+}
+
+/* Footer actions (Sign out). */
+.gt-settings-footer {
+  margin: var(--space-6) 0 var(--space-8);
+  max-width: 1000px;
+}
+
+/* Settings sublabels (hints) wrap to multiple lines instead of truncating. */
+.gt-settings-item .gt-list-item__sublabel {
+  white-space: normal;
+  overflow: visible;
+}
+/* Muted notes + the async home-profiles list align with row content padding. */
+.gt-settings-card .settings-muted,
+.gt-settings-card .gt-settings-note {
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+}
+.gt-settings-card .settings-home-users {
+  padding: 0 var(--space-5) var(--space-3);
+}
+.gt-settings-card .settings-home-user-row:last-child { border-bottom: 0; }
+/* Watchlist rows sit flush inside the card. */
+.gt-settings-card .settings-watchlist-row { padding: var(--space-3) var(--space-5); }
+
+/* ── Provider picker (first-run: Plex vs Jellyfin) ───────────────────────────
+   No kit component for a selection tile — composed from foundation tokens +
+   the shared --focus-shadow ring (ring only; no scale, gated off on webOS4). */
+.provider-tiles {
+  display: flex;
+  gap: var(--space-7);
+  margin-top: var(--space-8);
+}
+.provider-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  width: 340px;
+  padding: var(--space-9) var(--space-7);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  text-align: center;
+}
+.provider-tile__logo {
+  font-size: 72px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+.provider-tile__name {
+  font-size: var(--font-title-compact);
+  font-weight: 600;
+}
+.provider-tile__desc {
+  font-size: var(--gt-body);
+  color: var(--text-secondary);
+}
+.provider-tile:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-shadow);
+  outline: none;
+}
+.provider-tile:focus .provider-tile__logo { color: var(--accent); }
+
+/* ── Jellyfin login (server URL → Quick Connect / password) ──────────────────
+   Reuses .screen-center, .pairing-code (QC code), .btn/.btn-primary, and the
+   Text Field (outlined) entry via openTextInputModal for all text entry. */
+.jellyfin-login .login-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 560px;
+  max-width: 90vw;
+  margin-top: var(--space-7);
+  text-align: left;
+}
+.jellyfin-login .login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.jellyfin-login .login-field__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.jellyfin-login .login-field__btn {
+  justify-content: flex-start;
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  padding: 14px 18px;
+  font-size: 24px;
+  min-height: var(--target-min);
+}
+.jellyfin-login .login-field__btn.is-placeholder { color: var(--text-muted); }
+.jellyfin-login .login-field__btn:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-shadow);
+  outline: none;
+}
+.jellyfin-login .login-actions {
+  display: flex;
+  gap: var(--space-5);
+  justify-content: center;
+  margin-top: var(--space-7);
+}
+.jellyfin-login .login-step { display: none; }
+.jellyfin-login .login-step.is-active { display: flex; flex-direction: column; align-items: center; }
