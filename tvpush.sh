@@ -19,7 +19,7 @@ cd "$(dirname "$0")"
 DEVICE="Alec-TV"
 RELAUNCH=0
 SKIP_BUILD=0
-APP_ID="com.xplay.lite"
+APP_ID="com.plax"
 
 while getopts "d:rsh" opt; do
   case "$opt" in
@@ -65,10 +65,12 @@ echo "▶ Installing $IPK → $DEVICE"
 "$ARES_INSTALL" --device "$DEVICE" "$IPK"
 
 if [ "$RELAUNCH" -eq 1 ]; then
-  echo "▶ Relaunching $APP_ID on $DEVICE"
-  # Close first (ignore "not running"), then launch.
-  "$ARES_LAUNCH" --device "$DEVICE" --close "$APP_ID" >/dev/null 2>&1 || true
-  sleep 1
+  echo "▶ Launching $APP_ID on $DEVICE"
+  # Try to close first; silently ignore the error if app wasn't running.
+  if "$ARES_LAUNCH" --device "$DEVICE" --close "$APP_ID" >/dev/null 2>&1; then
+    echo "  (closed running instance)"
+    sleep 1
+  fi
   "$ARES_LAUNCH" --device "$DEVICE" "$APP_ID"
 fi
 
