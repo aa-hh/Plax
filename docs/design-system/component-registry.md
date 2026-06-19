@@ -118,7 +118,7 @@ read row is hidden only AFTER the input is focused, so focus never collapses to
 |---|---|
 | Read row | `.gt-list-item` (focus = light inversion `#E3E3E3`/`#303030`); value = `.gt-settings-value` |
 | Editor input | Text Field (outlined) spec (`.tv-text-input`, focus 2px `#A8C7FA`) |
-| Editor buttons | `.btn` on `--bg-surface-hover` (visible on card), invert on focus |
+| Editor buttons | standard `.btn` — solid `--button-container` `#303030`, inverts to light pill on focus (see Button entry) |
 
 ### Platform notes
 
