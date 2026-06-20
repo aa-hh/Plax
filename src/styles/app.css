@@ -14,6 +14,14 @@
   --text-muted: #8E918F;         /* outline (hints/muted) */
   --accent: #A8C7FA;             /* primary (Google TV blue) */
   --accent-soft: rgba(168, 199, 250, 0.18);
+  /* Progress bar (kit 719:6043) — one token-driven definition for all 3 bars.
+     Height: kit 3; we use 4 (10-ft: 3px reads too thin over poster art @1080p).
+     Track: opaque dark scrim (legible over art) vs kit white@20%.
+     Fill:  blue --accent ratified as the app's Material 3 progress/seek color. */
+  --progress-track-h: 4px;
+  --progress-track-color: rgba(0, 0, 0, 0.55);
+  --progress-fill-color: var(--accent);
+  --progress-radius: 2px;
   --brand: #e50914;
   --brand-soft: rgba(229, 9, 20, 0.14);
   --border: #444746;             /* outline-variant */
@@ -100,7 +108,7 @@
      Posters keep the ring+scale; controls invert. See docs/google-tv-figma-tokens.md. */
   --focus-fill: #E3E3E3;     /* sys/dark/inverse-surface */
   --focus-on-fill: #303030;  /* sys/dark/inverse-on-surface */
-  --button-container: #303030; /* inverse-on-surface — M3 TV filled-button container (solid, reads on any surface) */
+  --button-container: rgba(68, 71, 70, 0.8); /* #444746 @80% — canonical kit Button fill (node 169:1649, surface-variant); reads on any card surface (#131314–#282A2C) */
   --focus-scale: 1.06;       /* applied only under html.caps-motion (newer webOS) */
   /* Focus scale/ring transition. Kept short for a snappy 10-foot feel — the
      ring reads instantly and the composited scale lands fast (transform-only, so
@@ -114,6 +122,24 @@
   --media-grid-gap-y-half: 12px;
   --media-grid-gap-x-half: 10px;
   --row-card-gap-half: 8px;
+  /* Component container sizing — single source of truth so a size change lands
+     globally (see /ckm:design-system). Every component box references these;
+     never inline a px container value. */
+  --icon-md: 24px;          /* standard leading/control icon box (nav, list, menu) */
+  --icon-lg: 28px;          /* larger glyph box (icon buttons, library sidebar) */
+  --list-item-h: 64px;      /* kit List Item row height (561:3969) */
+  --field-pad-y: 14px;      /* Text field box — kit 12 scaled for 10-ft */
+  --field-pad-x: 18px;      /* Text field box — kit 16 scaled for 10-ft */
+  --field-pad-y-auth: 18px; /* Login/Auth field — kit ×1.5 */
+  --field-pad-x-auth: 24px;
+  --field-radius: var(--radius-md); /* 8px — all text-field boxes */
+  --badge-size: 30px;       /* status badge dot (watched/unwatched) */
+  --modal-sheet-max-w: 420px;   /* track-selector / drawer sheet width cap */
+  --provider-card-w: 420px;
+  --provider-card-media-h: 200px;
+  --login-fields-w: 560px;
+  --search-input-max-w: 980px;
+  --settings-content-max-w: 880px;
   --z-player: 1000;
   --z-player-overlay: 1002;
   --z-loading: 1005;
@@ -368,6 +394,7 @@ body::after {
 .player-control-pill:focus,
 .player-stream-pill:focus,
 .player-media-info-btn:focus,
+.player-skip-intro-prompt:focus,
 #btn-test-connection:focus {
   /* Google TV focus = invert to a light pill with dark text/icons (currentColor),
      no ring. This IS the focus indicator for controls. */
@@ -744,13 +771,13 @@ html.caps-motion .detail-watchlist-btn:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: var(--icon-md);
+  height: var(--icon-md);
   flex-shrink: 0;
 }
 
 .browsing-hub-item__icon + .browsing-hub-item__label {
-  margin-left: var(--space-4);
+  margin-left: var(--space-3);
 }
 
 .browsing-hub-item__label {
@@ -762,8 +789,8 @@ html.caps-motion .detail-watchlist-btn:focus {
 }
 
 .browsing-hub-item .hub-icon {
-  width: 26px;
-  height: 26px;
+  width: var(--icon-md);
+  height: var(--icon-md);
   color: var(--text-muted);
 }
 
@@ -1004,6 +1031,16 @@ html.caps-motion .detail-watchlist-btn:focus {
   pointer-events: none;
 }
 
+/* Button SIZE variant (kit Button Size=S, node 169:1649). Pure size modifier —
+   keeps the pill radius, fill/outline, and focus-inversion of the base button.
+   Compose: `.btn .btn--sm` (filled) or `.btn .btn-outline .btn--sm` (outline,
+   e.g. modal Cancel/Close). Replaces the old bespoke .btn-player-modal-cancel. */
+.btn--sm {
+  min-height: var(--space-9);                 /* 40px */
+  padding: var(--space-2) var(--space-4);     /* 8/16 */
+  font-size: var(--font-small);
+}
+
 /* ── Top navigation ── */
 .top-nav {
   display: flex;
@@ -1167,13 +1204,13 @@ html.caps-motion .detail-watchlist-btn:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: var(--icon-lg);
   flex-shrink: 0;
 }
 
 .library-item__icon .hub-icon {
-  width: 24px;
-  height: 24px;
+  width: var(--icon-md);
+  height: var(--icon-md);
   color: var(--text-muted);
 }
 
@@ -1577,8 +1614,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   top: 10px;
   right: 10px;
   left: auto;
-  width: 30px;
-  height: 30px;
+  width: var(--badge-size);
+  height: var(--badge-size);
   padding: 0;
   border-radius: var(--radius-sm);
   background: rgba(7, 10, 16, 0.9);
@@ -1593,22 +1630,30 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   text-transform: none;
 }
 
+/* Progress bar — shared base (kit 719:6043). All 3 bars share track height,
+   track color, fill color & radius via tokens; each variant only sets its own
+   positioning/corner-radius. Fill width is set inline by JS (style="width:N%"). */
+.progress-track {
+  height: var(--progress-track-h);
+  background: var(--progress-track-color);
+  border-radius: var(--progress-radius);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--progress-fill-color);
+  border-radius: var(--progress-radius);
+  width: 0;
+}
+
 .media-card .card-progress {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 4px;
-  background: rgba(0, 0, 0, 0.55);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.media-card .card-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  width: 0;
 }
 
 .watch-status-label {
@@ -1737,9 +1782,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
    the available width instead of leaving a large empty right gutter. */
 .row-scroll--sparse .row-item,
 .row-scroll--sparse .media-card {
-  /* Fixed rail width — webOS 4 safe (no dynamic width clamp or calc division) */
+  /* Fixed rail width — webOS 4 safe (no dynamic width clamp or calc division).
+     max-width MUST stay none: every rail shares the one card pitch (--row-poster-w);
+     an earlier 240px clamp here was the root cause of rail misalignment. */
   width: var(--row-poster-w);
-  max-width: 240px;
+  max-width: none;
 }
 
 /* Portrait row posters: padding-bottom keeps 2:3 at any card width (webOS 4 safe). */
@@ -1924,7 +1971,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: flex;
   flex-direction: column;
   margin-bottom: var(--space-5);
-  max-width: 880px;
+  max-width: var(--settings-content-max-w);
 }
 
 .detail-setting-row > * + * {
@@ -1952,20 +1999,17 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   align-items: center;
   justify-content: center;
   min-height: var(--target-min);
-  padding: var(--space-3) 22px;
-  background: var(--bg-surface);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  /* kit Chip 2506:17680 — padding 8/16, 1px #8E918F outline, radius 8 */
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: 1px solid rgba(142, 145, 143, 0.35);
   border-radius: var(--radius-md);
-  font-size: var(--font-meta);
+  font-size: var(--font-meta); /* ratified 10-foot up-scale (kit 14) */
   color: var(--text-secondary);
   white-space: nowrap;
 }
 
-.detail-setting-chip:focus {
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
-  outline: none;
-}
+/* focus = shared control inversion (see focus group ~line 346); no ring override */
 
 .detail-setting-chip--active {
   background: var(--accent-soft);
@@ -2215,20 +2259,147 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin: 0;
 }
 
+/* ── JetStream-inspired detail blocks (genre pills · credits · cast rail) ──── */
+.detail-genre-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.detail-genre-pill {
+  font-size: var(--font-small);
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--gt-surface-3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+
+.detail-credits-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-7, 32px);
+  margin: 0;
+}
+
+.detail-credit-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.detail-credit-label {
+  font-size: var(--font-small);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  margin-bottom: 2px;
+}
+
+.detail-credit-value {
+  font-size: var(--font-meta);
+  color: var(--text-primary, #fff);
+  font-weight: 600;
+}
+
+/* Subtitles / Quality icon buttons (icon + current-value label) */
+.detail-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-icon-btn__icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+}
+
+.detail-icon-btn__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Cast & Crew rail — circular avatars with name + role beneath. */
+.detail-cast {
+  flex-shrink: 0;
+  margin: var(--space-7, 32px) 0 0;
+}
+
+.detail-cast-heading {
+  margin: 0 0 var(--space-4);
+}
+
+.detail-cast-row {
+  display: flex;
+  gap: var(--space-5, 24px);
+  padding-bottom: 8px;
+}
+
+.detail-cast-card {
+  flex: 0 0 auto;
+  width: 124px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.detail-cast-avatar {
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--gt-surface-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.detail-cast-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.detail-cast-avatar-fallback {
+  font-size: 34px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.detail-cast-name {
+  font-size: var(--font-small);
+  color: var(--text-primary, #fff);
+  line-height: 1.25;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.detail-cast-role {
+  font-size: var(--font-small);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  line-height: 1.25;
+  margin-top: 2px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .detail-progress-bar {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 6px;
-  background: rgba(0, 0, 0, 0.55);
   border-radius: 0 0 16px 16px;
-}
-
-.detail-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  width: 0;
 }
 
 /* Episode detail v2: art on top, info, then actions */
@@ -2661,14 +2832,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   left: 0;
   right: 0;
   bottom: 0;
-  height: 6px;
-  background: rgba(0, 0, 0, 0.55);
-}
-
-.detail-episode-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  width: 0;
 }
 
 .detail-episode-copy {
@@ -2764,7 +2927,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 880px;
+  max-width: var(--settings-content-max-w);
   margin: 0 0 var(--space-3);
   padding: 16px 20px;
   background: var(--bg-surface);
@@ -2810,7 +2973,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin-top: var(--space-4);
   padding-top: var(--space-4);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  max-width: 880px;
+  max-width: var(--settings-content-max-w);
 }
 
 .detail-quality-current {
@@ -3090,16 +3253,20 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
-  padding: 16px 32px;
+  justify-content: center;
+  /* Canonical filled Button (registry ⭐ node 169:1649): solid container, pill
+     radius, no outline/halo. Selected (auto-focused) state inverts to the light
+     pill via the shared .btn:focus rule below. */
+  padding: var(--space-5) var(--space-6);
   margin: 0;
-  border: 2px solid var(--accent);
-  border-radius: var(--radius-lg);
-  background: rgba(8, 10, 16, 0.9);
-  color: var(--text-primary);
-  font-size: 24px;
-  font-weight: 600;
+  border: 0;
+  border-radius: var(--gt-radius-button);
+  background: var(--button-container);
+  color: var(--gt-text);
+  font-size: var(--font-meta);
+  font-weight: var(--gt-weight-label);
+  letter-spacing: var(--gt-ls-label);
   cursor: pointer;
-  box-shadow: 0 0 0 3px var(--accent-soft);
   z-index: 2;
   overflow: hidden;
 }
@@ -3143,8 +3310,15 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-skip-intro-prompt:focus {
+  /* Selected = light-pill inversion (fill/label from the shared .btn:focus rule).
+     Keep currentColor parts (icon) inverted too; no ring. */
   outline: none;
-  box-shadow: var(--focus-shadow);
+}
+
+/* On the inverted (selected) pill, flip the "OK" hint to dark-on-light. */
+.player-skip-intro-prompt:focus .player-skip-intro-prompt-hint {
+  color: var(--focus-on-fill);
+  background: rgba(48, 48, 48, 0.12);
 }
 
 .player-skip-intro-prompt[hidden] {
@@ -3700,7 +3874,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 420px;
+  max-width: var(--modal-sheet-max-w);
   max-height: 560px;
   min-height: 0;
   overflow: hidden;
@@ -3717,7 +3891,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -3741,8 +3915,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: var(--target-min);
+  height: var(--target-min);
   padding: 0;
   border: var(--focus-w) solid transparent;
   border-radius: 50%;
@@ -3766,27 +3940,16 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-menu-chevron-icon {
-  width: 26px;
-  height: 26px;
+  width: var(--icon-md);
+  height: var(--icon-md);
   flex-shrink: 0;
   display: block;
 }
 
 .player-track-modal-footer {
   flex-shrink: 0;
-  padding: 12px 24px 14px;
+  padding: var(--space-3) var(--space-6);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.btn-player-modal-cancel {
-  width: auto;
-  min-height: 38px;
-  padding: 6px 18px;
-  font-size: var(--font-small);
-  color: var(--text-muted);
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
 }
 
 .player-menu-empty {
@@ -3850,44 +4013,66 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  /* horizontal padding gives the light-fill option pills breathing room */
-  padding: 6px 12px;
+  /* horizontal padding gives the light-fill rows breathing room */
+  padding: var(--space-2) var(--space-3);
 }
 
-/* List items: selected = light pill + trailing checkmark; others plain. */
+/* Rows reconciled to kit List Item (node 561:3969): flex row gap 8, padding
+   12/16, radius 8, height 64. Single-line title + trailing 24px radio control.
+   Ratified 10-ft simplifications: no leading icon, no overline/subtitle. */
 .player-menu-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   text-align: left;
   width: 100%;
-  min-height: 48px;
+  min-height: var(--list-item-h);
   margin: 2px 0;
   font-size: var(--font-body);
   font-weight: var(--gt-weight-body);
   border: var(--focus-w) solid transparent;
-  border-radius: 999px;
-  padding: 8px 18px;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
   background: transparent;
   color: var(--text-primary);
 }
 
 .player-menu-option-label {
   min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* control: 24px radio (kit `control`). Replaces the bare ✓ glyph — single-select
+   reads as a radio. Outer ring + inner dot revealed on the active row. */
 .player-menu-option-check {
   flex-shrink: 0;
-  margin-left: 12px;
-  font-size: 20px;
-  line-height: 1;
+  position: relative;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  border-radius: 50%;
+  border: 2px solid var(--text-secondary);
+  background: transparent;
 }
 
-/* Selected (not focused) = soft translucent-light pill + accent checkmark, so it
-   reads as "current" while still distinct from the focused item below. */
+.player-menu-option-check::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 120ms ease;
+}
+
+/* Selected (not focused) = soft translucent-light fill + filled accent radio, so
+   it reads as "current" while still distinct from the focused item below. */
 .player-menu-option--active {
   background: rgba(227, 227, 227, 0.16);
   color: var(--text-primary);
@@ -3895,7 +4080,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-menu-option--active .player-menu-option-check {
-  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.player-menu-option--active .player-menu-option-check::after {
+  transform: translate(-50%, -50%) scale(1);
 }
 
 /* Focus = strong light-fill inversion (the D-pad cursor). Overrides the
@@ -3908,9 +4097,12 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   box-shadow: none;
 }
 
-.player-menu-option--active:focus,
-.player-menu-option--active:focus .player-menu-option-check {
-  color: var(--focus-on-fill);
+.player-menu-option:focus .player-menu-option-check {
+  border-color: var(--focus-on-fill);
+}
+
+.player-menu-option--active:focus .player-menu-option-check::after {
+  background: var(--focus-on-fill);
 }
 
 .player-hint {
@@ -4081,7 +4273,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   align-items: center;
   padding: 18px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  max-width: 880px;
+  max-width: var(--settings-content-max-w);
 }
 
 .settings-row label { font-size: var(--font-meta); color: var(--text-primary); }
@@ -4219,9 +4411,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .user-chip {
   min-height: var(--target-min);
-  padding: 10px var(--space-5);
-  background: var(--bg-surface);
-  border-radius: var(--radius-pill);
+  /* kit Chip 2506:17680 — padding 8/16, 1px #8E918F outline, radius 8 */
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: 1px solid rgba(142, 145, 143, 0.35);
+  border-radius: var(--radius-md);
   font-size: var(--font-card);
   color: var(--text-secondary);
 }
@@ -4593,26 +4787,37 @@ video.native-player.subtitle-no-bg ::cue {
   flex-shrink: 0;
 }
 
+/* Inline search field — base Text field spec (mirrors .tv-text-input; see
+   registry "Text field"). Bare <input> (no label/wrap), so the field-box rules
+   are inlined; active state is the input's own :focus (a real focused element,
+   NOT :focus-within on a parent — Chrome53-safe). */
 .search-input {
   width: 100%;
-  max-width: 980px;
+  max-width: var(--search-input-max-w);
   min-height: 56px;
-  padding: 14px 22px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  font-size: var(--font-meta);
-  border: var(--focus-w) solid transparent;
-  border-radius: var(--radius-md);
-  outline: none;
+  box-sizing: border-box;
+  padding: var(--field-pad-y) var(--field-pad-x); /* base Text field (kit 12×16 scaled for 10-ft) */
+  background: #303030;         /* TV Compose/sys/dark/inverse-on-surface */
+  color: #E3E3E3;              /* TV Compose/sys/dark/on-surface */
+  font-size: var(--font-body); /* 24px — kit title/medium 16px scaled (ratified) */
+  font-weight: 500;
   font-family: inherit;
+  line-height: 1.4;
+  border: 1px solid #8E918F;   /* TV Compose/sys/dark/outline */
+  border-radius: 8px;
+  outline: none;
+  caret-color: #A8C7FA;        /* TV Compose/sys/dark/primary */
 }
 
-.search-input::placeholder { color: var(--text-muted); }
+.search-input::placeholder {
+  color: #8E918F;
+  opacity: 1;
+}
 
 .search-input:focus {
-  border-color: var(--border-focus);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: var(--focus-shadow);
+  border: 2px solid #A8C7FA;   /* TV Compose/sys/dark/primary, 2px active */
+  background: transparent;
+  box-shadow: none;
 }
 
 .search-results {
@@ -4897,9 +5102,13 @@ video.native-player.subtitle-no-bg ::cue {
   color: var(--gt-text-2);
   font-weight: var(--gt-weight-medium);
 }
+/* Outline focus = the SAME kit inversion as the filled button: light fill +
+   dark label (the shared .btn:focus rule already paints background:--focus-fill
+   + color:--focus-on-fill). The old rule re-set color:--gt-text (light) on top
+   of that light fill → invisible light-on-light label. We only adjust the
+   border to match the inverted surface; the dark label inherits correctly. */
 .btn-outline:focus {
-  border-color: var(--border-focus);
-  color: var(--gt-text);
+  border-color: var(--focus-fill);
 }
 .btn-icon {
   min-width: var(--target-min);
@@ -4912,8 +5121,8 @@ video.native-player.subtitle-no-bg ::cue {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
   flex-shrink: 0;
 }
 .btn-icon-glyph svg { width: 100%; height: 100%; }
@@ -4955,15 +5164,21 @@ video.native-player.subtitle-no-bg ::cue {
   align-items: center;
 }
 .gt-tabs > * + * { margin-left: var(--space-3); }
+/* Kit Tabs pill (tab item 17:849): height 32 / padding 6/16 / radius 16 pill,
+   label Roboto Medium 14/20 +0.1. Up-scaled for 10-ft: label stays --gt-body
+   (ratified deviation, not kit 14), min-height --target-min (52) for the touch
+   target, padding scaled to --space-3/--space-4 (12/16) — the same ratio the
+   ✅ Library filter chip uses. Default = transparent / on-surface-variant.
+   Selected = Material 3 blue filled pill; focus = shared control inversion. */
 .gt-tab {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: var(--target-min);
-  padding: var(--space-3) var(--space-7);
+  padding: var(--space-3) var(--space-4);
   border: var(--focus-w) solid transparent;
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--gt-text-2);
   font-size: var(--gt-body);
   font-weight: var(--gt-weight-label);
@@ -4972,51 +5187,18 @@ video.native-player.subtitle-no-bg ::cue {
   outline: none;
 }
 .gt-tab--active {
-  /* gradient pill + inset gold ring (avoid :focus-within; JS sets the class) */
-  background: linear-gradient(180deg, rgba(168, 199, 250, 0.2) 0%, rgba(168, 199, 250, 0.12) 100%);
-  box-shadow: inset 0 0 0 1px rgba(168, 199, 250, 0.6);
-  color: var(--accent);
-  font-weight: 600;
+  /* Selected = filled pill, Material 3 blue (mirrors .library-filter-chip--active;
+     JS sets the class — no :focus-within). */
+  background: var(--gt-secondary-container);
+  border-color: transparent;
+  color: var(--gt-on-secondary-container);
+  font-weight: var(--gt-weight-medium);
 }
 .gt-tab:focus {
   border-color: transparent;
   box-shadow: none;
   background: var(--focus-fill);
   color: var(--focus-on-fill);
-}
-
-/* Underline tab variant (season tabs): text tabs + a sliding underline bar.
-   The bar slides via transform: translateX (GPU-composited). */
-.gt-tabs--underline {
-  position: relative;
-}
-.gt-tabs--underline .gt-tab {
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
-  padding: var(--space-3) var(--space-4);
-  color: var(--gt-text-2);
-}
-.gt-tabs--underline .gt-tab--active {
-  background: transparent;
-  box-shadow: none;
-  color: var(--accent);
-}
-.gt-tabs--underline .gt-tab:focus {
-  /* keep the light-fill focus pill for the focused tab (consistent control focus) */
-  background: var(--focus-fill);
-  color: var(--focus-on-fill);
-}
-.gt-tabs__indicator {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 3px;
-  width: 0;
-  background: var(--accent);
-  border-radius: 2px;
-  transform: translateX(0);
-  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), width 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* List item */
@@ -5157,7 +5339,7 @@ html.caps-motion .gt-list-item:focus {
   font-weight: 500;
   font-family: inherit;
   line-height: 1.4;            /* base Text field; Login/Auth variant uses lh 36 */
-  padding: 14px 18px;          /* base Text field (kit 12×16 scaled); Login/Auth variant 18×24 */
+  padding: var(--field-pad-y) var(--field-pad-x); /* base Text field (kit 12×16 scaled); Login/Auth variant 18×24 */
   background: #303030;         /* TV Compose/sys/dark/inverse-on-surface */
   color: #E3E3E3;              /* TV Compose/sys/dark/on-surface */
   border: 1px solid #8E918F;  /* TV Compose/sys/dark/outline */
@@ -5172,7 +5354,7 @@ html.caps-motion .gt-list-item:focus {
    .gt-text-input-wrap--auth. See registry "Login / Auth field". */
 .gt-text-input-wrap--auth { gap: 9px; }
 .gt-text-input-wrap--auth .tv-text-input-label { font-size: 21px; line-height: 30px; }
-.gt-text-input-wrap--auth .tv-text-input { padding: 18px 24px; line-height: 36px; }
+.gt-text-input-wrap--auth .tv-text-input { padding: var(--field-pad-y-auth) var(--field-pad-x-auth); line-height: 36px; }
 .tv-text-input::placeholder {
   color: #8E918F;
   opacity: 1;
@@ -5197,7 +5379,7 @@ html.caps-motion .gt-list-item:focus {
 .provider-card {
   display: flex;
   flex-direction: column;
-  width: 420px;
+  width: var(--provider-card-w);
   padding: 0;
   background: var(--bg-elevated);          /* lighter than base so the card reads clearly */
   border: 1px solid var(--border);
@@ -5210,7 +5392,7 @@ html.caps-motion .gt-list-item:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 200px;
+  height: var(--provider-card-media-h);
   border-bottom: 1px solid var(--border);
 }
 .provider-card[data-brand="plex"] .provider-card__media {
@@ -5241,7 +5423,7 @@ html.caps-motion .gt-list-item:focus {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  width: 560px;
+  width: var(--login-fields-w);
   max-width: 90vw;
   margin-top: var(--space-7);
   text-align: left;
@@ -5260,7 +5442,7 @@ html.caps-motion .gt-list-item:focus {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   color: var(--text-primary);
-  padding: 18px 24px;          /* match Text Field box height (kit ×1.5) */
+  padding: var(--field-pad-y-auth) var(--field-pad-x-auth); /* match Text Field box height (kit ×1.5) */
   font-size: 24px;
   line-height: 36px;
   min-height: var(--target-min);

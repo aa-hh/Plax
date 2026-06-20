@@ -224,7 +224,7 @@ function playerScreen(root, params, navigate) {
     '<p class="player-track-modal-title" id="player-media-info-title">Playback Info</p>' +
     '<div class="player-media-info-body" id="player-media-info-body"></div>' +
     '<div class="player-track-modal-footer">' +
-    '<button type="button" class="btn btn-player-modal-cancel" id="btn-media-info-close" tabindex="0">Close</button>' +
+    '<button type="button" class="btn btn-outline btn--sm" id="btn-media-info-close" tabindex="0">Close</button>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -303,9 +303,9 @@ function playerScreen(root, params, navigate) {
     '<p class="player-track-modal-title" id="player-menu-title"></p>' +
     '<button type="button" class="player-menu-chevron" id="btn-menu-next-cat" tabindex="0" aria-label="Next category">' + ICON_CHEVRON_RIGHT + '</button>' +
     '</div>' +
-    '<div class="player-menu-list" id="player-menu-list"></div>' +
+    '<div class="player-menu-list" id="player-menu-list" role="radiogroup"></div>' +
     '<div class="player-track-modal-footer">' +
-    '<button type="button" class="btn btn-player-modal-cancel" id="btn-menu-cancel" tabindex="0">Cancel</button>' +
+    '<button type="button" class="btn btn-outline btn--sm" id="btn-menu-cancel" tabindex="0">Cancel</button>' +
     '</div>' +
     '</div>' +
     '</div>' +
@@ -1262,8 +1262,11 @@ function playerScreen(root, params, navigate) {
     options.forEach(function (opt) {
       var btn = document.createElement('button');
       btn.type = 'button';
-      // Selected = light pill + trailing checkmark; others plain (Player spec).
+      // List Item (kit 561:3969): single-line title + trailing 24px radio
+      // control. Selected = light fill + filled accent radio; focus inverts.
       btn.className = 'btn player-menu-option' + (opt.selected ? ' player-menu-option--active' : '');
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-checked', opt.selected ? 'true' : 'false');
       var labelSpan = document.createElement('span');
       labelSpan.className = 'player-menu-option-label';
       labelSpan.textContent = opt.label;
@@ -1271,7 +1274,6 @@ function playerScreen(root, params, navigate) {
       var checkSpan = document.createElement('span');
       checkSpan.className = 'player-menu-option-check';
       checkSpan.setAttribute('aria-hidden', 'true');
-      checkSpan.textContent = opt.selected ? '✓' : '';
       btn.appendChild(checkSpan);
       btn.tabIndex = 0;
       btn.addEventListener('click', function () {

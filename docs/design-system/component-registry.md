@@ -156,6 +156,34 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 
 ---
 
+## Container sizing tokens (single source of truth)
+
+> **Rule:** every component's container box (width / height / `min-height` / padding /
+> gap / `border-radius` / media footprint) references a token in `:root` of
+> `src/styles/app.css`. Never inline a px/vw container value — change the token and it
+> applies to every instance at once. Run `/ckm:design-system audit-containers` to find
+> drift; `/ckm:design-system <component> <prop>=<value>` to change one globally.
+
+| Token | Value | Used by |
+|---|---|---|
+| `--icon-md` | 24px | nav-item icon, hub-icon, library hub-icon, player-menu chevron-icon, player-menu radio control |
+| `--icon-lg` | 28px | `.btn-icon-glyph`, `.library-item__icon` |
+| `--list-item-h` | 64px | `.player-menu-option` (kit List Item 561:3969). (`.gt-list-item` settings rows stay `--target-min` 52 — ratified.) |
+| `--field-pad-y` / `--field-pad-x` | 14 / 18px | `.tv-text-input`, `.search-input` (kit Text field 12×16 scaled) |
+| `--field-pad-y-auth` / `--field-pad-x-auth` | 18 / 24px | `.tv-text-input` auth variant, `.login-field__btn` (kit ×1.5) |
+| `--field-radius` | `--radius-md` (8px) | all text-field boxes |
+| `--badge-size` | 30px | `.badge-watched` |
+| `--list-item-h`, `--modal-sheet-max-w` | 420px | `.player-track-modal-sheet` (drawer width cap) |
+| `--provider-card-w` / `--provider-card-media-h` | 420 / 200px | `.provider-card` |
+| `--login-fields-w` | 560px | `.jellyfin-login .login-fields` |
+| `--search-input-max-w` | 980px | `.search-input` |
+| `--settings-content-max-w` | 880px | `.detail-setting-row`, `.detail-file-row`, `.detail-network-*`, `.settings-row` |
+
+Coincidentally-equal values that are **deliberately not coupled** (distinct components):
+`.pairing-layout`/`.detail-episode-art-wrap`/`.pin-pad-btn`/`.screen-subtitle`.
+
+---
+
 ## Component specs
 
 ### Media card  (audited 2026-06-19)
@@ -172,9 +200,25 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
   - `text-stack` — kit Standard card has `title` (16/24 Medium) + `secondary` (12/16 Regular @60%); app maps these to `title`/`subtitle` and **adds a 3rd `meta` line** (Plax extension)
 - **Per-element (as-built vs kit):**
   - poster radius `--radius-lg` = **12** ✅ matches kit 12; sizes rail `156×234`, grid `176×264`
+  - thumb **fetch** width `POSTER_WIDTH_ROW/GRID = 210` (was 180 → bumped 2026-06-20 for ~1.2–1.35× overscan crispness; episode still 16:9 at `340×191`). Cost ≈ width²: ~36% more bytes/decode/RAM per poster, throttled by `MAX_CONCURRENT_POSTER_LOADS = 6`.
   - text-stack `margin-top --space-5`; title `--font-card-title 18/1.25 w600`, subtitle 16, meta 14, all single-line
   - focus: ring via transparent border; transform-only scale runs under caps-motion (webOS 4+, incl. B8)
 - **Platform deviations (ratified):** vertical 2:3 (not 16:9); title weight 600 vs kit 500; meta line is app-specific. No action.
+
+### Detail screen — Film & Episode (hero + cast rail)  (added 2026-06-20)
+
+- **Status:** ✅ to-spec · 2026-06-20 — reimagined on the JetStream reference; reconciled to platform.
+- **Reference source:** JetStream (android/tv-samples `JetStreamCompose` → `MovieDetails.kt` / `CastAndCrewList.kt`); Figma community file `YP3cp4DjvPKyDexIoeyOF0` node `3-432`. No kit frame in `TLtknC3rZXQqWe3uIivt94` (composed from existing kit components).
+- **Android TV guideline:** [Detail screens](https://developer.android.com/design/ui/tv) (browse → detail).
+- **Code:** `src/ui/screens/detailScreen.js` (`renderMovieDetail` / `renderEpisodeDetail`, helpers `buildGenreChipsHtml` / `buildCreditsRowHtml` / `buildCastRailHtml` / `bindCastImages` / `iconActionButtonHtml`); styles `.detail-genre-pill`, `.detail-credits-row`, `.detail-cast*`, `.detail-icon-btn*` in `src/styles/app.css:2231+`.
+- **Anatomy (parts → slot), JetStream-mapped:**
+  - hero: 2:3 poster (NOT JetStream's full-bleed backdrop — platform 2:3 rule) + info column; ultrablur backdrop stays as screen bg.
+  - info: title → `detail-meta` dot row (year · runtime · rating · IMDb) → **genre pills** (≤4, `--radius-pill`) → summary → **credits row** (Director / Writer / Studio, label+value cols) → actions.
+  - actions: Play (primary) + **icon buttons** Subtitles (Radix chat-bubble) & Quality (Radix mixer) that open `openModal` drawers; label span shows current value. Then watchlist + mark watched/unwatched.
+  - **Cast & Crew rail:** circular 104px avatars (JetStream uses 144dp portrait cards → swapped to circular 10-ft convention), name (2-line clamp) + character role; ≤12; display-only (actors not navigable), images via `bindPosterImage`.
+  - episode: 16:9 still + series/title/meta/summary + credits + actions + Up Next + cast rail.
+- **Data:** `item.genres/directors/writers/roles/studio`; `writers` added to Plex (`src/plex/library.js`) + Jellyfin (`mapItem.js`) mappers. Cast thumb: full URL passthrough, else `getThumbUrl(server, thumb, 200)`.
+- **Platform deviations (ratified):** 2:3 poster vs JetStream backdrop; circular cast avatars vs portrait cards; flex `gap` retained (codebase convention). Subtitles/Quality kept per user request as icon-button drawer openers.
 
 ### Button  ⭐ gold-standard reference entry
 
@@ -204,6 +248,7 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
   - **Padding `--space-5`/`--space-6` (20/24px)** → height ≈ 71px. Scaled from the kit container proportion (py10–12/px16 vs a 14px label) to our 22px label so the solid container has real internal padding (was 12/28px → 52px, a tight pill).
   - **Focus = light-pill inversion** (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`) — the primary cue; a paint change, so it is instant on every engine (not animated). The kit's 1.1× scale runs under `html.caps-motion` (now webOS 4+, incl. B8).
   - `.btn-primary` = always-blue filled (one primary per screen); still inverts on focus.
+  - **`.btn--sm` = size variant** (kit Size=S): pure size modifier — `min-height --space-9` (40px), `padding --space-2/--space-4` (8/16), `font-size --font-small`; keeps the pill radius, fill/outline, and focus-inversion of the base. Compose `.btn .btn-outline .btn--sm` for compact controls (modal Cancel/Close). **Replaced** the bespoke `.btn-player-modal-cancel` (off-spec `radius:6 / min-height:38 / muted color`), which is deleted.
 - **Resolved (2026-06-20):**
   - **Rest fill** adopted kit canonical `#444746 @80%` (`rgba(68,71,70,.8)`, surface-variant, node `169:1649`), replacing the off-spec `#303030` (which had been pulled from an ImageButton node). The 80% alpha composites over the darkest settings-card surfaces (`#131314`–`#282A2C`) lighter than `#303030` did, so card legibility improved rather than regressed — the original reason to keep `#303030` no longer holds.
   - **`.btn-outline:focus` fixed** — removed the `color:--gt-text` override that fought the shared `.btn:focus` inversion (caused light-on-light). Outline buttons now invert like the filled button (light `--focus-fill` fill + dark `--focus-on-fill` label); the rule only sets `border-color:--focus-fill` to match the inverted surface. Verified on the two focusable call sites (`.detail-modal-cancel`). Focusable outline buttons are now safe to use.
@@ -316,15 +361,24 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 - **Figma source:** `8842:27004` (Player UI)
 - **Code:** `src/ui/screens/playerScreen.js`; overlay classes in `src/styles/app.css`
 - **Resolved spec:** bottom-anchored gradient; rows = title/next-up → seek (`elapsed → bar → total`) → actions; auto-hide 3s; layered Back dismissal.
+- **Skip Intro / Skip Credits prompt (`.player-skip-intro-prompt`) → kit Button (Filled, node `169:1649`):** bottom-center pill; reconciled 2026-06-20 from the old dark-pill-with-accent-border + `--accent` halo to the canonical filled Button — solid `--button-container` fill, pill `--gt-radius-button`, label `--font-meta`/`--gt-weight-label`, no border. **Selected state = light-pill inversion** (`--focus-fill`/`--focus-on-fill`) via the shared `.btn:focus` group rule (the prompt is auto-focused when shown, so it renders inverted = "selected/filled"); the "OK" hint flips to dark-on-light on focus. Credits-countdown fill overlay preserved. **Data dependency:** markers only exist when `getMetadata` requests `includeMarkers=1`/`includeChapters=1` (`src/plex/library.js`) AND the Plex server generated them — without the param the prompt never appears.
 - **Platform deviations (ratified):** show/hide is class toggle, not animated.
 
-### Sheet / menu
+### Modal drawer (canonical — pulled from kit 2026-06-20)
 
-- **Status:** 📝 summary only — pattern captured, **anatomy not yet pulled from kit** (instances: Player track-selector, `.detail-modal-sheet`)
+> **The one overlay primitive.** Every transient overlay (options list, confirm
+> dialog, info panel) is a Modal drawer. Kills the bespoke per-screen modals
+> (`player-track-modal-sheet`, resume-choice on `.detail-modal`, autoplay prompt,
+> media-info). Migration target — see [migration plan](#modal-migration-plan).
+
+- **Status:** 📐 kit reference captured · 2026-06-20 — code migration in progress.
 - **Android TV guideline:** [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer) + Foundations
-- **Figma source:** `8842:26171` (Menu list) · `4498:31402` (Modal drawer)
-- **Code:** player menus / info panel in `src/ui/`; elevated-sheet classes in `src/styles/app.css`
-- **Resolved spec:** elevated dark panel, border + `--radius-lg`, title top / list below, width capped; `--z-player-overlay 1002`.
+- **Figma source:** `mociiAKRCHeosHwEl586wx` / `8736:25866` (Modal drawer page); component variants node `4498:31402` (Direction=Top|Bottom|Left|Right). Kit menu list `8842:26171`.
+- **Two forms, selected by `Direction`:**
+  - **Side panel (`Left`/`Right`)** — options/selection list. Container `bg #1E1F20` (surface-container), `drop-shadow dark/3`, `h-full`, `p-20`, `radius 16`, **`w-280`**, scrim black @60%, anchored to the L/R edge. Body = a **List**: `List/Header` (`pt-8 pb-16 px-16`, title 22/28 Regular = title/large `#E3E3E3`) then **List Items** (kit `561:3969`: `gap-8 px-16 py-12 radius-8`, leading `icon` 24 @80%, `content` = title 16/24 Medium +0.15 + optional subtitle 12/16 Regular @80%, optional trailing `control` 24 = radio/check). **Selected** item = light fill `#E3E3E3` + dark text `#131314`.
+  - **Action dialog (`Top`/`Bottom`)** — confirm/prompt. Container `bg #1E1F20`, `h-200`, `flex gap-20 items-center justify-center px-34 py-24 radius-16 w-full`, anchored to top/bottom edge, scrim @60%. Body = **Text** column (heading 28/36 Regular = headline/medium `#E3E3E3` + description 16/24 Regular @80% = body/large) + **Actions** column `w-268 gap-12`: **Primary** (kit Button Filled — `#E3E3E3` fill, `#303030` label, radius 12) + **Secondary** (kit Button — `#444746` @40% fill, `#E3E3E3` label, radius 12).
+- **Mapping to our use cases:** track-selector (audio/subtitle/quality radio lists) + media-info → **side panel**; resume-choice + autoplay/Up-Next → **action dialog**.
+- **Platform reconciliation (to apply on migration):** Material 3 **blue** active/selected accents (not literal kit); type up-scaled to the app's 10-ft sizes (title `--gt-body` 22, etc.); **no `:focus-within`** — selected/active via JS classes; slide-in via transform-only (`html.caps-motion`) else instant class toggle; rows reuse the ✅ Player-track-selector row (already kit-List-Item-correct); actions reuse `.btn`/`.btn-primary`/`.btn--sm`; `--z-player-overlay 1002`; width via `--modal-sheet-max-w` (side) — add a `--drawer-side-w 280` / `--drawer-dialog-h 200` token on build.
 
 ### List item  (kit reference — pulled 2026-06-19)
 
