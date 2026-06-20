@@ -135,6 +135,9 @@
   --field-radius: var(--radius-md); /* 8px — all text-field boxes */
   --badge-size: 30px;       /* status badge dot (watched/unwatched) */
   --modal-sheet-max-w: 420px;   /* track-selector / drawer sheet width cap */
+  --drawer-side-w: 280px;       /* kit Modal drawer side panel (Left/Right) */
+  --drawer-dialog-h: 200px;     /* kit Modal drawer action dialog (Top/Bottom) */
+  --drawer-actions-w: 268px;    /* kit dialog Actions column */
   --provider-card-w: 420px;
   --provider-card-media-h: 200px;
   --login-fields-w: 560px;
@@ -3084,6 +3087,75 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .detail-modal[hidden] {
   display: none !important;
+}
+
+/* Modal drawer — action dialog (kit Direction=Bottom, node 4498:31402).
+   Edge-anchored confirm/prompt. Scrim @60%; sheet = surface-container banner
+   bottom-aligned, insets to the safe gutters. Built by openActionDialog(). */
+.gt-dialog {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: calc(var(--z-player-overlay) + 2);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--safe-y) var(--safe-x);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.gt-dialog[hidden] {
+  display: none !important;
+}
+
+.gt-dialog-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  width: 100%;
+  max-width: var(--content-max);
+  min-height: var(--drawer-dialog-h);
+  padding: var(--space-6) var(--space-8);
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3);
+}
+
+.gt-dialog-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 0;
+  padding-right: var(--space-8);
+}
+
+.gt-dialog-heading {
+  margin: 0;
+  font-size: var(--font-row-label);   /* kit headline/medium 28 → 10-ft */
+  font-weight: var(--gt-weight-headline);
+  color: var(--text-primary);
+}
+
+.gt-dialog-desc {
+  margin: 0;
+  font-size: var(--font-body);         /* kit body/large 16 → 10-ft */
+  color: var(--text-secondary);
+}
+
+.gt-dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  width: var(--drawer-actions-w);
+}
+
+.gt-dialog-actions .btn {
+  width: 100%;
 }
 
 .detail-modal-sheet {

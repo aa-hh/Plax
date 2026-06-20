@@ -371,7 +371,9 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 > (`player-track-modal-sheet`, resume-choice on `.detail-modal`, autoplay prompt,
 > media-info). Migration target — see [migration plan](#modal-migration-plan).
 
-- **Status:** 📐 kit reference captured · 2026-06-20 — code migration in progress.
+- **Status:** 🚧 in progress · 2026-06-20 — action-dialog form built + resume-choice migrated; player modals pending.
+- **Code (as-built):** `openActionDialog()` (kit Bottom dialog) in `src/ui/components/controls.js`; `.gt-dialog*` in `src/styles/app.css` (tokens `--drawer-dialog-h 200` / `--drawer-actions-w 268` / `--drawer-side-w 280`). Heading `--font-row-label`, desc `--font-body`, Primary=`.btn-primary` / Secondary=`.btn`, self-contained UP/DOWN + Back D-pad, body-level overlay.
+- **Migrated:** ✅ resume-choice (`showResumeOrStartModal` → `openActionDialog`, bespoke `.detail-modal` markup deleted). **Pending:** player track-selector + media-info → side panel (Left/Right); autoplay/Up-Next → action dialog — these are wired into the player `data-focus-zone` system + a live countdown, so they need in-player focus rework (deferred to a focused increment).
 - **Android TV guideline:** [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer) + Foundations
 - **Figma source:** `mociiAKRCHeosHwEl586wx` / `8736:25866` (Modal drawer page); component variants node `4498:31402` (Direction=Top|Bottom|Left|Right). Kit menu list `8842:26171`.
 - **Two forms, selected by `Direction`:**

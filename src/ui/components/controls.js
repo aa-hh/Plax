@@ -78,17 +78,15 @@ function createChip(opts) {
 }
 
 /**
- * Horizontal pill tab bar (replaces vertical left-rail filters). Returns the
- * host element with a [data-focus-zone] so D-pad LEFT/RIGHT moves between tabs
- * and DOWN drops into content. opts: { tabs:[{id,label}], activeId, onSelect }
- * The returned node exposes setActive(id) to repaint the active pill.
+ * Horizontal pill tab bar (kit Tabs, tab item 17:849). Returns the host element
+ * with a [data-focus-zone] so D-pad LEFT/RIGHT moves between tabs and DOWN drops
+ * into content. opts: { tabs:[{id,label}], activeId, onSelect }
+ * The returned node exposes setActive(id) to repaint the active (filled) pill.
  */
 function createTabs(opts) {
   opts = opts || {};
   var tabs = opts.tabs || [];
-  // variant: 'pill' (default) | 'underline' (text tabs + sliding underline, e.g. seasons)
-  var underline = opts.variant === 'underline';
-  var host = el('div', 'gt-tabs' + (underline ? ' gt-tabs--underline' : ''));
+  var host = el('div', 'gt-tabs');
   host.setAttribute('data-focus-zone', opts.zone || 'gt-tabs');
   host.setAttribute('role', 'tablist');
   var byId = {};
@@ -110,22 +108,6 @@ function createTabs(opts) {
     host.appendChild(tab);
   });
 
-  // Underline variant: a single indicator bar that slides (translateX, composited)
-  // under the active tab. positionIndicator() must run once the host is in the DOM.
-  var indicator = null;
-  if (underline) {
-    indicator = el('span', 'gt-tabs__indicator');
-    host.appendChild(indicator);
-  }
-  function positionIndicator(id) {
-    if (!indicator) return;
-    var tab = byId[id == null ? opts.activeId : id];
-    if (!tab || !tab.offsetParent) return; // not laid out yet
-    indicator.style.width = tab.offsetWidth + 'px';
-    indicator.style.transform = 'translateX(' + tab.offsetLeft + 'px)';
-  }
-  host.positionIndicator = positionIndicator;
-
   host.setActive = function (id) {
     Object.keys(byId).forEach(function (k) {
       var on = k === String(id);
@@ -133,7 +115,6 @@ function createTabs(opts) {
       if (on) byId[k].setAttribute('aria-selected', 'true');
       else byId[k].removeAttribute('aria-selected');
     });
-    positionIndicator(id);
   };
   return host;
 }
@@ -285,6 +266,102 @@ function openModal(opts) {
   var selectedEl = list.querySelector('.gt-modal-option--selected');
   if (selectedEl) selectedEl.focus();
   else focusFirst(sheet);
+
+  return teardown;
+}
+
+/**
+ * Action-dialog drawer (kit Modal drawer, Direction=Bottom — node 4498:31402).
+ * Edge-anchored confirm/prompt: heading + optional description + a vertical
+ * Actions column (Primary first, then Secondary). Self-contained D-pad (UP/DOWN
+ * through actions, Back/Enter), lives in document.body. Generalises the bespoke
+ * resume-choice + player autoplay prompts.
+ *
+ * opts: { title, message, actions:[{id,label,primary,onSelect}], onCancel,
+ *         autoFocusId }
+ * Returns a teardown function.
+ */
+function openActionDialog(opts) {
+  opts = opts || {};
+  var actions = opts.actions || [];
+  var returnFocus = document.activeElement;
+
+  var overlay = el('div', 'gt-dialog');
+  overlay.setAttribute('role', 'presentation');
+  var sheet = el('div', 'gt-dialog-sheet');
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-modal', 'true');
+
+  var textCol = el('div', 'gt-dialog-text');
+  if (opts.title) {
+    var heading = el('p', 'gt-dialog-heading');
+    heading.textContent = String(opts.title);
+    textCol.appendChild(heading);
+  }
+  if (opts.message) {
+    var desc = el('p', 'gt-dialog-desc');
+    desc.textContent = String(opts.message);
+    textCol.appendChild(desc);
+  }
+  sheet.appendChild(textCol);
+
+  var actionsCol = el('div', 'gt-dialog-actions');
+  var btns = [];
+  actions.forEach(function (a) {
+    // Primary = filled blue (.btn-primary); secondary = the kit surface-variant
+    // fill (.btn) — both already kit-correct + focus-invert.
+    var btn = el('button', 'btn' + (a.primary ? ' btn-primary' : ''));
+    btn.type = 'button';
+    btn.tabIndex = 0;
+    if (a.id != null) btn.setAttribute('data-action-id', String(a.id));
+    btn.textContent = a.label != null ? String(a.label) : String(a.id);
+    btn.addEventListener('click', function () {
+      teardown();
+      if (typeof a.onSelect === 'function') a.onSelect(a.id, a);
+    });
+    actionsCol.appendChild(btn);
+    btns.push(btn);
+  });
+  sheet.appendChild(actionsCol);
+  overlay.appendChild(sheet);
+
+  function teardown() {
+    document.removeEventListener('keydown', onKeyDown, true);
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    if (returnFocus && returnFocus.focus) returnFocus.focus();
+  }
+
+  function onKeyDown(e) {
+    var key = e.keyCode;
+    if (isModalBack(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      teardown();
+      if (typeof opts.onCancel === 'function') opts.onCancel();
+      return;
+    }
+    if (key === 38 || key === 40) { // UP / DOWN walk the actions
+      e.preventDefault();
+      e.stopPropagation();
+      var cur = btns.indexOf(document.activeElement);
+      if (cur < 0) cur = 0;
+      var next = cur + (key === 40 ? 1 : -1);
+      if (next >= 0 && next < btns.length) btns[next].focus();
+      return;
+    }
+    if (key === 37 || key === 39) { // trap LEFT/RIGHT
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  document.body.appendChild(overlay);
+  document.addEventListener('keydown', onKeyDown, true);
+  var focusTarget = null;
+  if (opts.autoFocusId != null) {
+    focusTarget = actionsCol.querySelector('[data-action-id="' + opts.autoFocusId + '"]');
+  }
+  (focusTarget || btns[0] || sheet).focus();
 
   return teardown;
 }
@@ -442,5 +519,6 @@ export {
   createTabs,
   createListItem,
   openModal,
+  openActionDialog,
   openTextInputModal
 };
