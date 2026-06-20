@@ -139,7 +139,10 @@
   --drawer-side-w: 280px;       /* kit Modal drawer side panel (Left/Right) */
   --drawer-side-min-h: 320px;   /* side-panel floor — short lists don't collapse */
   --drawer-edge-gap: var(--space-6);   /* kit floating inset from the screen edge (24px) */
-  --drawer-player-bottom: 232px;       /* player drawers rest just above the trigger button cluster */
+  /* player drawers rest just above the trigger cluster. Stack from screen bottom:
+     overlay pad 40 + transport 80 + gap 16 + seek 44 + gap 16 = 196 (button-row
+     bottom); +52 button height = 248 button top; +~32 clearance → 280. */
+  --drawer-player-bottom: 280px;
   --drawer-dialog-h: 200px;     /* kit Modal drawer action dialog (Top/Bottom) */
   --drawer-actions-w: 268px;    /* kit dialog Actions column */
   --provider-card-w: 420px;
