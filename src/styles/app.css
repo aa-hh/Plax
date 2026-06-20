@@ -136,6 +136,7 @@
   --badge-size: 30px;       /* status badge dot (watched/unwatched) */
   --modal-sheet-max-w: 420px;   /* track-selector / drawer sheet width cap */
   --drawer-side-w: 280px;       /* kit Modal drawer side panel (Left/Right) */
+  --drawer-side-min-h: 320px;   /* side-panel floor — short lists don't collapse */
   --drawer-dialog-h: 200px;     /* kit Modal drawer action dialog (Top/Bottom) */
   --drawer-actions-w: 268px;    /* kit dialog Actions column */
   --provider-card-w: 420px;
@@ -3938,9 +3939,10 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: flex-end;
-  padding: 0;
+  /* safe-area top/bottom caps the sheet; sheet centres vertically on the edge */
+  padding: var(--safe-y) 0;
   background: rgba(0, 0, 0, 0.6);
 }
 
@@ -3953,8 +3955,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   flex-direction: column;
   width: 100%;
   max-width: var(--modal-sheet-max-w);
-  height: 100%;
-  min-height: 0;
+  /* Content-sized between a min floor and the available height; the list scrolls
+     when it would overflow. NOT full-height — avoids the dead space below short
+     lists while staying consistent. */
+  min-height: var(--drawer-side-min-h);
+  max-height: 100%;
   overflow: hidden;
   padding: var(--space-5);
   background: var(--bg-surface);
@@ -4089,7 +4094,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 520px;
+  /* sheet max-height governs; the list scrolls within whatever height remains */
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -4236,9 +4241,9 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   top: 0; right: 0; bottom: 0; left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: flex-end;
-  padding: 0;
+  padding: var(--safe-y) 0;
   background: rgba(0, 0, 0, 0.6);
 }
 .player-media-info-modal[hidden] { display: none !important; }
@@ -4247,7 +4252,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   flex-direction: column;
   width: 100%;
   max-width: var(--modal-sheet-max-w);
-  height: 100%;
+  min-height: var(--drawer-side-min-h);
+  max-height: 100%;
   padding: var(--space-5);
   background: var(--bg-surface);
   box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3);

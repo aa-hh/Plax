@@ -119,6 +119,9 @@ function mapLibraryItem(item, server) {
   var directors = parseTaggedChildren(children, 'Director').map(function (d) {
     return { id: d.id, tag: d.tag };
   });
+  var writers = parseTaggedChildren(children, 'Writer').map(function (w) {
+    return { id: w.id, tag: w.tag };
+  });
   var collections = parseTaggedChildren(children, 'Collection').map(function (c) {
     return { id: c.id, tag: c.tag, title: c.title };
   });
@@ -166,6 +169,7 @@ function mapLibraryItem(item, server) {
     genres: genres,
     roles: roles,
     directors: directors,
+    writers: writers,
     collections: collections,
     media: media,
     markers: markers,
@@ -362,6 +366,10 @@ function getMetadata(server, ratingKey, opts) {
     var url = serverUrl(server.connectionUri, '/library/metadata/' + ratingKey, {
       includeChildren: 1,
       includeExtras: 1,
+      // Plex omits <Marker> children unless explicitly requested — without these
+      // the intro/credit skip prompts never have data to show.
+      includeMarkers: 1,
+      includeChapters: 1,
       includeRelated: 0,
       includeOnDeck: 0
     }, server);

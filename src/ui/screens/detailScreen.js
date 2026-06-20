@@ -47,6 +47,8 @@ import {
   showResumeOrStartModal
 } from '../resumeChoice.js';
 import { prefetchDetailItems, abortPrefetch } from '../../core/idlePrefetch.js';
+import { getThumbUrl } from '../../backends/index.js';
+import { subtitlesIconSvg, qualityIconSvg } from '../icons/navIcons.js';
 
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
@@ -153,6 +155,85 @@ function detailScreen(root, params, navigate) {
     if (!score || isNaN(score)) return '';
     var text = score % 1 === 0 ? String(score) : score.toFixed(1);
     return label + ' ' + text;
+  }
+
+  // ── JetStream-inspired info blocks ──────────────────────────────────────
+  // Genre pills, a structured Director/Writer/Studio credits row, and a
+  // circular Cast & Crew rail. These are the empty-space fillers the redesign
+  // adds; all driven by metadata that's already in the normalized item.
+  function buildGenreChipsHtml(item) {
+    var genres = (item.genres || []).slice(0, 4);
+    if (!genres.length) return '';
+    var pills = genres.map(function (g) {
+      return '<span class="detail-genre-pill">' + escapeHtml(g.tag) + '</span>';
+    }).join('');
+    return '<div class="detail-genre-pills" aria-label="Genres">' + pills + '</div>';
+  }
+
+  function creditValueList(people, max) {
+    return (people || []).slice(0, max || 2).map(function (p) { return p.tag; })
+      .filter(Boolean).join(', ');
+  }
+
+  function buildCreditsRowHtml(item) {
+    var cols = [];
+    var directors = creditValueList(item.directors, 2);
+    if (directors) cols.push({ label: 'Director', value: directors });
+    var writers = creditValueList(item.writers, 2);
+    if (writers) cols.push({ label: 'Writer', value: writers });
+    if (item.studio) cols.push({ label: 'Studio', value: item.studio });
+    if (!cols.length) return '';
+    var html = cols.slice(0, 3).map(function (c) {
+      return '<div class="detail-credit-col">' +
+        '<span class="detail-credit-label">' + escapeHtml(c.label) + '</span>' +
+        '<span class="detail-credit-value">' + escapeHtml(c.value) + '</span></div>';
+    }).join('');
+    return '<div class="detail-credits-row">' + html + '</div>';
+  }
+
+  function castThumbUrl(person) {
+    var thumb = person && person.thumb;
+    if (!thumb) return '';
+    if (/^https?:/i.test(thumb)) return thumb;
+    try { return getThumbUrl(server, thumb, 200); } catch (e) { return ''; }
+  }
+
+  function castInitials(name) {
+    var parts = String(name || '').trim().split(/\s+/).slice(0, 2);
+    return parts.map(function (p) { return p.charAt(0); }).join('').toUpperCase() || '?';
+  }
+
+  function buildCastRailHtml(item) {
+    var roles = (item.roles || []).slice(0, 12);
+    if (!roles.length) return '';
+    var cards = roles.map(function (r, i) {
+      var url = castThumbUrl(r);
+      var avatar = url
+        ? '<img class="detail-cast-avatar-img" data-cast-idx="' + i + '" alt="" />'
+        : '<span class="detail-cast-avatar-fallback">' + escapeHtml(castInitials(r.tag)) + '</span>';
+      return '<div class="detail-cast-card">' +
+        '<div class="detail-cast-avatar">' + avatar + '</div>' +
+        '<span class="detail-cast-name">' + escapeHtml(r.tag || '') + '</span>' +
+        (r.role ? '<span class="detail-cast-role">' + escapeHtml(r.role) + '</span>' : '') +
+        '</div>';
+    }).join('');
+    return '<section class="detail-cast" aria-label="Cast">' +
+      '<p class="row-label detail-cast-heading">Cast &amp; Crew</p>' +
+      '<div class="detail-cast-row row-scroll">' + cards + '</div></section>';
+  }
+
+  function bindCastImages(item) {
+    var roles = (item.roles || []).slice(0, 12);
+    var imgs = screen.querySelectorAll('.detail-cast-avatar-img');
+    for (var i = 0; i < imgs.length; i++) {
+      var idx = parseInt(imgs[i].getAttribute('data-cast-idx'), 10);
+      var url = castThumbUrl(roles[idx]);
+      // priority:true → eager load. A non-priority (lazy) bind on these
+      // below-the-fold avatars acquires a poster-load slot but never fires
+      // load/error while off-screen, leaking the slot until activePosterLoads
+      // saturates and every later image app-wide stops loading.
+      if (url) bindPosterImage(imgs[i], url, { priority: true });
+    }
   }
 
   function watchlistBookmarkMarkup(item) {
@@ -332,7 +413,7 @@ function detailScreen(root, params, navigate) {
 
   function updateQualityBtnLabel() {
     var btn = screen.querySelector('#btn-quality');
-    if (btn) btn.textContent = 'Quality: ' + qualityProfileLabel(getDetailQuality());
+    if (btn) setIconBtnLabel('btn-quality', qualityProfileLabel(getDetailQuality()));
   }
 
   function wireQualityBtn() {
@@ -368,7 +449,7 @@ function detailScreen(root, params, navigate) {
       return { id: s.id, label: subtitleOptionLabel(s), data: s };
     }));
     function refreshLabel() {
-      btn.textContent = 'Subtitles: ' + getSubtitleLabel(subList);
+      setIconBtnLabel('btn-subtitles', getSubtitleLabel(subList));
     }
     btn.disabled = !subList.length;
     refreshLabel();
@@ -758,12 +839,28 @@ function detailScreen(root, params, navigate) {
     }
   }
 
+  // Icon button (icon + value label) for Subtitles / Quality. Opens a modal
+  // drawer on click (wired in wireSubtitleBtn / wireQualityBtn). The label span
+  // (#<id>-label) reflects the current selection so it reads at 10 ft.
+  function iconActionButtonHtml(id, label, iconSvg) {
+    return '<button class="btn detail-icon-btn" id="' + id + '" tabindex="0" aria-label="' +
+      escapeHtml(label) + '">' +
+      '<span class="detail-icon-btn__icon" aria-hidden="true">' + iconSvg + '</span>' +
+      '<span class="detail-icon-btn__label" id="' + id + '-label">' + escapeHtml(label) +
+      '</span></button>';
+  }
+
+  function setIconBtnLabel(id, text) {
+    var label = screen.querySelector('#' + id + '-label');
+    if (label) label.textContent = text;
+  }
+
   function buildPlaybackActionsHtml(item) {
     return '<div class="detail-primary-actions" data-focus-zone="detail-primary-actions">' +
       '<button class="btn btn-primary detail-play-btn" id="btn-start" tabindex="0">' +
       (item.viewOffset ? 'Resume from ' + formatTimeOffset(item) : 'Play') + '</button>' +
-      '<button class="btn" id="btn-subtitles" tabindex="0">Subtitles</button>' +
-      '<button class="btn" id="btn-quality" tabindex="0">Quality</button>' +
+      iconActionButtonHtml('btn-subtitles', 'Subtitles', subtitlesIconSvg()) +
+      iconActionButtonHtml('btn-quality', 'Quality', qualityIconSvg()) +
       buildWatchlistActionHtml(item) +
       '</div>' +
       '<div class="detail-secondary-actions" data-focus-zone="detail-secondary-actions">' +
@@ -808,8 +905,8 @@ function detailScreen(root, params, navigate) {
 
     var progressPct = getWatchProgressPercent(item);
     var progressHtml = item.viewOffset && item.duration
-      ? '<div class="detail-episode-progress" aria-hidden="true">' +
-        '<div class="detail-episode-progress-fill" style="width:' + progressPct + '%"></div></div>'
+      ? '<div class="progress-track detail-episode-progress" aria-hidden="true">' +
+        '<div class="progress-fill" style="width:' + progressPct + '%"></div></div>'
       : '';
     var seriesTitle = item.grandparentTitle || '';
     var epCode = episodeCode(item);
@@ -843,9 +940,11 @@ function detailScreen(root, params, navigate) {
         : '') +
       (imdb ? '<p class="detail-episode-line detail-episode-rating">' + escapeHtml(imdb) + '</p>' : '') +
       (item.summary ? '<p class="detail-episode-summary">' + escapeHtml(item.summary) + '</p>' : '') +
+      buildCreditsRowHtml(item) +
       '</div>' +
       buildPlaybackActionsHtml(item) +
       '<div id="detail-up-next"></div>' +
+      buildCastRailHtml(item) +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
       '<div class="detail-disclosure-body hidden" id="direct-play-body"></div>' +
@@ -860,6 +959,7 @@ function detailScreen(root, params, navigate) {
     if (art) {
       bindPosterImage(art, item.thumb || item.art || item.grandparentThumbUrl || '', { priority: true });
     }
+    bindCastImages(item);
     applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
     wireSubtitleBtn(subs);
@@ -939,27 +1039,12 @@ function detailScreen(root, params, navigate) {
 
     var progressPct = getWatchProgressPercent(item);
     var progressHtml = item.viewOffset && item.duration
-      ? '<div class="detail-progress-bar" aria-hidden="true">' +
-        '<div class="detail-progress-fill" style="width:' + progressPct + '%"></div></div>'
+      ? '<div class="progress-track detail-progress-bar" aria-hidden="true">' +
+        '<div class="progress-fill" style="width:' + progressPct + '%"></div></div>'
       : '';
-    var metaParts = [item.year, formatDuration(item.duration), item.contentRating].filter(Boolean);
-    if (item.genres && item.genres.length) {
-      metaParts.push(item.genres.map(function (g) { return g.tag; }).join(', '));
-    }
     var imdb = formatImdbRating(item);
-
-    var castMetaParts = [];
-    if (item.directors && item.directors.length) {
-      var dirNames = item.directors.slice(0, 2).map(function (d) { return d.tag; }).join(', ');
-      castMetaParts.push('Directed by ' + dirNames);
-    }
-    if (item.roles && item.roles.length) {
-      var castNames = item.roles.slice(0, 5).map(function (r) { return r.tag; }).join(', ');
-      castMetaParts.push('Cast: ' + castNames);
-    }
-    if (item.studio) {
-      castMetaParts.push(item.studio);
-    }
+    var metaParts = [item.year, formatDuration(item.duration), item.contentRating, imdb]
+      .filter(Boolean);
 
     screen.innerHTML = wrapDetailShell(
       '<div class="detail-layout detail-layout--movie-v2">' +
@@ -974,14 +1059,11 @@ function detailScreen(root, params, navigate) {
       (metaParts.length
         ? '<p class="detail-meta">' + escapeHtml(metaParts.join(' · ')) + '</p>'
         : '') +
-      (imdb ? '<p class="detail-meta detail-imdb">' + escapeHtml(imdb) + '</p>' : '') +
-      (castMetaParts.length
-        ? '<p class="detail-meta detail-cast-meta" style="color:var(--text-secondary)">' +
-          escapeHtml(castMetaParts.join(' · ')) + '</p>'
-        : '') +
+      buildGenreChipsHtml(item) +
       (item.summary
         ? '<p class="detail-summary detail-movie-summary">' + escapeHtml(item.summary) + '</p>'
         : '') +
+      buildCreditsRowHtml(item) +
       buildPlaybackActionsHtml(item) +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
       '<button class="btn detail-disclosure-toggle" id="btn-directplay-toggle" tabindex="0">Playback compatibility</button>' +
@@ -989,6 +1071,7 @@ function detailScreen(root, params, navigate) {
       '</div>' +
       '<p class="watch-status-msg" id="watch-status-msg"></p>' +
       '</div></div>' +
+      buildCastRailHtml(item) +
       '<div class="detail-rails detail-rails--movie" id="detail-rails" data-focus-zone="detail-rails"></div>' +
       '</div>'
     );
@@ -997,6 +1080,7 @@ function detailScreen(root, params, navigate) {
 
     var poster = screen.querySelector('#detail-poster');
     if (poster) bindPosterImage(poster, item.thumb || '', { priority: true });
+    bindCastImages(item);
     applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
     wireSubtitleBtn(subs);
@@ -1080,7 +1164,6 @@ function detailScreen(root, params, navigate) {
       }
       activeSeasonKey = String(seasons[0].ratingKey);
       var tabs = createTabs({
-        variant: 'underline',
         zone: 'detail-season-tabs',
         activeId: activeSeasonKey,
         tabs: seasons.map(function (s) {
@@ -1093,20 +1176,6 @@ function detailScreen(root, params, navigate) {
       });
       tabsHost.innerHTML = '';
       tabsHost.appendChild(tabs);
-      // positionIndicator reads offsetLeft/offsetWidth, so it needs the tabs
-      // laid out. The host is now in the DOM; defer one frame so layout has
-      // flushed before measuring (the indicator no-ops if offsetParent is null).
-      if (tabs.positionIndicator) {
-        var positionSeasonIndicator = function () {
-          if (destroyed) return;
-          tabs.positionIndicator(activeSeasonKey);
-        };
-        if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(positionSeasonIndicator);
-        } else {
-          positionSeasonIndicator();
-        }
-      }
       var firstTab = tabs.querySelector('.gt-tab');
       if (firstTab) firstTab.focus();
       loadShowEpisodes(activeSeasonKey, showKey);
