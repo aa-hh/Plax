@@ -58,7 +58,7 @@ a component's sizing/spacing/states/focus, or reconciling a visual.
 
 - **Cards stay vertical 2:3**, never landscape 16:9, even though the kit defaults to 16:9.
 - **Theme is Material 3 *blue*** (`--accent: #A8C7FA`), not the kit purple or old Plax gold.
-- **No focus scale/motion** on webOS4; gated to webOS5+/dev (`html.caps-motion`).
+- **Focus scale/motion is enabled for webOS 4+ (incl. the B8) and dev** via `html.caps-motion` (`app.js` `applyMotionCapabilityClass`: `osMajor >= 4 || osMajor === 0 || dev`). It stays smooth on Chromium 53 only because **animations are transform/opacity-only** — never layout (width/height/margin) or paint (big-blur shadow/background). Keep that constraint; the hard focus ring is the always-on primary cue. (NB: an earlier gate mis-read LG's firmware number as webOS 5 and over-animated — see [[caps-motion-gate-bug]].)
 - **No `:focus-within`** (Chrome53 drops it) — drive active/expanded states with JS classes.
 - Map kit pixel values onto existing CSS tokens in `src/styles/app.css`; add a token only if none fits.
 
@@ -260,8 +260,8 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
   - Cards: **every rail** (normal / `--compact` On Deck / `--sparse`) locked to `flex:0 0 var(--home-hub-poster-w)` + `max-width:none` so all rails share one pitch (248px card + 40px gap → 6 = 1688 = `--content-max`). (Root-cause of a past misalignment: `.row-scroll--sparse` clamped `max-width:240px`.)
 - **Horizontal movement (anchored slot):** within a rail the selector pins to a **fixed 3rd column** (`ANCHOR_SLOT = 2`); cards 1–3 at `scrollLeft 0`, from the 4th on the rail shifts left in whole card-pitch steps (`(idx-2)*railPitch`). Home-only; other screens center.
 - **Vertical movement (anchored rails):** moving down keeps the ring in a fixed vertical slot; the feed scrolls so the new rail slides into it (`scrollHomeRailAnchored`).
-- **Motion timing (`NAV_SCROLL_MS`, gated on Chromium major from UA):** webOS4/Chromium 53 (B8) + unknown-UA (jsdom) → **`0`, instant jump** (per-frame scroll mutation is the dominant cost on that engine); Chromium ≥ 61 → **140ms** RAF ease-out-cubic. Focus transition `--focus-motion-dur 0.1s`, transform-only.
-- **Platform notes:** focus motion gated to `html.caps-motion` (webOS5+/dev); B8 hard ring is the cue ([[caps-motion-gate-bug]]). Chrome53 ignores `scrollIntoViewOptions` (manual math). No `:focus-within`.
+- **Motion timing (`NAV_SCROLL_MS`):** a short RAF ease-out-cubic glide on **every engine incl. webOS4/Chromium 53** — **`150ms`** (down from 220). Gliding was always viable on Chromium 53 (rAF since Chrome 24; Enact glided via GPU transforms); only the declarative `scroll-behavior: smooth` CSS was post-53. In-flight glides cancel so a held d-pad chases focus. If the per-frame `scrollLeft`/`scrollTop` reflow ever stutters on the B8, the period-correct upgrade is a `translate3d` track (Enact approach). Focus transition `--focus-motion-dur 0.1s`, transform-only.
+- **Platform notes:** focus motion (`html.caps-motion`) is **enabled for webOS 4+ incl. the B8** (`app.js` `applyMotionCapabilityClass`: `osMajor >= 4 || dev`); the scale grow DOES run on the B8 and stays smooth because only transform/opacity animate. The hard focus ring is the always-on primary cue. (Historic bug: firmware-number misread once enabled a janky grow + big-blur shadow — see [[caps-motion-gate-bug]]; now strict OS major + transform-only.) Chrome53 ignores `scrollIntoViewOptions` (manual math). No `:focus-within`.
 
 ### Player overlay
 
@@ -336,6 +336,29 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 
 - **Code (as-built):** outlined modal field `.gt-text-input-wrap`/`.tv-text-input` (`src/ui/components/controls.js`, `src/styles/app.css:5009+`); inline `#search-input`/`.search-input` (`src/ui/screens/searchScreen.js`, `app.css:4468`); the **log-sink URL** field uses the Inline Edit-Toggle pattern (next entry).
 - **Deviations / fix-list:** the **search input** still needs reconciling to field padding (12/16) / radius (8) / bg (`#303030`) / type. Font up-scale (16→24) is a ratified 10-foot rule.
+
+### Login / Auth field  (Plax variant of Text field — full-screen sign-in)
+
+- **Status:** ✅ to-spec · 2026-06-20 — Plax variant; larger than the base **Text field** for focused full-screen auth (provider picker, Jellyfin login). Reconcile note: this is the home for the larger 18×24 sizing (base Text field stays kit-scaled 14×18).
+- **Android TV guideline:** Foundations + Layout (no dedicated text-field page)
+- **Figma source:** `mociiAKRCHeosHwEl586wx` — **login layout example** `8736:19388` (kit composes the *standard* Text Field `3815:25016` into a centered sign-in column; there is **no distinct login field in the kit** — this variant is our own 10-ft up-scale). Active/typing field `3984:26492`.
+- **Why a variant:** the kit reuses the base field on its login screen (`px16/py12`, 16/24 input, 6px gap, ~268px col @540p ≈ 560px @1080p). For a 10-foot, remote-driven sign-in we scale that field **×1.5** so the target and label read across the room — distinct from fields buried in a settings list (which stay at the base Text-field size).
+- **Anatomy (parts → slot):** identical structure to **Text field**, scaled — column `gap 9` → `label` (21/30 Medium) + `field` (`padding 18×24`, bg `#303030`, **radius 8**, border 1px `#8E918F` rest / 2px `#A8C7FA` active, `input` 24/36 Medium `#E3E3E3`, caret `#A8C7FA`) + optional `supporting text`.
+- **Resolved as-built values (×1.5 from kit base):**
+
+  | Property | Value | Kit base ×1.5 |
+  |---|---|---|
+  | Label | 21px / lh 30 / ls 0.1, `#C4C7C5` (→ `#A8C7FA` active) | `label/large` 14/20 |
+  | Field padding | 18px × 24px | 12 × 16 |
+  | Label↔field gap | 9px | 6 |
+  | Input text | 24px / lh 36 / 500w, `#E3E3E3` | `title/medium` 16/24 |
+  | Field bg / border / radius | `#303030` / 1px `#8E918F` (2px `#A8C7FA` active) / 8px | same as base |
+  | Column width | ~560px | ~268px @540p |
+
+- **Code (as-built):** connect-page fields `.jellyfin-login .login-field` (`__label` + `__btn`) in `src/styles/app.css`; they open `openTextInputModal({ variant: 'auth' })`, which adds `.gt-text-input-wrap--auth` so the modal field (`.tv-text-input`) matches this variant's sizing — and **only** on auth screens (settings/watchlist callers omit `variant` and stay at the base Text field size). `.login-fields` column ≈ 560px.
+- **Gating:** the ×1.5 lives in `.gt-text-input-wrap--auth { gap; label; input }` overrides; base `.tv-text-input*` stays kit-scaled. Auth callers (jellyfinLoginScreen ×3, jellyfinUserPickerScreen ×2) pass `variant:'auth'`.
+- **States:** rest (bg `#303030`, 1px `#8E918F`) · active/typing (border 2px `#A8C7FA`, label → `#A8C7FA`, toggled via JS `--active` class — **no `:focus-within`**) · placeholder `#8E918F`.
+- **Platform notes:** Chrome53 — active state via JS class, not `:focus-within`. Text entry routed through `openTextInputModal` (dedicated surface; avoids buried-field keyboard occlusion). Brand-neutral; usable by Plex pairing too.
 
 ### Inline Edit-Toggle Field (full-width read row → inline editor)
 
@@ -428,7 +451,7 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
     .login-step#step-quickconnect            ← primary: p.pairing-code#qc-code + status
     .login-step#step-password                ← fallback: username + password fields
   ```
-  Steps toggle via `.login-step.is-active`. `.login-field` (`__label` + `__btn`) mirrors the Text field spec (label 21px, box 18×24, 9px gap); `.login-field__btn` opens `openTextInputModal`.
+  Steps toggle via `.login-step.is-active`. `.login-field` (`__label` + `__btn`) uses the **Login / Auth field** variant (label 21px, box 18×24, 9px gap); `.login-field__btn` opens `openTextInputModal`.
 - **Platform notes:** text entry delegated to `openTextInputModal` (dedicated surface — avoids buried-field keyboard occlusion, reuses solved key-trapping); password masks to `••••`. Quick Connect primary, password fallback.
 
 ### Jellyfin user picker ("Who's watching?")
