@@ -37,6 +37,7 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-xl: 16px;   /* kit Modal drawer / dialog corner (4498:31402) */
   --radius-pill: 24px;
   --space-1: 4px;
   --space-2: 8px;
@@ -137,6 +138,8 @@
   --modal-sheet-max-w: 420px;   /* track-selector / drawer sheet width cap */
   --drawer-side-w: 280px;       /* kit Modal drawer side panel (Left/Right) */
   --drawer-side-min-h: 320px;   /* side-panel floor — short lists don't collapse */
+  --drawer-edge-gap: var(--space-6);   /* kit floating inset from the screen edge (24px) */
+  --drawer-player-bottom: 232px;       /* player drawers rest just above the trigger button cluster */
   --drawer-dialog-h: 200px;     /* kit Modal drawer action dialog (Top/Bottom) */
   --drawer-actions-w: 268px;    /* kit dialog Actions column */
   --provider-card-w: 420px;
@@ -3121,8 +3124,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   min-height: var(--drawer-dialog-h);
   padding: var(--space-6) var(--space-8);
   background: var(--bg-surface);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-xl);   /* kit Modal dialog rounded-16 */
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3); /* kit dark/2 */
 }
 
 .gt-dialog-text {
@@ -3939,10 +3942,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-end;
-  /* safe-area top/bottom caps the sheet; sheet centres vertically on the edge */
-  padding: var(--safe-y) 0;
+  /* Button-launched: floats in from the right, bottom resting just above the
+     trigger button cluster. Top gap caps the height; right gap = kit float inset. */
+  padding: var(--safe-y) var(--drawer-edge-gap) var(--drawer-player-bottom);
   background: rgba(0, 0, 0, 0.6);
 }
 
@@ -3962,8 +3966,9 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   max-height: 100%;
   overflow: hidden;
   padding: var(--space-5);
-  background: var(--bg-surface);
-  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3);
+  background: var(--bg-surface);          /* kit surface-container #1E1F20 */
+  border-radius: var(--radius-xl);        /* kit rounded-16 (floating panel) */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15); /* kit dark/3 */
 }
 
 /* Margin-based vertical rhythm (flex `gap` no-ops on Chromium 53). */
@@ -3977,8 +3982,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* kit List/Header: pt-8 pb-16 px-16, no divider */
+  padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
 .player-track-modal-title {
@@ -4034,8 +4039,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .player-track-modal-footer {
   flex-shrink: 0;
-  padding: var(--space-3) var(--space-6);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: var(--space-3) 0 0;
 }
 
 .player-menu-empty {
@@ -4241,9 +4245,9 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   top: 0; right: 0; bottom: 0; left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-end;
-  padding: var(--safe-y) 0;
+  padding: var(--safe-y) var(--drawer-edge-gap) var(--drawer-player-bottom);
   background: rgba(0, 0, 0, 0.6);
 }
 .player-media-info-modal[hidden] { display: none !important; }
@@ -4255,8 +4259,9 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   min-height: var(--drawer-side-min-h);
   max-height: 100%;
   padding: var(--space-5);
-  background: var(--bg-surface);
-  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3);
+  background: var(--bg-surface);          /* kit surface-container #1E1F20 */
+  border-radius: var(--radius-xl);        /* kit rounded-16 */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15); /* kit dark/3 */
   overflow: hidden;
 }
 /* Margin-based vertical rhythm (flex `gap` no-ops on Chromium 53). */
@@ -5391,17 +5396,26 @@ html.caps-motion .gt-list-item:focus {
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: none; }
 }
+/* Side drawers slide in from the right edge (compositor-only translateX). */
+@keyframes gt-drawer-right-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
 html.caps-motion .detail-modal,
 html.caps-motion .gt-modal,
 html.caps-motion .gt-dialog,
-html.caps-motion .player-track-modal {
+html.caps-motion .player-track-modal,
+html.caps-motion .player-media-info-modal {
   animation: gt-overlay-in 0.16s ease;
 }
 html.caps-motion .detail-modal-sheet,
 html.caps-motion .gt-modal-sheet,
-html.caps-motion .gt-dialog-sheet,
-html.caps-motion .player-track-modal-sheet {
+html.caps-motion .gt-dialog-sheet {
   animation: gt-sheet-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+html.caps-motion .player-track-modal-sheet,
+html.caps-motion .player-media-info-sheet {
+  animation: gt-drawer-right-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 html.caps-motion .gt-list-item:focus {
   transform: scale(1.025);
