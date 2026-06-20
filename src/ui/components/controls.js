@@ -306,7 +306,10 @@ function openTextInputModal(opts) {
 
   // Label sits directly above the input (6px gap via flex), colour toggles blue on active.
   // No separate header bar — matches TV Design Kit text-field anatomy (nodes 3815:25032 / 3984:26492).
+  // variant:'auth' → the larger Login/Auth field sizing (full-screen sign-in); base
+  // (settings/watchlist) stays at the kit-scaled Text field size.
   var inputWrap = el('div', 'gt-text-input-wrap');
+  if (opts.variant === 'auth') inputWrap.classList.add('gt-text-input-wrap--auth');
   if (opts.title) {
     var label = el('span', 'tv-text-input-label');
     label.textContent = String(opts.title);

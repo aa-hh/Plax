@@ -9,7 +9,7 @@ import {
   markWatched,
   markUnwatched,
   refreshItem
-} from '../../plex/library.js';
+} from '../../backends/index.js';
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';

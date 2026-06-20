@@ -492,14 +492,18 @@ function settingsScreen(root, params, navigate) {
     cache.invalidateAll();
     invalidateRetention();
     setState({
+      provider: null,
       authToken: null,
       ownerAuthToken: null,
       user: null,
       activeHomeUser: null,
       servers: [],
+      activeServer: null,
       libraries: []
     });
-    navigate('pairing', {});
+    // Multi-backend: signing out clears the chosen provider, so return to the
+    // provider picker (not Plex pairing) — they can re-pick Plex or Jellyfin.
+    navigate('provider-picker', {});
   });
 
   // Land focus on the first settings control (top-leftmost), not the sidebar

@@ -107,6 +107,9 @@ function persistOwnerTokenForProfile(ownerToken, activeHomeUser, activeAuthToken
 
 function loadPersistedAuth() {
   return {
+    provider: get('provider'),
+    jellyfinServer: get('jellyfinServer'),
+    jellyfinSessions: get('jellyfinSessions') || [],
     authToken: get('authToken'),
     ownerAuthToken: getOwnerAuthToken(),
     clientId: get('clientId'),
@@ -118,6 +121,8 @@ function loadPersistedAuth() {
 }
 
 function persistAuth(data) {
+  if (data.provider != null) set('provider', data.provider);
+  if (data.jellyfinServer != null) set('jellyfinServer', data.jellyfinServer);
   if (data.authToken != null) set('authToken', data.authToken);
   if (data.ownerAuthToken != null) {
     persistOwnerTokenForProfile(
@@ -142,7 +147,28 @@ function persistAuth(data) {
   if (data.playbackPrefs != null) set('playbackPrefs', data.playbackPrefs);
 }
 
+/** Jellyfin per-user sessions cached on this device (multi-user picker). */
+function getJellyfinSessions() {
+  return get('jellyfinSessions') || [];
+}
+
+/** Add or replace a cached Jellyfin user session (keyed by userId). */
+function upsertJellyfinSession(session) {
+  if (!session || !session.userId || !session.token) return;
+  var list = getJellyfinSessions().filter(function (s) { return s.userId !== session.userId; });
+  list.push({
+    userId: session.userId,
+    name: session.name || '',
+    token: session.token,
+    imageTag: session.imageTag || null
+  });
+  set('jellyfinSessions', list);
+}
+
 function clearAuth() {
+  remove('provider');
+  remove('jellyfinServer');
+  remove('jellyfinSessions');
   remove('authToken');
   remove('ownerAuthToken');
   clearSessionOwnerToken();
@@ -157,6 +183,8 @@ export {
   loadPersistedAuth,
   persistAuth,
   clearAuth,
+  getJellyfinSessions,
+  upsertJellyfinSession,
   getOwnerAuthToken,
   persistOwnerTokenForProfile,
   readSessionHomeSize,

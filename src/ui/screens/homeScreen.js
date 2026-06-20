@@ -1,5 +1,5 @@
 import { getState } from '../../core/store.js';
-import { loadHomeFeedPhased } from '../../plex/recommendations/homeFeed.js';
+import { loadHomeFeedPhased } from '../../backends/index.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
 import { listWatchlists } from '../../watchlists/store.js';
 import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resolve.js';
@@ -15,7 +15,7 @@ import {
   prefetchLibraryBrowse,
   abortPrefetch
 } from '../../core/idlePrefetch.js';
-import { getArtUrl } from '../../plex/client.js';
+import { getArtUrl } from '../../backends/index.js';
 import { loadUltraBlurBackdrop } from '../../plex/ultrablur.js';
 
 function homeScreen(root, params, navigate) {

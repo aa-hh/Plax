@@ -99,10 +99,48 @@ test('bootstrap guard allows non-restricted sessions without owner token', funct
   );
 });
 
-test('startup route uses pairing without auth token', function () {
+test('startup route shows provider picker on first run (no provider, no token)', function () {
   assert.deepEqual(
     resolveStartupRoute({ authToken: '' }, ''),
-    { route: 'pairing', params: {}, mark: 'boot:navigate-pairing' }
+    { route: 'provider-picker', params: {}, mark: 'boot:navigate-provider-picker' }
+  );
+});
+
+test('startup route uses pairing when a provider is chosen but not signed in', function () {
+  assert.deepEqual(
+    resolveStartupRoute({ provider: 'plex', authToken: '' }, ''),
+    { route: 'pairing', params: { provider: 'plex' }, mark: 'boot:navigate-pairing' }
+  );
+});
+
+test('startup route sends signed-in Jellyfin users (with a configured server) to the user picker', function () {
+  assert.deepEqual(
+    resolveStartupRoute({
+      provider: 'jellyfin', authToken: 'jf-token',
+      jellyfinServer: { url: 'https://jf.example' }
+    }, ''),
+    { route: 'jellyfin-users', params: { _from: 'launch' }, mark: 'boot:navigate-jellyfin-users' }
+  );
+});
+
+test('startup route sends jellyfin provider with NO server to login (not the empty picker)', function () {
+  // e.g. provider flipped to jellyfin while a stale Plex token lingered, or sign-in
+  // never finished — must configure the server via login, not land on who's-watching.
+  assert.deepEqual(
+    resolveStartupRoute({ provider: 'jellyfin', authToken: 'stale-plex-token' }, ''),
+    { route: 'pairing', params: { provider: 'jellyfin' }, mark: 'boot:navigate-pairing' }
+  );
+});
+
+test('startup route treats a pre-migration Plex token as an implicit plex choice', function () {
+  // No provider recorded but a token exists → existing Plex install, not first run.
+  assert.deepEqual(
+    resolveStartupRoute({ authToken: 'owner-token', activeHomeUser: null }, 'owner-token'),
+    {
+      route: 'profile-picker',
+      params: { _from: 'launch', _alwaysChoose: true },
+      mark: 'boot:navigate-profile-picker'
+    }
   );
 });
 

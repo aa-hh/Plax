@@ -27,7 +27,7 @@ import {
   getChildren,
   getMetadataRelatedHubList,
   browseByType
-} from '../plex/library.js';
+} from '../backends/index.js';
 
 // The queue holds task thunks: function () -> Promise. Each thunk performs at
 // most one network round-trip (singleflighted via the cache) and resolves

@@ -1,4 +1,4 @@
-import { getWatchStatus, getWatchProgressPercent } from '../../plex/library.js';
+import { getWatchStatus, getWatchProgressPercent } from '../../backends/index.js';
 import { formatDuration } from '../format.js';
 import {
   POSTER_WIDTH_GRID,

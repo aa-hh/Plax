@@ -1,4 +1,5 @@
 import { getState } from '../core/store.js';
+import { getBackend } from '../backends/index.js';
 import {
   serverUrl,
   fetchText,
@@ -647,6 +648,11 @@ function probeHlsPlaylistOrReject(server, url, session) {
 }
 
 function resolveStreamUrl(session) {
+  // Jellyfin builds its stream URL from a PlaybackInfo decision (not Plex's
+  // /decision XML), so delegate the whole resolution to the backend.
+  if (session && session.server && session.server.type === 'jellyfin') {
+    return getBackend().resolveStreamUrl(session);
+  }
   if (!session || !session.server) {
     var noServerErr = new Error('No Plex server connected. Return to library and try again.');
     tvError('session', 'resolveStreamUrl failed', noServerErr.message);

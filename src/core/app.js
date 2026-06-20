@@ -29,6 +29,9 @@ import { searchScreen } from '../ui/screens/searchScreen.js';
 import { designReviewScreen } from '../ui/screens/designReviewScreen.js';
 import { profilePickerScreen } from '../ui/screens/profilePickerScreen.js';
 import { watchlistScreen } from '../ui/screens/watchlistScreen.js';
+import { providerPickerScreen } from '../ui/screens/providerPickerScreen.js';
+import { jellyfinLoginScreen } from '../ui/screens/jellyfinLoginScreen.js';
+import { jellyfinUserPickerScreen } from '../ui/screens/jellyfinUserPickerScreen.js';
 
 /**
  * One-shot boot diagnostic settling the webOS engine question: dumps the UA,
@@ -73,8 +76,15 @@ function startApp(platformMajor) {
     }, 0);
   }
 
-  register('pairing', pairingScreen);
+  register('provider-picker', providerPickerScreen);
+  // The 'pairing' route is the per-provider auth entry: Jellyfin shows its own
+  // login (server URL → Quick Connect / password); Plex keeps the PIN flow.
+  register('pairing', function (root, params, navigate) {
+    if (params && params.provider === 'jellyfin') return jellyfinLoginScreen(root, params, navigate);
+    return pairingScreen(root, params, navigate);
+  });
   register('profile-picker', profilePickerScreen);
+  register('jellyfin-users', jellyfinUserPickerScreen);
   register('home', homeScreen);
   register('library', libraryScreen);
   register('detail', detailScreen);
@@ -95,6 +105,7 @@ function startApp(platformMajor) {
   }
   var networkPrefs = resolveNetworkPrefs(persisted.networkPrefs, platformMajor);
   setState({
+    provider: persisted.provider,
     clientId: clientId,
     authToken: persisted.authToken,
     ownerAuthToken: ownerToken,
@@ -104,6 +115,23 @@ function startApp(platformMajor) {
     playbackPrefs: persisted.playbackPrefs || getState().playbackPrefs,
     platformMajor: platformMajor || 0
   });
+  // Jellyfin has no plex.tv rediscovery — rebuild the active server from the
+  // persisted manual URL + token so a cold boot reaches Home without re-login.
+  if (persisted.provider === 'jellyfin' && persisted.jellyfinServer && persisted.authToken) {
+    var js = persisted.jellyfinServer;
+    setState({
+      activeServer: {
+        type: 'jellyfin',
+        url: js.url,
+        name: js.name,
+        id: js.id,
+        version: js.version,
+        userId: persisted.user && persisted.user.id,
+        accessToken: persisted.authToken,
+        connectionUri: js.url
+      }
+    });
+  }
   tvLog('boot', 'network-prefs', {
     allowInsecure: networkPrefs.allowInsecure,
     preferDirect: networkPrefs.preferDirect,
@@ -115,15 +143,11 @@ function startApp(platformMajor) {
   }
 
   var startupRoute = resolveStartupRoute(persisted, ownerToken);
-  if (startupRoute.route === 'profile-picker') {
-    // Plex.tv link is once per device (owner). Home profiles reuse that link via
-    // a server-side switch — no second pairing for kids/guests.
-    navigate(startupRoute.route, startupRoute.params);
-    if (isPerfEnabled()) mark(startupRoute.mark);
-  } else {
-    navigate(startupRoute.route, startupRoute.params);
-    if (isPerfEnabled()) mark(startupRoute.mark);
-  }
+  // Plex → profile-picker, Jellyfin → jellyfin-users; both picker screens are the
+  // bootstrap hosts that load libraries before Home. (Plex.tv link is once per
+  // device; Home/Jellyfin users are chosen at the picker.)
+  navigate(startupRoute.route, startupRoute.params);
+  if (isPerfEnabled()) mark(startupRoute.mark);
 
   logStartupBuild(typeof window !== 'undefined' ? window : null);
   if (typeof performance !== 'undefined') {

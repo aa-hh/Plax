@@ -1,6 +1,6 @@
 import Hls from 'hls.js';
 import { keepScreenOn } from '../platform/webos.js';
-import { updateProgress as libraryUpdateProgress, markWatched as libraryMarkWatched } from '../plex/library.js';
+import { updateProgress as libraryUpdateProgress, markWatched as libraryMarkWatched } from '../backends/index.js';
 import { redactPlexUrl } from '../plex/client.js';
 import { getPlexClientIdentity, PMS_PRODUCT } from '../plex/clientIdentity.js';
 import { connectionSchemeLabel } from '../plex/servers/connectionPolicy.js';
@@ -11,7 +11,8 @@ import {
   fetchHlsManifestProbe,
   isHlsUrl,
   patchHlsMasterForChromeCompat,
-  isHlsPatchActive
+  isHlsPatchActive,
+  isWebOs4Tv
 } from './hlsPolicy.js';
 import { shouldSkipClientPlaybackOffset } from './playbackOffset.js';
 import { shouldScrobble, shouldResetScrobble } from './scrobblePolicy.js';
@@ -512,9 +513,16 @@ function attachMseHls(url, requestHeaders) {
   var events = HlsPlayer.Events || {};
   var errorTypes = HlsPlayer.ErrorTypes || {};
   destroyActiveHls();
+  // webOS 4 (B8) has a small MSE SourceBuffer quota: the default 60s back-buffer +
+  // forward buffering overflows it on higher-bitrate transcodes (bufferFullError
+  // loop → stuck spinner). Keep the buffer lean there. Other engines keep the
+  // roomier defaults. Direct play is unaffected (it never uses hls.js/MSE).
+  var webos4 = isWebOs4Tv();
   activeHls = new HlsPlayer({
     lowLatencyMode: false,
-    backBufferLength: 60,
+    backBufferLength: webos4 ? 10 : 60,
+    maxBufferLength: webos4 ? 20 : 30,
+    maxBufferSize: webos4 ? 20 * 1000 * 1000 : 60 * 1000 * 1000,
     /* Plex universal HLS lists upcoming segments before they exist (404 until ready). */
     fragLoadingMaxRetry: 12,
     fragLoadingRetryDelay: 1000,

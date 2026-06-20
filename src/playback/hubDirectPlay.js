@@ -1,4 +1,4 @@
-import { getMetadata } from '../plex/library.js';
+import { getMetadata } from '../backends/index.js';
 import { isContinueHubRow } from '../plex/recommendations/homeFeed.js';
 import { extractVersions, pickBestVersion } from './versionSelector.js';
 import { probePlayback } from './capabilityProbe.js';

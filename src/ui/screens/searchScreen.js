@@ -1,5 +1,5 @@
 import { getState } from '../../core/store.js';
-import { searchHubs } from '../../plex/search.js';
+import { search as searchHubs } from '../../backends/index.js';
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav } from '../focus.js';

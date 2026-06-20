@@ -6,9 +6,9 @@ import {
   getLibraries,
   mapLibrarySections,
   pickActiveServer,
-  pickDefaultLibrary
-} from '../plex/servers/discovery.js';
-import { prefetchHomeHubs } from '../plex/library.js';
+  pickDefaultLibrary,
+  prefetchHomeHubs
+} from '../backends/index.js';
 import { warmHubPrefetchPosters } from '../ui/posterImages.js';
 import {
   filterLibrariesForUser,
@@ -45,9 +45,30 @@ function shouldBlockIncompleteRestrictedSession(state) {
  * Plex.tv user validation, server discovery, library mapping, and home hub prefetch.
  * Used after profile selection — no dedicated bootstrap screen.
  */
+/**
+ * Jellyfin bootstrap: no plex.tv user validation and no Plex Home profiles. The
+ * server was resolved at sign-in (or rebuilt from persistence at boot); we just
+ * load libraries. Home hubs are loaded by the home screen via the backend (Phase 3).
+ */
+function runJellyfinBootstrap(options) {
+  var onStatus = typeof options.onStatus === 'function' ? options.onStatus : function () {};
+  var server = getState().activeServer;
+  if (!server) return Promise.reject(new Error('No Jellyfin server configured'));
+  onStatus('Loading libraries…');
+  return getLibraries(server, { fresh: true }).then(function (result) {
+    var libs = mapLibrarySections(result);
+    setState({ libraries: libs, activeLibrary: pickDefaultLibrary(libs) || libs[0] || null });
+    onStatus('Opening Home…');
+  });
+}
+
 function runAppBootstrap(options) {
   options = options || {};
   var onStatus = typeof options.onStatus === 'function' ? options.onStatus : function () {};
+
+  if (getState().provider === 'jellyfin') {
+    return runJellyfinBootstrap(options);
+  }
 
   if (shouldBlockIncompleteRestrictedSession(getState())) {
     return Promise.reject(new Error('Profile session incomplete. Choose your profile again.'));

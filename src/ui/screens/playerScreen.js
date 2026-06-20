@@ -1,5 +1,5 @@
 import { getState } from '../../core/store.js';
-import { getMetadata } from '../../plex/library.js';
+import { getMetadata } from '../../backends/index.js';
 import { createSession, resolveStreamUrl } from '../../playback/sessionController.js';
 import * as player from '../../playback/playerFactory.js';
 import * as queue from '../../playback/playbackQueue.js';

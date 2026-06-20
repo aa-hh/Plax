@@ -26,7 +26,10 @@ function pairingScreen(root, params, navigate) {
     '<div class="pairing-code-block">' +
     '<p class="pairing-code" id="pin-code">----</p>' +
     '<p class="status-msg" id="pair-status">Starting pairing…</p>' +
-    '<div class="pairing-actions"><button class="btn" id="btn-retry" tabindex="0">Refresh code</button></div>' +
+    '<div class="pairing-actions">' +
+    '<button class="btn" id="btn-retry" tabindex="0">Refresh code</button>' +
+    '<button class="btn login-switch-provider" id="btn-switch-provider" tabindex="0">Use a different service</button>' +
+    '</div>' +
     '</div></div>';
 
   root.appendChild(screen);
@@ -62,6 +65,10 @@ function pairingScreen(root, params, navigate) {
   }
 
   document.getElementById('btn-retry').addEventListener('click', startPairing);
+  document.getElementById('btn-switch-provider').addEventListener('click', function () {
+    pollActive = false;
+    navigate('provider-picker', {});
+  });
   startPairing();
   focusFirst(screen);
 

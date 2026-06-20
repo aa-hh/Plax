@@ -100,6 +100,7 @@
      Posters keep the ring+scale; controls invert. See docs/google-tv-figma-tokens.md. */
   --focus-fill: #E3E3E3;     /* sys/dark/inverse-surface */
   --focus-on-fill: #303030;  /* sys/dark/inverse-on-surface */
+  --button-container: #303030; /* inverse-on-surface — M3 TV filled-button container (solid, reads on any surface) */
   --focus-scale: 1.06;       /* applied only under html.caps-motion (newer webOS) */
   --focus-motion-dur: 0.16s;
   /* Space for focus ring + (motion) scale outside poster */
@@ -943,8 +944,13 @@ html.caps-motion .detail-watchlist-btn:focus {
   align-items: center;
   justify-content: center;
   min-height: var(--target-min);
-  padding: var(--space-3) var(--space-7);
-  background: var(--gt-surface-2);
+  /* Container padding scaled to the kit proportion (py12/px16 against a 14px
+     label) for our 10-ft label (~20/24px) — real internal padding, not a tight
+     pill. (Button spec, ported from feat/settings-redesign.) */
+  padding: var(--space-5) var(--space-6);
+  /* Solid M3 TV filled-button container — reads on ANY surface (page, elevated
+     cards). Was --gt-surface-2 (#1E1F20), which vanished on a card. */
+  background: var(--button-container);
   border-radius: var(--gt-radius-button);
   color: var(--gt-text);
   font-size: var(--gt-body);
@@ -5009,11 +5015,11 @@ html.caps-motion .gt-list-item:focus {
 .gt-text-input-wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;                    /* spec: 6px between label and field */
+  gap: 6px;                    /* kit label↔field gap (base Text field) */
   padding: var(--space-6) 0 var(--space-4);
 }
 .tv-text-input-label {
-  font-size: 14px;
+  font-size: 14px;             /* kit label/large (base Text field); Login/Auth variant scales ×1.5 */
   font-weight: 500;
   line-height: 20px;
   letter-spacing: 0.1px;
@@ -5025,11 +5031,11 @@ html.caps-motion .gt-list-item:focus {
 .tv-text-input {
   width: 100%;
   box-sizing: border-box;
-  font-size: var(--font-body); /* 24px — scaled up from spec 16px for 10-ft viewing */
+  font-size: var(--font-body); /* 24px — kit title/medium 16px scaled for 10-ft (ratified) */
   font-weight: 500;
   font-family: inherit;
-  line-height: 1.4;
-  padding: 14px 18px;          /* scaled from spec 12px 16px */
+  line-height: 1.4;            /* base Text field; Login/Auth variant uses lh 36 */
+  padding: 14px 18px;          /* base Text field (kit 12×16 scaled); Login/Auth variant 18×24 */
   background: #303030;         /* TV Compose/sys/dark/inverse-on-surface */
   color: #E3E3E3;              /* TV Compose/sys/dark/on-surface */
   border: 1px solid #8E918F;  /* TV Compose/sys/dark/outline */
@@ -5037,6 +5043,14 @@ html.caps-motion .gt-list-item:focus {
   outline: none;
   caret-color: #A8C7FA;       /* TV Compose/sys/dark/primary */
 }
+
+/* ── Login / Auth field — Plax variant of Text field (full-screen sign-in) ───
+   The base Text field stays kit-scaled (settings/search); this ×1.5 sizing is
+   gated to auth screens via openTextInputModal({ variant: 'auth' }), which adds
+   .gt-text-input-wrap--auth. See registry "Login / Auth field". */
+.gt-text-input-wrap--auth { gap: 9px; }
+.gt-text-input-wrap--auth .tv-text-input-label { font-size: 21px; line-height: 30px; }
+.gt-text-input-wrap--auth .tv-text-input { padding: 18px 24px; line-height: 36px; }
 .tv-text-input::placeholder {
   color: #8E918F;
   opacity: 1;
@@ -5046,3 +5060,108 @@ html.caps-motion .gt-list-item:focus {
   background: transparent;
   box-shadow: none;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Jellyfin backend UI (provider picker + login). NOTE: these styles must live in
+   app.css; a prior reset wiped them once — keep them when reconciling the settings
+   redesign. ════════════════════════════════════════════════════════════════ */
+
+/* ── Provider picker: two branded "classic cards" (logo image + connect blurb) ── */
+.provider-cards {
+  display: flex;
+  gap: var(--space-7);
+  margin-top: var(--space-8);
+}
+.provider-card {
+  display: flex;
+  flex-direction: column;
+  width: 420px;
+  padding: 0;
+  background: var(--bg-elevated);          /* lighter than base so the card reads clearly */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  text-align: left;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+.provider-card__media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  border-bottom: 1px solid var(--border);
+}
+.provider-card[data-brand="plex"] .provider-card__media {
+  background: radial-gradient(120% 140% at 50% 25%, rgba(229, 160, 13, 0.18), rgba(229, 160, 13, 0.04) 70%);
+}
+.provider-card[data-brand="jellyfin"] .provider-card__media {
+  background: radial-gradient(120% 140% at 50% 25%, rgba(123, 92, 230, 0.20), rgba(0, 164, 220, 0.06) 70%);
+}
+.provider-card__logo { width: 70%; height: auto; max-height: 96px; }
+.provider-card__desc {
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  font-size: var(--gt-body);
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+.provider-card:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-shadow);
+  outline: none;
+}
+.provider-card:focus .provider-card__media { filter: brightness(1.25); }
+.provider-card:focus .provider-card__desc { color: var(--text-primary); }
+
+/* ── Jellyfin login (server URL → Quick Connect / password) ──────────────────
+   Reuses .screen-center, .pairing-code (QC code), .btn/.btn-primary, and the
+   Text Field (outlined) spec via openTextInputModal for all text entry. */
+.jellyfin-login .login-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 560px;
+  max-width: 90vw;
+  margin-top: var(--space-7);
+  text-align: left;
+}
+.jellyfin-login .login-field { display: flex; flex-direction: column; gap: 9px; }
+.jellyfin-login .login-field__label {
+  font-size: 21px;             /* match Text Field label (kit ×1.5) */
+  font-weight: 500;
+  line-height: 30px;
+  color: var(--text-secondary);
+}
+.jellyfin-login .login-field__btn {
+  justify-content: flex-start;
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  padding: 18px 24px;          /* match Text Field box height (kit ×1.5) */
+  font-size: 24px;
+  line-height: 36px;
+  min-height: var(--target-min);
+}
+.jellyfin-login .login-field__btn.is-placeholder { color: var(--text-muted); }
+.jellyfin-login .login-field__btn:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-shadow);
+  outline: none;
+}
+.jellyfin-login .login-actions {
+  display: flex;
+  gap: var(--space-5);
+  justify-content: center;
+  margin-top: var(--space-7);
+}
+.jellyfin-login .login-step { display: none; }
+.jellyfin-login .login-step.is-active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+/* "Use a different service" → back to the provider picker (escape hatch). */
+.jellyfin-login .login-switch-provider { margin-top: var(--space-8); }
+/* Plex pairing places it beside "Refresh code". */
+.pairing-actions { display: flex; gap: var(--space-4); justify-content: center; }

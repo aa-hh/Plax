@@ -1,4 +1,4 @@
-import { getMetadata } from '../plex/library.js';
+import { getMetadata } from '../backends/index.js';
 
 function mergeResolvedItem(snap, meta) {
   if (!meta) {

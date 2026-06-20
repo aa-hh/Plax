@@ -1,5 +1,5 @@
 import { getState, setState } from '../../core/store.js';
-import { browseByType, refreshSection } from '../../plex/library.js';
+import { browseByType, refreshSection } from '../../backends/index.js';
 import { filterLibrariesForUser } from '../../security/libraryAccess.js';
 import { createMediaCard } from '../components/mediaCard.js';
 import { focusFirst, attachFocusNav } from '../focus.js';

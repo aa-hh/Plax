@@ -1,4 +1,4 @@
-import { getChildren } from '../plex/library.js';
+import { getChildren } from '../backends/index.js';
 
 var items = [];
 var currentIndex = 0;

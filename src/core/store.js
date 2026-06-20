@@ -3,6 +3,7 @@
  */
 var listeners = {};
 var state = {
+  provider: null, // 'plex' | 'jellyfin' — chosen at first run, persisted as plax_provider
   authToken: null,
   ownerAuthToken: null,
   clientId: null,
