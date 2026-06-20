@@ -29,11 +29,18 @@ var urlToObjectUrl = Object.create(null);
 var idbLookupTried = Object.create(null);
 var blobFetchScheduled = Object.create(null);
 
-/** Poster sizing aligned with CSS (--row-poster-*, --grid-poster-*) plus modest overscan. */
-var POSTER_WIDTH_ROW = 180;
-var POSTER_WIDTH_GRID = 180;
-var POSTER_WIDTH_EPISODE = 300;
-var POSTER_HEIGHT_EPISODE = 168;
+/**
+ * Poster sizing aligned with CSS (--row-poster-*, --grid-poster-*) plus overscan.
+ * Cards display at 156 (rail) / 176 (grid) CSS px; fetching ~210 gives ~1.2–1.35×
+ * overscan so posters stay crisp instead of sitting at 1:1 (where Plex's
+ * small-width transcodes also pick up extra JPEG compression). Cost is ~width²:
+ * 180→210 is ~36% more bytes/decode/decoded-RAM per poster — small in absolute
+ * terms and still throttled by MAX_CONCURRENT_POSTER_LOADS.
+ */
+var POSTER_WIDTH_ROW = 210;
+var POSTER_WIDTH_GRID = 210;
+var POSTER_WIDTH_EPISODE = 340;
+var POSTER_HEIGHT_EPISODE = 191;
 
 /** Cap parallel Plex /photo transcodes — webOS 4 saturates above ~6. */
 var MAX_CONCURRENT_POSTER_LOADS = 6;

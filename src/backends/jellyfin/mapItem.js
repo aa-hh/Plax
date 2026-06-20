@@ -177,6 +177,7 @@ function mapItem(raw, server) {
     genres: (raw.Genres || []).map(function (g) { return { tag: g }; }),
     roles: mapPeople(raw.People, server, 'Actor'),
     directors: mapPeople(raw.People, server, 'Director'),
+    writers: mapPeople(raw.People, server, 'Writer'),
     collections: [],
     media: mapMediaSources(raw.MediaSources),
     markers: [],

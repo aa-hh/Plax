@@ -242,14 +242,14 @@ function createMediaCard(item, onSelect, options) {
   if (status === 'progress' && item.duration) {
     var pct = getWatchProgressPercent(item);
     var bar = document.createElement('div');
-    bar.className = 'card-progress';
+    bar.className = 'progress-track card-progress';
     bar.setAttribute('role', 'progressbar');
     bar.setAttribute('aria-valuemin', '0');
     bar.setAttribute('aria-valuemax', '100');
     bar.setAttribute('aria-valuenow', String(Math.round(pct)));
     bar.setAttribute('aria-label', 'Watch progress');
     var fill = document.createElement('div');
-    fill.className = 'card-progress-fill';
+    fill.className = 'progress-fill';
     fill.style.width = pct + '%';
     bar.appendChild(fill);
     posterWrap.appendChild(bar);
