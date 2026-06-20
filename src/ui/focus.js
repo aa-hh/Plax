@@ -14,6 +14,18 @@
 
 import { isPerfEnabled, mark as perfMark } from '../perf/resourceMonitor.js';
 
+// Snappy gliding D-pad scroll — a short rAF ease-out glide on EVERY engine,
+// including webOS 4 / Chromium 53. Gliding scroll was always viable on that
+// engine: requestAnimationFrame shipped in Chrome 24, and LG's own Enact
+// framework glided via GPU transforms. Only the *declarative*
+// `scroll-behavior: smooth` CSS was post-53; the capability was never missing.
+// Kept short (150ms) so it reads snappy, not floaty. In-flight glides cancel
+// (see smoothScroll*), so a held d-pad smoothly chases focus instead of
+// queueing. If profiling ever shows the per-frame scrollLeft/scrollTop reflow
+// stutters on the B8, the period-correct upgrade is a translate3d track (the
+// Enact approach) — but the app shipped a 220ms rAF glide here without jank.
+var NAV_SCROLL_MS = 150;
+
 var focusableSelector = 'button, [tabindex], .btn, .card, .nav-item, .library-item, .browsing-hub-item, .row-item, .season-chip, .episode-chip, .detail-setting-chip, .detail-breadcrumb, .detail-breadcrumb-trail__btn, .detail-episode-picker, .detail-link, .detail-file-row, .detail-modal-option, .detail-modal-cancel, .detail-watchlist-btn, .watchlist-row-link, .user-chip, .profile-card, .pin-pad-btn, select, .player-seek-bar, .player-control-pill, .player-stream-pill, .player-menu-option, input.search-input, .search-input';
 
 var ARROW_LEFT = 37;
@@ -215,7 +227,12 @@ function scrollNearestVertical(el) {
 // Falls back to instant scroll in environments without requestAnimationFrame (tests).
 var _carouselRafs = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 function smoothScrollCarousel(row, target, durationMs) {
-  if (typeof requestAnimationFrame === 'undefined') {
+  if (durationMs <= 0 || typeof requestAnimationFrame === 'undefined') {
+    // Cancel any in-flight glide so a queued frame can't overwrite the jump.
+    if (_carouselRafs) {
+      var inflight = _carouselRafs.get(row);
+      if (inflight) { cancelAnimationFrame(inflight); _carouselRafs.delete(row); }
+    }
     row.scrollLeft = target;
     return;
   }
@@ -244,6 +261,100 @@ function smoothScrollCarousel(row, target, durationMs) {
   if (_carouselRafs) _carouselRafs.set(row, raf);
 }
 
+// Smooth RAF-based vertical scroll — the same ease-out-cubic 220ms motion the
+// carousel uses for left/right, applied to scrollTop so moving between rails
+// animates identically. Cancels mid-flight if the same scroller gets another
+// request. Falls back to instant scroll without requestAnimationFrame (tests).
+var _vScrollRafs = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+function smoothScrollVertical(scroller, target, durationMs) {
+  if (durationMs <= 0 || typeof requestAnimationFrame === 'undefined') {
+    if (_vScrollRafs) {
+      var inflight = _vScrollRafs.get(scroller);
+      if (inflight) { cancelAnimationFrame(inflight); _vScrollRafs.delete(scroller); }
+    }
+    scroller.scrollTop = target;
+    return;
+  }
+  if (_vScrollRafs) {
+    var prev = _vScrollRafs.get(scroller);
+    if (prev) { cancelAnimationFrame(prev); _vScrollRafs.delete(scroller); }
+  }
+  var start = scroller.scrollTop;
+  var delta = target - start;
+  if (Math.abs(delta) < 2) { scroller.scrollTop = target; return; }
+  var startTime = 0;
+  function step(ts) {
+    if (!startTime) startTime = ts;
+    var t = Math.min((ts - startTime) / durationMs, 1);
+    // ease-out cubic
+    var eased = 1 - (1 - t) * (1 - t) * (1 - t);
+    scroller.scrollTop = start + delta * eased;
+    if (t < 1) {
+      var raf = requestAnimationFrame(step);
+      if (_vScrollRafs) _vScrollRafs.set(scroller, raf);
+    } else if (_vScrollRafs) {
+      _vScrollRafs.delete(scroller);
+    }
+  }
+  var raf = requestAnimationFrame(step);
+  if (_vScrollRafs) _vScrollRafs.set(scroller, raf);
+}
+
+// Distance of `child`'s top from the top of `scroller`'s scroll content,
+// summing offsetTop up the offsetParent chain (robust when the scroller is
+// not the direct offsetParent).
+function topWithinScroller(child, scroller) {
+  var t = 0;
+  var n = child;
+  while (n && n !== scroller && n.offsetParent) {
+    t += n.offsetTop;
+    n = n.offsetParent;
+  }
+  return t;
+}
+
+// Anchored home-feed rail scroll: the focused rail is pinned to a FIXED
+// vertical slot — the natural resting position of the first rail. Moving the
+// selector DOWN to the next rail scrolls the whole feed up so the new rail
+// slides into that same slot, pushing the previous rail off the top (under the
+// immersive hero). The selector itself never moves vertically. Returns true if
+// it handled the scroll, false if `el` isn't in an anchored home feed.
+function scrollHomeRailAnchored(el) {
+  var feed = el.closest ? el.closest('.home-feed') : null;
+  var section = el.closest ? el.closest('.row-section') : null;
+  if (!feed || !section) return false;
+  var firstSection = feed.querySelector('.row-section');
+  if (!firstSection) return false;
+  // scrollTop that lands `section`'s top exactly where the first rail's top
+  // sits at scrollTop 0 — i.e. their content-space distance.
+  var target = topWithinScroller(section, feed) - topWithinScroller(firstSection, feed);
+  var maxScroll = feed.scrollHeight - feed.clientHeight;
+  if (target < 0) target = 0;
+  if (maxScroll >= 0 && target > maxScroll) target = maxScroll;
+  // Same motion as the horizontal carousel: a short glide on capable engines,
+  // an instant jump on webOS 4 / Chromium 53 for snappy rail-to-rail movement.
+  smoothScrollVertical(feed, target, NAV_SCROLL_MS);
+  return true;
+}
+
+// One card's horizontal advance (card width + gap) measured from the rendered
+// siblings, so the anchored-slot scroll snaps exactly to the grid pitch. Falls
+// back to a poster-width estimate when the card has no rendered neighbour.
+function railPitch(el) {
+  function adjacentCard(node, dir) {
+    var n = dir > 0 ? node.nextElementSibling : node.previousElementSibling;
+    while (n && (!n.getAttribute || n.getAttribute('data-item-index') == null)) {
+      n = dir > 0 ? n.nextElementSibling : n.previousElementSibling;
+    }
+    return n;
+  }
+  var nx = adjacentCard(el, 1);
+  if (nx) return Math.abs(nx.offsetLeft - el.offsetLeft);
+  var pv = adjacentCard(el, -1);
+  if (pv) return Math.abs(el.offsetLeft - pv.offsetLeft);
+  return (el.offsetWidth || 248) + 40;
+}
+
 function scrollFocusedIntoView(el) {
   if (!el) return;
   // If focus arrived via a magic-remote click, don't snap-scroll — let the
@@ -251,17 +362,32 @@ function scrollFocusedIntoView(el) {
   if (Date.now() - recentPointerAt < 300) return;
   // Chrome 53 (webOS 4) ignores scrollIntoViewOptions — implement manually.
 
-  // Horizontal carousel: center the focused card inside its row-scroll.
+  // Horizontal carousel.
   var rowScroll = el.closest ? el.closest('.row-scroll') : null;
   if (rowScroll) {
-    var cardLeft = el.offsetLeft;
-    var cardWidth = el.offsetWidth || 172;
     var containerWidth = rowScroll.offsetWidth;
-    var target = cardLeft - Math.floor((containerWidth - cardWidth) / 2);
+    var target;
+    if (el.closest && el.closest('.home-feed')) {
+      // Home rails: anchored-slot scroll. The selector stays pinned on a fixed
+      // column (the 3rd slot); the first 3 cards sit at scrollLeft 0, and from
+      // the 4th card on the rail shifts left in whole card-pitch steps so the
+      // focused card lands on that slot. Snapping to the pitch keeps every rail
+      // aligned to the 12-column grid (no half-card centring drift).
+      var idx = parseInt(el.getAttribute('data-item-index'), 10);
+      if (isNaN(idx)) idx = 0;
+      var ANCHOR_SLOT = 2; // 0-based → the third visible card
+      target = (idx - ANCHOR_SLOT) * railPitch(el);
+    } else {
+      // Other rails (library/detail): center the focused card.
+      var cardLeft = el.offsetLeft;
+      var cardWidth = el.offsetWidth || 172;
+      target = cardLeft - Math.floor((containerWidth - cardWidth) / 2);
+    }
     target = Math.max(0, Math.min(target, rowScroll.scrollWidth - containerWidth));
-    smoothScrollCarousel(rowScroll, target, 220);
-    // Ensure the row itself is vertically visible.
-    scrollNearestVertical(rowScroll);
+    smoothScrollCarousel(rowScroll, target, NAV_SCROLL_MS);
+    // Vertical: anchor the rail to its fixed slot on the home feed, else fall
+    // back to the edge-margin "camera follows focus" scroll for other lists.
+    if (!scrollHomeRailAnchored(el)) scrollNearestVertical(rowScroll);
     return;
   }
 

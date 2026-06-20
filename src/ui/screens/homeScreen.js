@@ -4,6 +4,7 @@ import { canUseWatchlists } from '../../watchlists/access.js';
 import { listWatchlists } from '../../watchlists/store.js';
 import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resolve.js';
 import { renderHubRow } from '../components/hubRow.js';
+import { prepareFeedForRender } from './homeFeedRender.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
@@ -242,9 +243,10 @@ function homeScreen(root, params, navigate) {
     var token = renderToken;
     var el = document.getElementById('home-feed');
     if (!el || destroyed || token !== renderToken) return;
-    if (!rows || !rows.length) return;
+    // Drops the loading skeletons on a fresh render (even when empty) so they
+    // can't leak above later-deferred rows. See prepareFeedForRender for why.
+    if (!prepareFeedForRender(el, rows, append)) return;
     var sorted = pinContinueWatchingFirst(rows);
-    if (!append) el.innerHTML = '';
     sorted.forEach(function (row) {
       renderHubRow(el, row, navigate, {
         cols: 12,

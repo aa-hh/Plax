@@ -131,9 +131,15 @@ Tips:
 ## Install on TV
 
 ```bash
-npm run package   # creates IPK in build/ (needs ares-package)
-ares-install --device my-tv build/*.ipk
+./tvpush.sh          # build → package → install → force-quit → relaunch on Alec-TV
+./tvpush.sh -n       # install only (skip relaunch)
+./tvpush.sh -s       # skip build/package, install existing IPK
+./tvpush.sh -d <device>  # target a different ares device
 ```
+
+`npm run build` alone never reaches the TV — the script runs the full pipeline.
+App ID is `com.plax`. See memory `xplay-deploy-to-b8` for device setup and IP
+troubleshooting (`ares-setup-device --list` / `--modify Alec-TV`).
 
 For browser dev, serve `dist/` over HTTP (version gate skipped outside TV runtime).
 
