@@ -3110,11 +3110,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: none !important;
 }
 
+/* Margin-based spacing throughout (flex `gap` no-ops on webOS4 / Chromium 53). */
 .gt-dialog-sheet {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-5);
   width: 100%;
   max-width: var(--content-max);
   min-height: var(--drawer-dialog-h);
@@ -3127,7 +3127,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .gt-dialog-text {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
   flex: 1;
   min-width: 0;
   padding-right: var(--space-8);
@@ -3141,7 +3140,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .gt-dialog-desc {
-  margin: 0;
+  margin: var(--space-4) 0 0;
   font-size: var(--font-body);         /* kit body/large 16 → 10-ft */
   color: var(--text-secondary);
 }
@@ -3149,13 +3148,17 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .gt-dialog-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
   flex-shrink: 0;
   width: var(--drawer-actions-w);
+  margin-left: var(--space-5);
 }
 
 .gt-dialog-actions .btn {
   width: 100%;
+}
+
+.gt-dialog-actions .btn + .btn {
+  margin-top: var(--space-3);
 }
 
 .detail-modal-sheet {
@@ -3923,6 +3926,10 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 /* Track menu opens UPWARD from the secondary cluster (Player spec): a dark
    rounded panel anchored bottom-right, ABOVE where the icon buttons sit. The
    backdrop scrim stays full-screen to dim the video while choosing. */
+/* Kit Modal drawer — side panel (Direction=Right, node 4498:31402): full-height
+   surface-container panel anchored to the right edge, scrim @60%. (Ratified
+   deviations: width up-scaled via --modal-sheet-max-w for 10-ft; category
+   chevrons retained in the header — see Player track-selector entry.) */
 .player-track-modal {
   position: fixed;
   top: 0;
@@ -3931,11 +3938,10 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   justify-content: flex-end;
-  /* leave room below the panel for the cluster row it rises from */
-  padding: var(--pad-screen-y) var(--pad-screen-x) 220px;
-  background: rgba(0, 0, 0, 0.55);
+  padding: 0;
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .player-track-modal[hidden] {
@@ -3947,14 +3953,17 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   flex-direction: column;
   width: 100%;
   max-width: var(--modal-sheet-max-w);
-  max-height: 560px;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
-  padding: 0;
-  background: rgba(20, 22, 26, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3);
+}
+
+/* Margin-based vertical rhythm (flex `gap` no-ops on Chromium 53). */
+.player-track-modal-sheet > * + * {
+  margin-top: var(--space-4);
 }
 
 /* Category header: ‹ name › — chevrons step between categories without closing. */
@@ -4220,28 +4229,33 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .player-media-info-btn[hidden] { display: none !important; }
 .player-media-info-btn-icon { width: 26px; height: 26px; flex-shrink: 0; }
 
-/* ── Media info modal ── */
+/* ── Media info ── kit Modal drawer side panel (Direction=Right): full-height
+   surface-container panel on the right edge, scrim @60%. */
 .player-media-info-modal {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: 0;
   z-index: calc(var(--z-player-overlay) + 3);
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: flex-end;
-  padding: 100px 40px var(--pad-screen-y) var(--pad-screen-x);
+  padding: 0;
+  background: rgba(0, 0, 0, 0.6);
 }
 .player-media-info-modal[hidden] { display: none !important; }
 .player-media-info-sheet {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 480px;
-  background: rgba(13, 17, 26, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  max-width: var(--modal-sheet-max-w);
+  height: 100%;
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.15), 0 1px 1.5px rgba(0, 0, 0, 0.3);
   overflow: hidden;
 }
-.player-media-info-body { padding: 8px 0 4px; }
+/* Margin-based vertical rhythm (flex `gap` no-ops on Chromium 53). */
+.player-media-info-sheet > * + * { margin-top: var(--space-4); }
+.player-media-info-body { padding: 8px 0 4px; overflow-y: auto; flex: 1; min-height: 0; }
 
 /* Source → delivery rows */
 .pmi-row {
@@ -5373,11 +5387,13 @@ html.caps-motion .gt-list-item:focus {
 }
 html.caps-motion .detail-modal,
 html.caps-motion .gt-modal,
+html.caps-motion .gt-dialog,
 html.caps-motion .player-track-modal {
   animation: gt-overlay-in 0.16s ease;
 }
 html.caps-motion .detail-modal-sheet,
 html.caps-motion .gt-modal-sheet,
+html.caps-motion .gt-dialog-sheet,
 html.caps-motion .player-track-modal-sheet {
   animation: gt-sheet-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }

@@ -373,7 +373,11 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 - **Status:** 🚧 in progress · 2026-06-20 — action-dialog form built + resume-choice migrated; player modals pending.
 - **Code (as-built):** `openActionDialog()` (kit Bottom dialog) in `src/ui/components/controls.js`; `.gt-dialog*` in `src/styles/app.css` (tokens `--drawer-dialog-h 200` / `--drawer-actions-w 268` / `--drawer-side-w 280`). Heading `--font-row-label`, desc `--font-body`, Primary=`.btn-primary` / Secondary=`.btn`, self-contained UP/DOWN + Back D-pad, body-level overlay.
-- **Migrated:** ✅ resume-choice (`showResumeOrStartModal` → `openActionDialog`, bespoke `.detail-modal` markup deleted). **Pending:** player track-selector + media-info → side panel (Left/Right); autoplay/Up-Next → action dialog — these are wired into the player `data-focus-zone` system + a live countdown, so they need in-player focus rework (deferred to a focused increment).
+- **Migrated:**
+  - ✅ **resume-choice** → `openActionDialog` (kit Bottom dialog). Bespoke `.detail-modal` markup deleted.
+  - ✅ **player track-selector** + **media-info** → kit **side panel** (Direction=Right): full-height surface-container panel on the right edge, scrim @60%, margin-based rhythm (Chrome53-safe). Player focus/key JS kept intact (well-tested `data-focus-zone` trap); only the presentation became the drawer. Width up-scaled via `--modal-sheet-max-w` for 10-ft; category chevrons retained (ratified).
+- **Ratified exception — autoplay / Up-Next is NOT a modal drawer.** It's a *passive prompt shown over still-playing video* during credits; a scrimmed, focus-trapping modal would dim the video and trap focus (UX regression). Kept as the non-modal `.player-autoplay-panel` toast.
+- **Verification:** built + launched in the webOS 26 simulator; 599/600 tests (pre-existing hub-poster-prefetch failure unrelated). Interactive drawer behaviour to be eyeballed in-sim / on B8.
 - **Android TV guideline:** [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer) + Foundations
 - **Figma source:** `mociiAKRCHeosHwEl586wx` / `8736:25866` (Modal drawer page); component variants node `4498:31402` (Direction=Top|Bottom|Left|Right). Kit menu list `8842:26171`.
 - **Two forms, selected by `Direction`:**
