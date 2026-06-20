@@ -4,6 +4,7 @@ import { canUseWatchlists } from '../../watchlists/access.js';
 import { listWatchlists } from '../../watchlists/store.js';
 import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resolve.js';
 import { renderHubRow } from '../components/hubRow.js';
+import { prepareFeedForRender } from './homeFeedRender.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
@@ -242,15 +243,9 @@ function homeScreen(root, params, navigate) {
     var token = renderToken;
     var el = document.getElementById('home-feed');
     if (!el || destroyed || token !== renderToken) return;
-    // A fresh (non-append) render is the "initial phase resolved" signal, so it
-    // must clear the loading skeletons NOW — even when this phase produced no
-    // rows. Otherwise the grey skeleton cards leak: a brand-new user has an empty
-    // On Deck and can have Recently Added / promoted rows still in the deferred
-    // phase, so the initial phase resolves empty; the old early-return left the
-    // skeletons in place and the deferred rows appended below them, leaving the
-    // grey boxes that clip under the immersive hero once a card is focused.
-    if (!append) el.innerHTML = '';
-    if (!rows || !rows.length) return;
+    // Drops the loading skeletons on a fresh render (even when empty) so they
+    // can't leak above later-deferred rows. See prepareFeedForRender for why.
+    if (!prepareFeedForRender(el, rows, append)) return;
     var sorted = pinContinueWatchingFirst(rows);
     sorted.forEach(function (row) {
       renderHubRow(el, row, navigate, {
