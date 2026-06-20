@@ -58,7 +58,7 @@ a component's sizing/spacing/states/focus, or reconciling a visual.
 
 - **Cards stay vertical 2:3**, never landscape 16:9, even though the kit defaults to 16:9.
 - **Theme is Material 3 *blue*** (`--accent: #A8C7FA`), not the kit purple or old Plax gold.
-- **No focus scale/motion** on webOS4; gated to webOS5+/dev (`html.caps-motion`).
+- **Focus scale/motion is enabled for webOS 4+ (incl. the B8) and dev** via `html.caps-motion` (`app.js` `applyMotionCapabilityClass`: `osMajor >= 4 || osMajor === 0 || dev`). It stays smooth on Chromium 53 only because **animations are transform/opacity-only** — never layout (width/height/margin) or paint (big-blur shadow/background). Keep that constraint; the hard focus ring is the always-on primary cue. (NB: an earlier gate mis-read LG's firmware number as webOS 5 and over-animated — see [[caps-motion-gate-bug]].)
 - **No `:focus-within`** (Chrome53 drops it) — drive active/expanded states with JS classes.
 - Map kit pixel values onto existing CSS tokens in `src/styles/app.css`; add a token only if none fits.
 
@@ -260,8 +260,8 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
   - Cards: **every rail** (normal / `--compact` On Deck / `--sparse`) locked to `flex:0 0 var(--home-hub-poster-w)` + `max-width:none` so all rails share one pitch (248px card + 40px gap → 6 = 1688 = `--content-max`). (Root-cause of a past misalignment: `.row-scroll--sparse` clamped `max-width:240px`.)
 - **Horizontal movement (anchored slot):** within a rail the selector pins to a **fixed 3rd column** (`ANCHOR_SLOT = 2`); cards 1–3 at `scrollLeft 0`, from the 4th on the rail shifts left in whole card-pitch steps (`(idx-2)*railPitch`). Home-only; other screens center.
 - **Vertical movement (anchored rails):** moving down keeps the ring in a fixed vertical slot; the feed scrolls so the new rail slides into it (`scrollHomeRailAnchored`).
-- **Motion timing (`NAV_SCROLL_MS`, gated on Chromium major from UA):** webOS4/Chromium 53 (B8) + unknown-UA (jsdom) → **`0`, instant jump** (per-frame scroll mutation is the dominant cost on that engine); Chromium ≥ 61 → **140ms** RAF ease-out-cubic. Focus transition `--focus-motion-dur 0.1s`, transform-only.
-- **Platform notes:** focus motion gated to `html.caps-motion` (webOS5+/dev); B8 hard ring is the cue ([[caps-motion-gate-bug]]). Chrome53 ignores `scrollIntoViewOptions` (manual math). No `:focus-within`.
+- **Motion timing (`NAV_SCROLL_MS`):** a short RAF ease-out-cubic glide on **every engine incl. webOS4/Chromium 53** — **`150ms`** (down from 220). Gliding was always viable on Chromium 53 (rAF since Chrome 24; Enact glided via GPU transforms); only the declarative `scroll-behavior: smooth` CSS was post-53. In-flight glides cancel so a held d-pad chases focus. If the per-frame `scrollLeft`/`scrollTop` reflow ever stutters on the B8, the period-correct upgrade is a `translate3d` track (Enact approach). Focus transition `--focus-motion-dur 0.1s`, transform-only.
+- **Platform notes:** focus motion (`html.caps-motion`) is **enabled for webOS 4+ incl. the B8** (`app.js` `applyMotionCapabilityClass`: `osMajor >= 4 || dev`); the scale grow DOES run on the B8 and stays smooth because only transform/opacity animate. The hard focus ring is the always-on primary cue. (Historic bug: firmware-number misread once enabled a janky grow + big-blur shadow — see [[caps-motion-gate-bug]]; now strict OS major + transform-only.) Chrome53 ignores `scrollIntoViewOptions` (manual math). No `:focus-within`.
 
 ### Player overlay
 

@@ -101,7 +101,11 @@
   --focus-fill: #E3E3E3;     /* sys/dark/inverse-surface */
   --focus-on-fill: #303030;  /* sys/dark/inverse-on-surface */
   --focus-scale: 1.06;       /* applied only under html.caps-motion (newer webOS) */
-  --focus-motion-dur: 0.16s;
+  /* Focus scale/ring transition. Kept short for a snappy 10-foot feel — the
+     ring reads instantly and the composited scale lands fast (transform-only, so
+     it stays smooth on webOS 4 / Chromium 53). Pair with the instant nav-scroll
+     jump on that engine (focus.js NAV_SCROLL_MS). */
+  --focus-motion-dur: 0.1s;
   /* Space for focus ring + (motion) scale outside poster */
   --focus-ring-pad: 16px;  /* room for the composited focus scale + ring (no clip) */
   /* Precomputed gutter halves — avoid calc() division on webOS 4 Chromium */
@@ -574,15 +578,33 @@ html.caps-motion .detail-watchlist-btn:focus {
    (clear when the rail is collapsed) instead of being clipped against it. padding-left
    keeps the first card on column 1. padding-top gives the ring/scale vertical headroom. */
 .screen-home .home-feed .row-scroll {
+  /* Gutter bleed — mirrors Google JetStreamCompose's MoviesRow: a FULL-BLEED
+     LazyRow (spans the screen edge-to-edge) with contentPadding(start,end) that
+     insets the content. The scroller bleeds past BOTH overscan gutters via the
+     negative side margins; width:auto (not the base width:100%) lets those
+     margins actually GROW the box to the physical edges — with width:100% a
+     negative margin-right only shrinks the margin box and the 7th card stays
+     clipped at the content edge. The cards keep their fixed width, so the bleed
+     only buys room for a 7th to peek past the edge (then the screen clips it) —
+     it never spreads the 6 on-grid cards. */
+  width: auto;
   margin-left: calc(-1 * var(--safe-x));
+  margin-right: calc(-1 * var(--safe-x));
+  /* contentPadding: start = the 58dp safe margin (JetStream ParentPadding), so
+     the first card lands on column 1; end = the same gutter so the last card
+     isn't jammed against the screen edge when scrolled to the end. */
   padding-left: var(--safe-x);
-  padding-top: 12px;
+  padding-right: var(--safe-x);
+  /* Per-rail vertical breathing room so the focused card's 3% grow clears the
+     rail above/below without clipping (top+bottom both padded). */
+  padding-top: 22px;
+  padding-bottom: 22px;
 }
 /* Vertical headroom so the focus grow on the first/last visible rows isn't clipped
    at the feed's scroll edges (between-row grow is already visible). */
 .screen-home .home-feed {
-  padding-top: 20px;
-  padding-bottom: 18px;
+  padding-top: 28px;
+  padding-bottom: 26px;
 }
 
 .browsing-hub-nav-host {
@@ -921,6 +943,11 @@ html.caps-motion .detail-watchlist-btn:focus {
      spacious, peeking-carousel feel. vw so it scales with the screen. */
   --home-hub-poster-w: 12.9167vw;
   --home-hub-poster-h: 19.375vw;
+  /* Home rails sit close together with the immersive overlap, so the big 1.1x
+     card lift clips against neighbours/scroll edges. Dial the focus grow down to
+     a gentle 3% here (overrides --gt-focus-scale only inside the home feed); the
+     rail headroom below is sized to clear even this. */
+  --gt-focus-scale: 1.03;
   --font-home-card-title: 22px;
   --font-home-card-subtitle: 20px;
   --font-home-card-meta: 18px;
@@ -1440,6 +1467,15 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   transform: scale(var(--gt-focus-scale));
   box-shadow: var(--focus-shadow);
 }
+/* Edge-aware focus origin (Google: "scaling can vary based on position", and
+   don't hard-clip focused foreground content). The first card in a home rail
+   sits flush against the feed's left clip boundary (overflow-x: hidden), so a
+   centred scale would push its left edge into the gutter and clip. Anchor the
+   leftmost card's grow to its left edge so it expands inward (rightward) only,
+   keeping the left edge pinned on the safe margin. */
+html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .card-poster-wrap {
+  transform-origin: left center;
+}
 
 .media-card .badge {
   position: absolute;
@@ -1555,7 +1591,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 .screen-home .home-feed .row-scroll {
-  padding-bottom: var(--space-3);
+  /* padding-top/bottom set above (22px) for focus-grow headroom — keep them. */
 }
 
 /* Home shelves share the standard card gap now that all posters are 180px. */
@@ -1597,6 +1633,24 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .row-section--compact .row-scroll .row-item,
 .row-section--compact .row-scroll .media-card {
   width: calc(var(--row-poster-w) - 22px);
+}
+
+/* EVERY home rail card is the SAME fixed size so all rails align to ONE
+   12-column grid — exactly 6 cards span the content box (6×248 + 5×40 = 1688 =
+   --content-max). This overrides BOTH the generic compact shrink (-22px) AND
+   the sparse `max-width: 240px` clamp, which otherwise make On Deck 240px while
+   section rails are 248px and drift the columns out of alignment. flex:0 0
+   locks the basis so the right-gutter bleed can't stretch the cards — it only
+   lets a 7th card peek past the edge. (Matches Google JetStreamCompose: fixed
+   card width + uniform row spacing + start content-padding.) */
+.screen-home .home-feed .row-scroll .row-item,
+.screen-home .home-feed .row-scroll .media-card {
+  flex: 0 0 var(--home-hub-poster-w);
+  width: var(--home-hub-poster-w);
+  max-width: none;
+}
+.screen-home .home-feed .row-scroll > * + * {
+  margin-left: var(--row-card-gap);
 }
 
 .row-scroll .row-item,
