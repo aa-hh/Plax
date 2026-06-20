@@ -151,7 +151,7 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 - **Variant axes:** `<Prop=A|B>`, `<State=Default|Focused|Pressed|Disabled>`, …
 - **Per-element spec:** <table or list — size · padding · type · color/token per part × state>
 - **Deviations from kit (fix-list):** <only for 🚧 — what to reconcile>
-- **Platform deviations (ratified):** <2:3 not 16:9; no focus scale webOS4; etc.>
+- **Platform deviations (ratified):** <2:3 not 16:9; transform-only focus scale webOS4+ via caps-motion; etc.>
 ```
 
 ---
@@ -173,7 +173,7 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 - **Per-element (as-built vs kit):**
   - poster radius `--radius-lg` = **12** ✅ matches kit 12; sizes rail `156×234`, grid `176×264`
   - text-stack `margin-top --space-5`; title `--font-card-title 18/1.25 w600`, subtitle 16, meta 14, all single-line
-  - focus: ring via transparent border; scale webOS5+ only
+  - focus: ring via transparent border; transform-only scale runs under caps-motion (webOS 4+, incl. B8)
 - **Platform deviations (ratified):** vertical 2:3 (not 16:9); title weight 600 vs kit 500; meta line is app-specific. No action.
 
 ### Button  ⭐ gold-standard reference entry
@@ -202,12 +202,12 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 - **App reconciliation (as-built 2026-06-20):**
   - `.btn` = filled. Rest fill **`--button-container #303030`** (token added), pill radius `--gt-radius-button 999`, label scaled to `--font-meta 22` for 10-foot.
   - **Padding `--space-5`/`--space-6` (20/24px)** → height ≈ 71px. Scaled from the kit container proportion (py10–12/px16 vs a 14px label) to our 22px label so the solid container has real internal padding (was 12/28px → 52px, a tight pill).
-  - **Focus = light-pill inversion** (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`) — the focus indicator; kit's 1.1× scale gated to webOS5+ (`html.caps-motion`), B8 = static inversion.
+  - **Focus = light-pill inversion** (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`) — the primary cue; a paint change, so it is instant on every engine (not animated). The kit's 1.1× scale runs under `html.caps-motion` (now webOS 4+, incl. B8).
   - `.btn-primary` = always-blue filled (one primary per screen); still inverts on focus.
 - **Deviations from kit (fix-list):**
   - **Rest fill** `#303030` (inverse-on-surface, chosen so it reads on settings cards) vs kit Button default `#444746 @80%` (surface-variant). Pulled from an ImageButton node during the container fix; **reconcile against canonical Button `169:1649`** (decide: keep `#303030` for card legibility, or adopt `#444746 @80%`).
   - ⚠️ **`.btn-outline:focus` is broken** — sets light text while the shared `.btn:focus` sets a light bg → light-on-light. Don't use focusable outline buttons until fixed.
-- **Platform deviations (ratified):** blue `--accent` focus accents; type up-scaled to 22px for 10-foot; kit 1.1× focus scale gated to webOS5+.
+- **Platform deviations (ratified):** blue `--accent` focus accents; type up-scaled to 22px for 10-foot; kit 1.1× focus scale runs under caps-motion (webOS 4+).
 
 ### Chip  ⚠️ audited 2026-06-19 — diverges
 
