@@ -2,7 +2,7 @@ import { getState, setState } from '../../core/store.js';
 import { browseByType, refreshSection } from '../../backends/index.js';
 import { filterLibrariesForUser } from '../../security/libraryAccess.js';
 import { createMediaCard } from '../components/mediaCard.js';
-import { focusFirst, attachFocusNav } from '../focus.js';
+import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
   mountBrowsingHubNav,
   libraryHubId
@@ -17,8 +17,10 @@ var LIBRARY_INITIAL_POSTERS = 24;
 /** Virtual grid constants */
 var GRID_COLS = 6;
 var BUFFER_ROWS = 3;
-/** Estimated card height (poster 264px + margin 24px + text ~40px) in px at 1080p */
-var ROW_HEIGHT_ESTIMATE = 330;
+/** Estimated card-row pitch at 1080p: poster --row-poster-h 372px + caption
+ *  (~48px) + vertical margins (28px) ≈ 448. Measured precisely after first
+ *  render (measureRowHeight); this is only the pre-measure guess. */
+var ROW_HEIGHT_ESTIMATE = 460;
 
 var SORT_OPTIONS = [
   { key: 'titleSort', label: 'Title' },
@@ -44,17 +46,17 @@ function libraryScreen(root, params, navigate) {
   screen.className = 'screen library-screen';
   screen.innerHTML =
     '<div class="library-layout">' +
-    '<div class="library-sidebar" data-focus-zone="library-sidebar">' +
     '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
-    '<button class="library-item library-action" id="btn-scan-library" tabindex="0">Scan for new media</button>' +
-    '</div>' +
     '<div class="library-main" id="lib-main">' +
-    '<h1 class="screen-title screen-title-compact" id="lib-title">Library</h1>' +
+    '<h1 class="screen-title library-title" id="lib-title">Library</h1>' +
     '<p class="watch-status-msg" id="lib-scan-status"></p>' +
+    '<div class="library-toolbar">' +
     '<div class="library-filter-bar" id="library-filter-bar">' +
     '<button class="library-filter-chip library-filter-chip--active" id="filter-chip-all" data-filter="all" tabindex="0">All</button>' +
     '<button class="library-filter-chip" id="filter-chip-unwatched" data-filter="unwatched" tabindex="0">Unwatched</button>' +
     '<button class="library-filter-chip" id="filter-chip-sort" data-sort-index="0" tabindex="0">Sort: Title ▾</button>' +
+    '</div>' +
+    '<button class="library-scan-btn" id="btn-scan-library" tabindex="0">Scan library</button>' +
     '</div>' +
     '<div class="library-grid-host" id="library-grid-host">' +
     '<div class="media-grid" id="media-grid" data-cols="6" data-focus-zone="library-grid"></div>' +
@@ -94,6 +96,11 @@ function libraryScreen(root, params, navigate) {
   // Virtual scroll state
   var allItems = [];            // full unfiltered+unsorted dataset
   var displayItems = [];        // after filter + sort applied
+  // Set whenever displayItems is rebuilt (filter/sort/load) so the next
+  // renderWindow drops ALL cards instead of reusing by index — the item AT each
+  // index changed, so incremental reuse would show stale posters. Pure scrolling
+  // leaves it false → cards are reused (no whole-grid poster flash).
+  var displayDirty = false;
   var rowHeightPx = ROW_HEIGHT_ESTIMATE;
   var rowHeightMeasured = false;
   var topSpacer = null;
@@ -123,6 +130,25 @@ function libraryScreen(root, params, navigate) {
     var card = e.target && e.target.closest ? e.target.closest('.media-card') : null;
     if (card && grid && grid.contains(card)) schedulePosterNeighborhood(card);
   });
+
+  // On a cold landing, move focus onto the first grid card once it renders so the
+  // user starts in the content (not on the overlay rail, which would expand over
+  // the grid). Mirrors homeScreen.focusFirstFeedCardIfNeeded: only displace the
+  // auto-focused sidebar (data-initial-focus), never a deliberate sidebar landing
+  // or an in-place library switch.
+  function focusFirstGridCardIfNeeded() {
+    if (destroyed || !grid) return;
+    var active = document.activeElement;
+    if (active && grid.contains(active)) return;
+    var sidebar = screen.querySelector('.browsing-hub-nav-host');
+    if (sidebar && active && sidebar.contains(active) && active !== document.body) {
+      var initialAuto = sidebar.getAttribute('data-initial-focus') === '1';
+      if (!initialAuto) return;
+      sidebar.removeAttribute('data-initial-focus');
+    }
+    var card = grid.querySelector('.media-card');
+    if (card && card.focus) card.focus();
+  }
 
   // ── Scan status helpers ───────────────────────────────────────────────────
 
@@ -180,6 +206,7 @@ function libraryScreen(root, params, navigate) {
     }
 
     displayItems = items;
+    displayDirty = true;
   }
 
   function updateFilterChips() {
@@ -281,6 +308,7 @@ function libraryScreen(root, params, navigate) {
       // Remove any rendered cards
       var toRemove = Array.prototype.slice.call(grid.querySelectorAll('.media-card'));
       for (var r = 0; r < toRemove.length; r++) grid.removeChild(toRemove[r]);
+      invalidateFocusableCache();
       return;
     }
 
@@ -297,8 +325,9 @@ function libraryScreen(root, params, navigate) {
     var renderStartIndex = renderStartRow * GRID_COLS;
     var renderEndIndex = Math.min(total, renderEndRow * GRID_COLS);
 
-    // Skip re-render if window hasn't shifted
-    if (renderStartIndex === lastRenderStart && renderEndIndex === lastRenderEnd) return;
+    // Skip re-render if the window hasn't shifted — unless the dataset itself
+    // changed (filter/sort/load), which must rebuild even at the same range.
+    if (!displayDirty && renderStartIndex === lastRenderStart && renderEndIndex === lastRenderEnd) return;
     lastRenderStart = renderStartIndex;
     lastRenderEnd = renderEndIndex;
 
@@ -312,32 +341,68 @@ function libraryScreen(root, params, navigate) {
       ? parseInt(active.getAttribute('data-item-index'), 10)
       : NaN;
 
-    // Remove existing cards (but not spacers)
+    // Incremental reconcile (NOT a full rebuild): keep the cards that are still
+    // in the new window so their already-loaded posters survive. Recreating every
+    // card on each scroll restarts every poster from its dark placeholder + fade,
+    // which flashes the whole grid black on every row step. Only remove the cards
+    // that scrolled out and add the ones that scrolled in.
+    // displayItems changed (filter/sort/load) → the item at each index is
+    // different, so every card must be rebuilt; reuse only on pure scroll.
+    var fullReset = displayDirty;
+    displayDirty = false;
     var existingCards = Array.prototype.slice.call(grid.querySelectorAll('.media-card'));
+    var present = {};
+    var removedAny = false;
     for (var i = 0; i < existingCards.length; i++) {
-      grid.removeChild(existingCards[i]);
+      var ci = parseInt(existingCards[i].getAttribute('data-item-index'), 10);
+      if (fullReset || isNaN(ci) || ci < renderStartIndex || ci >= renderEndIndex) {
+        grid.removeChild(existingCards[i]);
+        removedAny = true;
+      } else {
+        present[ci] = existingCards[i];
+      }
     }
 
     // Update spacer heights
     topSpacer.style.height = (renderStartRow * rowHeightPx) + 'px';
     bottomSpacer.style.height = ((totalRows - renderEndRow) * rowHeightPx) + 'px';
 
-    // Render visible slice
-    var fragment = document.createDocumentFragment();
+    // Add the cards that entered the window, each inserted before the first
+    // already-rendered card with a higher index so DOM stays in item order
+    // (flex-wrap depends on it). New blocks are contiguous at one end, so this
+    // is a handful of cheap lookups per scroll step.
+    var addedAny = false;
     for (var j = renderStartIndex; j < renderEndIndex; j++) {
-      fragment.appendChild(makeCard(displayItems[j], j));
+      if (present[j]) continue;
+      var newCard = makeCard(displayItems[j], j);
+      var ref = bottomSpacer;
+      var cur = grid.querySelectorAll('.media-card');
+      for (var m = 0; m < cur.length; m++) {
+        var mi = parseInt(cur[m].getAttribute('data-item-index'), 10);
+        if (!isNaN(mi) && mi > j) { ref = cur[m]; break; }
+      }
+      grid.insertBefore(newCard, ref);
+      addedAny = true;
     }
-    // Insert between spacers: insert before bottomSpacer
-    grid.insertBefore(fragment, bottomSpacer);
 
-    // Restore focus to the same item if it's still within the rendered window.
+    // Refresh focus.js's per-container focusable cache only when the node set
+    // actually changed, so the geometric D-pad nav never scores detached cards
+    // (the stale-cache "DOWN jumps to the sidebar and can't get back" bug).
+    if (addedAny || removedAny) invalidateFocusableCache();
+
+    // Focus is naturally preserved when the focused card stays in the window
+    // (it's not removed). Only re-home if it scrolled out and focus dropped.
     if (!isNaN(focusedIndex) && focusedIndex >= renderStartIndex && focusedIndex < renderEndIndex) {
-      var refocus = grid.querySelector('.media-card[data-item-index="' + focusedIndex + '"]');
-      if (refocus && refocus.focus) refocus.focus();
+      var active2 = document.activeElement;
+      if (!active2 || !grid.contains(active2)) {
+        var refocus = present[focusedIndex] ||
+          grid.querySelector('.media-card[data-item-index="' + focusedIndex + '"]');
+        if (refocus && refocus.focus) refocus.focus();
+      }
     }
 
-    // Prime posters for what's visible
-    primeVisiblePosters(grid);
+    // Prime posters for the freshly added cards (kept cards already have theirs).
+    if (addedAny) primeVisiblePosters(grid);
 
     // Try to measure height after first render
     if (!rowHeightMeasured) measureRowHeight();
@@ -388,6 +453,7 @@ function libraryScreen(root, params, navigate) {
       grid.innerHTML = '';
       setupVirtualScroll();
       renderWindow();
+      focusFirstGridCardIfNeeded();
 
       if (fetchRest) {
         fetchRest().then(function (allServerItems) {
@@ -450,6 +516,10 @@ function libraryScreen(root, params, navigate) {
   if (activeLib) loadGrid(activeLib);
   else grid.innerHTML = '<p class="status-msg">No libraries available</p>';
 
+  // Land focus on the active sidebar item, but tag it as auto-focus so it gives
+  // way to the first grid card once the grid renders (focusFirstGridCardIfNeeded).
+  var initialSidebar = screen.querySelector('.browsing-hub-nav-host');
+  if (initialSidebar) initialSidebar.setAttribute('data-initial-focus', '1');
   if (!hubNav.focusSidebar()) focusFirst(screen);
 
   return {

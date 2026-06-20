@@ -132,6 +132,8 @@
   --gt-primary: var(--accent);            /* key actions, active state, focus */
   --gt-on-primary: var(--color-on-primary);
   --gt-secondary: #7FCFFF;                /* sys/dark/secondary */
+  --gt-secondary-container: #004A77;      /* sys/dark/secondary-container — selected chip fill */
+  --gt-on-secondary-container: #C2E7FF;   /* sys/dark/on-secondary-container — selected chip label */
   --gt-tertiary: #6DD58C;                 /* sys/dark/tertiary */
   --gt-bg: var(--bg-base);
   --gt-surface-0: var(--bg-base);         /* tonal elevation 0 → 3 */
@@ -1128,36 +1130,22 @@ html.caps-motion .detail-watchlist-btn:focus {
   flex: 1 1 0;
   height: 0;
   min-height: 0;
-  overflow: hidden;
+  /* visible (not hidden) so the nav rail can bleed left into the safe-area gutter
+     (left: -safe-x) like Home; the screen + grid-host clip their own overflow. */
+  overflow: visible;
 }
 
-.library-sidebar {
+/* JetStream-style browse: the grid uses the FULL 12-column width. The nav rail
+   collapses into the left safe-area gutter as an OVERLAY (identical to Home)
+   rather than an in-flow sidebar that squeezes the grid — this is the "better
+   use of the space" reclaim. Expands over the leftmost cards only while focused. */
+.library-screen .browsing-hub-nav-host {
   position: absolute;
   top: 0;
-  left: 0;
   bottom: 0;
-  width: var(--library-sidebar-w);
-  overflow: hidden;
-  padding-right: 8px;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 2;
-}
-
-.library-sidebar > * + * {
-  margin-top: var(--space-4);
-}
-
-.library-sidebar .browsing-hub-nav-host {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  border-right: none;
-}
-
-.library-sidebar .library-action {
-  margin-top: auto;
+  left: calc(-1 * var(--safe-x));
+  z-index: 5;
+  background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
 }
 
 .library-item {
@@ -1230,13 +1218,66 @@ html.caps-motion .detail-watchlist-btn:focus {
 }
 
 .library-main {
-  margin-left: var(--library-main-offset);
+  margin-left: 0;
+  width: 100%;
   height: 100%;
   min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+/* Centered screen title (JetStream "categories-details" header) — names the
+   library (Films / TV). Standard flat background; no backdrop image. */
+.library-title {
+  text-align: center;
+  margin-bottom: var(--space-5);
+  flex-shrink: 0;
+}
+
+/* Control strip under the title: filters left, Scan action right. */
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+  flex-shrink: 0;
+}
+
+.library-toolbar .library-filter-bar {
+  padding: 0;
+  margin: 0;
+}
+
+/* Secondary action = TV Design Kit Button (Outline), reconciled: fully-rounded
+   pill container (kit "text/icon buttons fully rounded"), 1px outline, focus =
+   the kit light-fill INVERSION (not the broken .btn-outline ring). */
+.library-scan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--gt-radius-button);
+  background: transparent;
+  border: 1px solid rgba(142, 145, 143, 0.35);
+  color: var(--text-secondary);
+  font-size: var(--font-small);
+  font-weight: var(--gt-weight-medium);
+  letter-spacing: var(--gt-ls-label);
+  cursor: pointer;
+}
+
+.library-scan-btn:focus {
+  outline: none;
+  background: var(--focus-fill);
+  border-color: var(--focus-fill);
+  color: var(--focus-on-fill);
+}
+
+.library-scan-btn:disabled {
+  opacity: 0.6;
 }
 
 .library-grid-host {
@@ -1281,16 +1322,18 @@ html.caps-motion .detail-watchlist-btn:focus {
 .media-grid {
   display: flex;
   flex-wrap: wrap;
-  /* Negative margin must mirror the per-card margin below so the grid's content
-     edge still aligns to the safe column. Horizontal half-gutter = 1.0417vw (20px
-     → 40px gap, the grid gutter); vertical 14px keeps rows a touch tighter. */
-  margin: -14px -1.0417vw;
+  /* Negative margin mirrors the per-card margin so the grid edge aligns back to
+     the safe column (minus the 16px ring-clearance padding). Horizontal half-
+     gutter is 14px (→ 28px between cards): at the larger 248px card a 20px half-
+     gutter overflows and wraps the row to 5 — 14px keeps 6 across the full width
+     (6×248 + 5×28 = 1628, well inside --content-max) with focus-ring headroom. */
+  margin: -14px -14px;
   padding: var(--focus-ring-pad) var(--focus-ring-pad) 16px;
   align-content: flex-start;
 }
 
 .media-grid > .media-card {
-  margin: 14px 1.0417vw;
+  margin: 14px 14px;
 }
 
 .media-card {
@@ -1299,13 +1342,16 @@ html.caps-motion .detail-watchlist-btn:focus {
   outline: none;
 }
 
+/* Full-width JetStream grid: 6 cards across the reclaimed content width at the
+   standard 2-column card footprint (--row-poster-w 248px, --row-poster-h 372px).
+   Gutter math lives on .media-grid above (28px between cards). */
 .media-grid .media-card {
-  width: var(--grid-poster-w);
+  width: var(--row-poster-w);
 }
 
 .media-grid .media-card .card-poster-wrap {
-  width: var(--grid-poster-w);
-  height: var(--grid-poster-h);
+  width: var(--row-poster-w);
+  height: var(--row-poster-h);
 }
 
 .media-grid .media-card .poster {
@@ -1388,6 +1434,28 @@ html.caps-motion .detail-watchlist-btn:focus {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Library / browse grid caption (Films & TV overview): TV Design Kit Title Medium
+   over a single Label Medium support line (year for films, "N Seasons" for shows).
+   Title Medium = Roboto Medium 16/24 +0.15px (node 8661:31904); Label Medium =
+   Roboto Medium, on-surface-variant. Tighter top gap than rails — poster-only home
+   rails hide text, but the browse grid leads with the caption. */
+.media-grid .card-text {
+  margin-top: var(--space-4);
+}
+
+.media-grid .card-title {
+  font-weight: var(--gt-weight-title);
+  letter-spacing: var(--gt-ls-title);
+  color: var(--text-primary);
+}
+
+.media-grid .card-meta {
+  font-weight: var(--gt-weight-label);
+  letter-spacing: var(--gt-ls-label);
+  color: var(--text-secondary);
+  margin-top: var(--space-2);
 }
 
 .media-card:focus .card-title { color: var(--accent); }
@@ -4780,32 +4848,32 @@ video.native-player.subtitle-no-bg ::cue {
   flex-shrink: 0;
 }
 
+/* TV Design Kit Chip (node 2506:17644). Canonical rest: transparent fill, 1px
+   outline (#8E918F) @ low opacity, radius 8, padding 8/16, label on-surface-
+   variant Roboto Medium (14/20 +0.1 in the kit; up-scaled to --font-small for
+   10-foot). Focus uses the shared control INVERSION (light fill + dark text,
+   group rule above) — no ring. Selected = secondary-container fill. */
 .library-filter-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: var(--target-min);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid rgba(142, 145, 143, 0.35);
   color: var(--text-secondary);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   font-size: var(--font-small);
+  font-weight: var(--gt-weight-medium);
+  letter-spacing: var(--gt-ls-label);
   margin-right: var(--space-2);
 }
 
-.library-filter-chip:focus {
-  outline: none;
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
-  color: var(--text-primary);
-}
-
 .library-filter-chip--active {
-  background: var(--bg-surface-hover);
-  border-color: var(--accent);
-  color: var(--text-primary);
+  background: var(--gt-secondary-container);
+  border-color: transparent;
+  color: var(--gt-on-secondary-container);
 }
 
 /* ── Virtual grid spacers ── */

@@ -488,6 +488,15 @@ function warmHubPrefetchPosters(hubPrefetchResult, opts) {
   });
 }
 
+/**
+ * True if this poster URL already loaded this session (browser-cached). Lets a
+ * re-created card (scrolled back into view) bind + reveal immediately instead of
+ * deferring, so the cached poster shows without a placeholder→fade re-flash.
+ */
+function isPosterLoaded(url) {
+  return !!(url && loadedUrls[url]);
+}
+
 function cardPosterNeedsHydrate(card) {
   if (!card) return false;
   var url = card.getAttribute('data-thumb') || '';
@@ -771,6 +780,7 @@ export {
   revealPosterImage,
   watchPosterReveal,
   bindPosterImage,
+  isPosterLoaded,
   hydrateCardPoster,
   hydrateRowWindow,
   hydrateGridWindow,
