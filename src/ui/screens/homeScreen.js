@@ -242,9 +242,16 @@ function homeScreen(root, params, navigate) {
     var token = renderToken;
     var el = document.getElementById('home-feed');
     if (!el || destroyed || token !== renderToken) return;
+    // A fresh (non-append) render is the "initial phase resolved" signal, so it
+    // must clear the loading skeletons NOW — even when this phase produced no
+    // rows. Otherwise the grey skeleton cards leak: a brand-new user has an empty
+    // On Deck and can have Recently Added / promoted rows still in the deferred
+    // phase, so the initial phase resolves empty; the old early-return left the
+    // skeletons in place and the deferred rows appended below them, leaving the
+    // grey boxes that clip under the immersive hero once a card is focused.
+    if (!append) el.innerHTML = '';
     if (!rows || !rows.length) return;
     var sorted = pinContinueWatchingFirst(rows);
-    if (!append) el.innerHTML = '';
     sorted.forEach(function (row) {
       renderHubRow(el, row, navigate, {
         cols: 12,
