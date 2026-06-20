@@ -178,7 +178,7 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 
 ### Button  ⭐ gold-standard reference entry
 
-- **Status:** 🚧 · 2026-06-20 — shape/padding/focus reconciled to the container guideline; **rest fill diverges from the kit Button** (see fix-list)
+- **Status:** ✅ · 2026-06-20 — fully reconciled to the kit Button (`169:1649`): rest fill adopts the kit `#444746 @80%`; `.btn-outline:focus` now inverts correctly (light fill + dark label). Earlier fix-list cleared.
 - **Android TV guideline:** [Buttons](https://developer.android.com/design/ui/tv/guides/components/buttons) — incl. the [Button container](https://developer.android.com/design/ui/tv/guides/components/buttons#button-container) section ("solid color containers for filled buttons; container width from content with consistent padding; text/icon = fully rounded")
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `169:1649` (canonical Button)
 - **Code:** `.btn` / `.btn-primary` / `.btn-outline` in `src/styles/app.css`
@@ -200,34 +200,45 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 
   Kit focus = **invert (light fill + dark text) + ~1.1× scale**.
 - **App reconciliation (as-built 2026-06-20):**
-  - `.btn` = filled. Rest fill **`--button-container #303030`** (token added), pill radius `--gt-radius-button 999`, label scaled to `--font-meta 22` for 10-foot.
+  - `.btn` = filled. Rest fill **`--button-container rgba(68,71,70,.8)` (kit `#444746 @80%`, node `169:1649`)**, pill radius `--gt-radius-button 999`, label scaled to `--font-meta 22` for 10-foot.
   - **Padding `--space-5`/`--space-6` (20/24px)** → height ≈ 71px. Scaled from the kit container proportion (py10–12/px16 vs a 14px label) to our 22px label so the solid container has real internal padding (was 12/28px → 52px, a tight pill).
   - **Focus = light-pill inversion** (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`) — the primary cue; a paint change, so it is instant on every engine (not animated). The kit's 1.1× scale runs under `html.caps-motion` (now webOS 4+, incl. B8).
   - `.btn-primary` = always-blue filled (one primary per screen); still inverts on focus.
-- **Deviations from kit (fix-list):**
-  - **Rest fill** `#303030` (inverse-on-surface, chosen so it reads on settings cards) vs kit Button default `#444746 @80%` (surface-variant). Pulled from an ImageButton node during the container fix; **reconcile against canonical Button `169:1649`** (decide: keep `#303030` for card legibility, or adopt `#444746 @80%`).
-  - ⚠️ **`.btn-outline:focus` is broken** — sets light text while the shared `.btn:focus` sets a light bg → light-on-light. Don't use focusable outline buttons until fixed.
+- **Resolved (2026-06-20):**
+  - **Rest fill** adopted kit canonical `#444746 @80%` (`rgba(68,71,70,.8)`, surface-variant, node `169:1649`), replacing the off-spec `#303030` (which had been pulled from an ImageButton node). The 80% alpha composites over the darkest settings-card surfaces (`#131314`–`#282A2C`) lighter than `#303030` did, so card legibility improved rather than regressed — the original reason to keep `#303030` no longer holds.
+  - **`.btn-outline:focus` fixed** — removed the `color:--gt-text` override that fought the shared `.btn:focus` inversion (caused light-on-light). Outline buttons now invert like the filled button (light `--focus-fill` fill + dark `--focus-on-fill` label); the rule only sets `border-color:--focus-fill` to match the inverted surface. Verified on the two focusable call sites (`.detail-modal-cancel`). Focusable outline buttons are now safe to use.
 - **Platform deviations (ratified):** blue `--accent` focus accents; type up-scaled to 22px for 10-foot; kit 1.1× focus scale runs under caps-motion (webOS 4+).
 
-### Chip  ⚠️ audited 2026-06-19 — diverges
+### Chip  ✅ reconciled 2026-06-20
 
-- **Status:** 🚧 diverges (recorded spec is the target)
+- **Status:** ✅ to-spec · 2026-06-20 — all chip instances reconciled to kit `2506:17680` (8px rounded-rect, 8/16 padding, 1px `#8E918F` outline, shared control-inversion focus). The Library filter chip (`2506:17644`) was already reconciled (see Library grid entry); the other instances were brought into line with it.
 - **Android TV guideline:** Foundations + Layout (no dedicated chip page)
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `2506:17680` (default `2506:17644`)
 - **Anatomy (canonical):** `container` (flex, `gap 8`, `padding 8/16`) + `background` (border `#8E918F` 1px **@20%**, **radius 8**) + `leading icon` (opt) + `label` (Roboto Medium **14/20**, +0.1, `#C4C7C5` @80%) + `trailing icon`/`image` (opt); states `Default|Focused|Pressed|Active`
 - **Code (as-built):** `.detail-setting-chip` / `.library-filter-chip` / `.user-chip` group + `.browsing-hub-item`; focus group `src/styles/app.css:314`
-- **Deviations from kit (fix-list):** app uses **pill `--radius-pill` (24)** vs kit **8px rounded-rect**; label `--font-meta` (22) vs kit 14 (10-foot up-scale → ratify as a Plax rule); verify border opacity (kit 20%) + selected treatment.
+- **Resolved spec / values:**
+  - **Radius:** all instances → `--radius-md` (8px) rounded-rect (was `--radius-pill` 24 on `.detail-setting-chip` via `--radius-md`… and `.user-chip`). `.user-chip` changed `--radius-pill` → `--radius-md`.
+  - **Padding:** kit `8/16` → `var(--space-2) var(--space-4)`. `.detail-setting-chip` was `12/22`; `.user-chip` was `10/space-5` → both reconciled.
+  - **Border:** 1px `#8E918F` outline matching the ✅ Library filter chip (`rgba(142,145,143,.35)`); replaces the off-spec `rgba(255,255,255,.08)` on `.detail-setting-chip` and the borderless `.user-chip`.
+  - **Selected/Active:** kept blue Material 3 tokens — `--gt-secondary-container`/`--gt-on-secondary-container` aligned with the filter chip where applicable; `.detail-setting-chip--active`/`.user-chip.active` retain `--accent-soft`/`--accent` (ratified blue active treatment, same family).
+  - **Focus:** removed the off-spec ring+shadow override on `.detail-setting-chip:focus` so the chip uses the shared control INVERSION (light `--focus-fill` fill + dark `--focus-on-fill` text) from the focus group at `src/styles/app.css:346`.
+- **Platform deviations (ratified):** label **`--font-meta` 22px** kept (kit 14 → 10-foot up-scale, ratified Plax rule, do not shrink); blue `--accent`/secondary-container active tokens; border `@35%` (the reconciled Library-grid value) rather than literal kit `@20%`; focus motion via `html.caps-motion` only.
 
-### Nav item (browsing-hub sidebar)  ⚠️ audited 2026-06-19 — diverges
+### Nav item (browsing-hub sidebar)  ✅ reconciled 2026-06-20
 
-- **Status:** 🚧 diverges (recorded spec is the target)
+- **Status:** ✅ to-spec · 2026-06-20 (reconciled to kit)
 - **Android TV guideline:** [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer)
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / Nav item `9:161` (default `9:873`) · drawer `563:4331`
 - **Anatomy (canonical):** `container` (flex, **height 48**, `padding-x 16`, `gap 12`) + `content` (leading `icon` **24px**) + `label` (when `Expanded=True`) + `badge` (opt, top-right); states `Default|Focused|Selected` × `Expanded`
-- **Code (as-built):** `.browsing-hub-nav` / `.browsing-hub-item` (+ `__icon`) `src/styles/app.css:693+`
-- **Per-element:** `min-height --target-min` = 48 ✅; **icon box 40×40 vs kit 24** ⚠️; expand/collapse via JS classes ✅ (Chrome53-correct)
-- **Deviations from kit (fix-list):** icon 40 vs 24 (reconcile or ratify); confirm `padding-x 16` / `gap 12`.
-- **Contract (unchanged):** nav order Home · Library · Search · Settings.
+- **Code (as-built):** `.browsing-hub-nav` / `.browsing-hub-item` (+ `__icon`) `src/styles/app.css:718+`
+- **Resolved spec / per-element:**
+  - icon box **24×24** = kit ✅ (was 40×40; reconciled 2026-06-20). Glyph `.hub-icon` also 24×24 (was 26) so it fills the kit box without overflow.
+  - `padding-x` **16px** = kit ✅ (`var(--space-3) 16px`).
+  - `gap` **12px** = kit ✅ (icon→label `margin-left: var(--space-3)`; was `--space-4`/16px).
+  - container `min-height: var(--target-min)` = **52px** — ratified deviation from kit 48. `--target-min` is the global 10-foot focus/hit floor used app-wide; kept ≥48 rather than pinned to 48 for d-pad target consistency. Container is `display:flex; align-items:center` so glyph/label center within the 52px row.
+  - expand/collapse via JS classes ✅ (Chrome53-correct, NO `:focus-within`).
+- **Contract (unchanged):** nav order Home · Library · Search · Settings (Media / Search / System sections in `browsingHubNav.js`).
+- **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host`; CSS-only change, 600/600 tests pass.
 
 ### Rail row
 
@@ -333,27 +344,38 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 - **Variant axes:** `State=Default|Selected|Focused|Pressed|Disabled`, `showIcon`, `overline`, `subtitle`, `action`, `control`
 - **App instances:** `.gt-list-item` (Settings rows) reuses this — see Settings screen entry.
 
-### Player track-selector sheet  ⚠️ as-built, diverges from spec
+### Player track-selector sheet  ✅ reconciled to List Item
 
-- **Status:** 🚧 documented 2026-06-19, **not reconciled** to the List Item spec
+- **Status:** ✅ reconciled 2026-06-20 to the kit List Item spec (was 🚧 documented 2026-06-19)
 - **Android TV guideline:** [Lists](https://developer.android.com/design/ui/tv/guides/components/lists) (rows) + [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer) (panel)
 - **Figma kit refs:** Menu `8842:26165` · Modal drawer `4498:31402` · rows = List Item `561:3969`
-- **Code:** `.player-track-modal-sheet` → `.player-menu-list` → `.player-menu-option` in `src/ui/screens/playerScreen.js` (~line 298–308) + `src/styles/app.css:3715–3786`
-- **Anatomy (as built):** `sheet` (title + prev/next category chevrons + list + Cancel) ; `row` (`.player-menu-option`) = `label` (single-line, ellipsis) + `check` (20px, `--accent` when active); `min-height 48`; active = bg tint + accent check; focus = light-fill inversion
-- **Deviations from kit List Item (fix-list):** no leading `icon` slot; no `overline`/`subtitle` (single line); checkmark glyph instead of kit `control`; row `min-height 48` vs kit 64; selection via tint+accent vs kit `Selected` state. *May be intentional 10-foot simplifications — flagged for a decision.*
+- **Code:** `.player-track-modal-sheet` → `.player-menu-list` (`role=radiogroup`) → `.player-menu-option` (`role=radio`) in `src/ui/screens/playerScreen.js` (sheet ~line 298–306; row builder ~line 1262–1280) + `src/styles/app.css:3840+`
+- **Anatomy (resolved):** `sheet` (title + prev/next category chevrons + list + Cancel) ; `row` (`.player-menu-option`) = single-line `label` (ellipsis, flex-1) + trailing 24px radio `control` (`.player-menu-option-check`); container flex row, **gap 8, padding 12/16, radius 8, min-height 64** (kit-correct). Active = light fill (`rgba(227,227,227,.16)`) + filled accent radio; focus = light-fill inversion (no `:focus-within` — JS `--active`/`:focus` classes); control dot revealed via `::after scale()` (transform/opacity only).
+- **Ratified 10-foot deviations** (kept, documented): no leading `icon` slot; no `overline`/`subtitle` (a track choice is a single-line radio); selection rendered as tint + accent radio = our token-system expression of the kit `Selected` state.
+- **Resolved deviations** (reconciled toward kit): row `min-height 48 → 64`; `radius 999px → 8`; `padding 8/18 → 12/16`; bare `✓` glyph → proper 24px **radio `control`** (single-select is radio-correct). Single builder feeds audio/subtitle/quality selectors, so all three are consistent.
 
-### Progress bar  ⚠️ audited 2026-06-19 — diverges + 3 impls
+### Progress bar  ✅ reconciled 2026-06-20 — consolidated to one token-driven bar
 
-- **Status:** 🚧 diverges (and inconsistent across the app)
+- **Status:** ✅ to-spec (with ratified 10-ft deviations) · 2026-06-20
 - **Android TV guideline:** Foundations (no dedicated page)
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / `719:6043` (40% variant `719:6044`)
-- **Anatomy (canonical):** `track` (height **3**, radius 2, white **@20%**) + `fill` (white solid, radius 2) + optional `handle` dot (16px, seek bars)
-- **Code (as-built):** `.detail-progress-bar`/`.detail-progress-fill` (height **6**, fill `--accent`) `src/styles/app.css:2090`; **also** `.detail-episode-progress(-fill)` and the card progress badge — **3 separate implementations**
-- **Deviations / fix-list:** height 6 vs kit 3; fill `--accent` (blue) vs kit white; **consolidate the 3 impls into one token-driven bar.**
+- **Anatomy (canonical kit):** `track` (height **3**, radius 2, white **@20%**) + `fill` (white solid, radius 2) + optional `handle` dot (16px, seek bars)
+- **Resolved as-built (one definition):** shared base `.progress-track` (height `--progress-track-h`, bg `--progress-track-color`, radius `--progress-radius`, `overflow:hidden`, `pointer-events:none`) + `.progress-fill` (full height, bg `--progress-fill-color`, radius `--progress-radius`, width set inline by JS). Tokens in `:root` (`src/styles/app.css:15+`):
+
+  | Token | Value | vs kit |
+  |---|---|---|
+  | `--progress-track-h` | **4px** | kit 3 — 3px reads too thin over poster art @1080p (ratified 10-ft) |
+  | `--progress-track-color` | `rgba(0,0,0,0.55)` | kit white@20% — opaque dark scrim is more legible over artwork (ratified) |
+  | `--progress-fill-color` | `var(--accent)` (blue `#A8C7FA`) | kit white — **ratified**: blue `--accent` is the app's Material 3 progress/seek color, used everywhere |
+  | `--progress-radius` | 2px | = kit |
+
+- **Variants (positioning only, all extend the base):** `.media-card .card-progress` (bottom of poster, corner radius `0 0 var(--radius-md)…`); `.detail-progress-bar` (corner radius `0 0 16px 16px`); `.detail-episode-progress` (square). The seek bar (`.player-seek-*`, playerScreen) is a separate richer control (track + played + handle) and out of scope for this badge-bar consolidation.
+- **Code (as-built):** `.progress-track`/`.progress-fill` + variants `src/styles/app.css:1596+`, `:2207+`, `:2640+`; render sites `src/ui/components/mediaCard.js` (card), `src/ui/screens/detailScreen.js` ×2 (movie + episode). JS sets `fill.style.width = pct + '%'` — width contract unchanged.
+- **Platform:** Chrome53-safe — no `inset`/`calc`-division/`gap`; explicit edges + `width` style only. Passes `webos4-css-compat` + full suite (600).
 
 ### Text field (search input, log-sink URL, any text input)
 
-- **Status:** ✅ to-spec for the **outlined modal field** (`openTextInputModal` / settings) · 2026-06-20; 🚧 for the inline **search input** (verify against as-built)
+- **Status:** ✅ to-spec for the **outlined modal field** (`openTextInputModal` / settings) AND the inline **search input** · 2026-06-20
 - **Android TV guideline:** Foundations + Layout (no dedicated page)
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / `3815:25016` (default `3816:24930`); focused `3815:25032`, active/typing `3984:26492`
 - **Anatomy (canonical):** column `gap 6` → `label` (14/20 Medium `#C4C7C5`) + `field` (`gap 8`, `padding 12/16`, bg `#303030`, **radius 8**, optional `leading icon` 24, `input` 16/24 Medium `#E3E3E3`, optional `trailing icon` 24) + optional `supporting text` (12/16 `#C4C7C5`)
@@ -369,8 +391,9 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
   | Input text | `#E3E3E3` 24px/500 (scaled from 16) | same |
   | Caret | `#A8C7FA` | same |
 
-- **Code (as-built):** outlined modal field `.gt-text-input-wrap`/`.tv-text-input` (`src/ui/components/controls.js`, `src/styles/app.css:5009+`); inline `#search-input`/`.search-input` (`src/ui/screens/searchScreen.js`, `app.css:4468`); the **log-sink URL** field uses the Inline Edit-Toggle pattern (next entry).
-- **Deviations / fix-list:** the **search input** still needs reconciling to field padding (12/16) / radius (8) / bg (`#303030`) / type. Font up-scale (16→24) is a ratified 10-foot rule.
+- **Resolved as-built — inline search input** (`input#search-input.search-input`; live on-screen `<input type="search">`, not routed through `openTextInputModal` — keyboard/input contract unchanged) · 2026-06-20: mirrors the `.tv-text-input` field box — bg `#303030`, 1px `#8E918F` rest border, **radius 8**, padding 14×18 (kit 12×16 scaled), input `#E3E3E3` 24px/500 (kit 16 up-scaled, ratified), caret `#A8C7FA`, active = own `:focus` → 2px `#A8C7FA` + transparent bg. No label/wrap (bare input), so field-box rules are inlined rather than shared with the wrap class. Active is the element's real `:focus` (NOT `:focus-within` on a parent) — Chrome53-safe. Search-specific: `width 100% / max-width 980px / min-height 56px`.
+- **Code (as-built):** outlined modal field `.gt-text-input-wrap`/`.tv-text-input` (`src/ui/components/controls.js`, `src/styles/app.css:5142+`); inline `#search-input`/`.search-input` (`src/ui/screens/searchScreen.js`, `app.css:4624`); the **log-sink URL** field uses the Inline Edit-Toggle pattern (next entry).
+- **Deviations / fix-list:** none — both fields reconciled to spec.
 
 ### Login / Auth field  (Plax variant of Text field — full-screen sign-in)
 
@@ -445,14 +468,16 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 - **Anatomy:** small dot/pill on the poster, semantic color only; keep inside poster bounds, no focus-ring overlap.
 - **Note:** not from the kit — a Plax convention; kept deliberately. No reconciliation needed.
 
-### Tabs (season selector)  ⚠️ audited 2026-06-19 — diverges hard
+### Tabs (season selector)  ✅ reconciled 2026-06-20
 
-- **Status:** 🚧 diverges (recorded spec is the target)
+- **Status:** ✅ to-spec · 2026-06-20 — adopted the kit pill Tabs. Was the largest divergence in the registry (bare text links → before that, a text-tab + sliding-underline variant); now a filled-pill tab row.
 - **Android TV guideline:** [Tabs](https://developer.android.com/design/ui/tv/guides/components/tabs)
 - **Figma source:** Tabs strip `17:848`; **tab item** `17:849` (default) — states `17:849` Default · `2536:16789` Inactive · `21:860` Selected · `17:778` Focused; types Primary/Secondary. Tab Row `8689:34922`.
-- **Anatomy (canonical):** `tab` (flex, **height 32**, `padding 6/16`, **radius 16** pill) + `label` (Roboto Medium **14/20**, +0.1, `#C4C7C5`) + optional `leading icon`; states `Default|Inactive|Selected|Focused` × `Primary|Secondary`; Selected = filled pill
-- **Code (as-built):** `.detail-season-tabs` (container) → `.detail-season-link` (`src/styles/app.css:2588`) — a **bare `--accent` text link**: `padding 0`, no background, no radius, `font-weight 600`
-- **Deviations from kit (fix-list):** app rows are **plain text links, not pill tabs** — no `height 32` / `padding 6/16` / `radius 16` pill, no Selected-fill / Inactive treatment. Largest divergence in the registry; decide whether to adopt the kit pill Tabs or ratify the text-link pattern.
+- **Anatomy (canonical):** `tab` (flex, **height 32**, `padding 6/16`, **radius 16** pill) + `label` (Roboto Medium **14/20**, +0.1, `#C4C7C5`) + optional `leading icon`; states `Default|Inactive|Selected|Focused` × `Primary|Secondary`; Selected = filled pill.
+- **Code (as-built):** `createTabs()` in `src/ui/components/controls.js` renders `.gt-tabs[data-focus-zone]` (role=tablist) → `button.gt-tab` (role=tab) × N, `.gt-tab--active` for selected; `setActive(id)` repaints. Season selector wires it in `detailScreen.js` (`#detail-season-tabs`, zone `detail-season-tabs`); CSS `.gt-tab*` in `src/styles/app.css`.
+- **Resolved spec:** pill — `border-radius:--radius-pill` (24; kit 16), `padding:--space-3/--space-4` (12/16), `min-height:--target-min` (52), Default `background:transparent` / label `--gt-text-2`. **Selected = filled pill** `--gt-secondary-container` fill + `--gt-on-secondary-container` label (Material 3 blue; mirrors the ✅ Library filter chip active state). **Focused** = shared control inversion (`--focus-fill` / `--focus-on-fill`, `.gt-tab:focus`) — no `:focus-within`, no ring.
+- **Ratified deviations:** label kept at `--gt-body` (ratified 10-ft size, not kit 14/20); pill geometry up-scaled for 10-ft — `min-height 52` + `12/16` padding + `radius 24` (vs kit `32` / `6/16` / `16`), matching the established Library-filter-chip up-scale ratio. The old `underline` variant (text tabs + `.gt-tabs__indicator` sliding bar) and its `positionIndicator` machinery were removed — no consumer remained.
+- **Focus/selection wiring (preserved):** d-pad LEFT/RIGHT/DOWN unchanged — tabs are still focusable `.gt-tab` buttons inside the `[data-focus-zone="detail-season-tabs"]` host; `onSelect` → `loadShowEpisodes`; first tab auto-focused on load. Only the visual treatment changed.
 
 ---
 
@@ -520,6 +545,11 @@ changes so they survive checkouts/resets.
 
 ### Open reconciliations (from the 2026-06-20 merge)
 
-- **Button rest fill** `#303030` (as-built, card-legible) vs kit `#444746 @80%` (node `169:1649`) — decide.
-- **`.btn-outline:focus`** broken (light-on-light) — fix before using focusable outline buttons.
-- Standing 🚧 fix-lists: Chip (pill vs 8px), Nav item (icon 40 vs 24), Progress bar (3 impls, height/colour), Tabs (text links vs pill), search-input Text field.
+- ✅ ~~**Button rest fill** `#303030` vs kit `#444746 @80%` (node `169:1649`)~~ — resolved 2026-06-20: adopted kit `#444746 @80%`.
+- ✅ ~~**`.btn-outline:focus`** broken (light-on-light)~~ — resolved 2026-06-20: now inverts correctly; focusable outline buttons safe.
+- ✅ ~~Chip (pill vs 8px)~~ — resolved 2026-06-20: all chip instances reconciled to 8px rounded-rect / 8-16 padding / 1px `#8E918F` outline / shared inversion focus; 22px label ratified.
+- ✅ ~~**Player track-selector sheet** rows (height 48, radius 999px, padding 8/18, ✓ glyph)~~ — resolved 2026-06-20: reconciled to List Item (`561:3969`) — height 64 / radius 8 / padding 12/16 / 24px radio `control`; no-icon + single-line ratified.
+- ✅ ~~**Progress bar** (3 impls, height/colour)~~ — resolved 2026-06-20: consolidated to one token-driven base (`.progress-track`/`.progress-fill` + `--progress-*` tokens); height ratified to 4 (kit 3), blue `--accent` fill + dark scrim track ratified as the app's progress theme.
+- ✅ ~~**Tabs (season selector)** (text links / underline variant vs kit pill)~~ — resolved 2026-06-20: adopted the kit pill Tabs (`createTabs` pill, filled blue Selected mirroring the Library filter chip, shared-inversion focus); underline variant + indicator removed. 10-ft up-scale (label `--gt-body`, `radius 24`, `52`/`12-16`) ratified.
+- ✅ ~~**Search input** (inline Text field — off-spec bg/padding/radius/type)~~ — resolved 2026-06-20: reconciled to the base **Text field** spec, mirroring `.tv-text-input` (bg `#303030`, radius 8, padding 14×18, 1px `#8E918F` rest / 2px `#A8C7FA` `:focus`, input 24px/500 `#E3E3E3`, caret `#A8C7FA`).
+- Standing 🚧 fix-lists: none open. (Search input, Tabs, Nav item, Player track-selector sheet, Progress bar ✅ reconciled 2026-06-20.)
