@@ -6,7 +6,8 @@ import {
   POSTER_WIDTH_EPISODE,
   POSTER_HEIGHT_EPISODE,
   sizedPosterUrl,
-  bindPosterImage
+  bindPosterImage,
+  isPosterLoaded
 } from '../posterImages.js';
 
 /**
@@ -21,12 +22,33 @@ function formatEpisodeMeta(item) {
   return '';
 }
 
+function formatSeasonCount(item) {
+  var seasons = item.childCount || 0;
+  if (seasons > 0) return seasons === 1 ? '1 Season' : seasons + ' Seasons';
+  // Fallbacks when the server didn't return childCount on the browse payload.
+  if (item.leafCount) return item.leafCount === 1 ? '1 Episode' : item.leafCount + ' Episodes';
+  if (item.year) return String(item.year);
+  return '';
+}
+
 function formatCardLines(item, options) {
   options = options || {};
   var type = item.type || '';
   var title = item.title || '';
   var subtitle = '';
   var meta = '';
+
+  // Library / browse grid (Films & TV overview): a clean two-line caption —
+  // Title Medium over a single Label Medium support line. Films → release year,
+  // TV shows → number of seasons available. (Only the library grid passes
+  // layout:'grid', so this is scoped to that screen.)
+  if (options.layout === 'grid') {
+    return {
+      title: title,
+      subtitle: '',
+      meta: type === 'show' ? formatSeasonCount(item) : (item.year ? String(item.year) : '')
+    };
+  }
 
   if (type === 'episode' && options.layout === 'episode') {
     title = (item.index != null && item.index !== '' ? item.index + '. ' : '') + (item.title || '');
@@ -203,7 +225,12 @@ function createMediaCard(item, onSelect, options) {
   }
   if (sizedThumb) {
     img.dataset.posterSrc = sizedThumb;
-    if (!options.deferPoster) {
+    // Bind now when not deferred, OR when this poster already loaded this session
+    // (browser-cached). The cached case matters for the virtual grid: a card
+    // scrolled back into view is re-created, and binding the cached poster at
+    // creation lets it reveal from cache immediately instead of flashing the
+    // placeholder and fading back in.
+    if (!options.deferPoster || isPosterLoaded(sizedThumb)) {
       bindPosterImage(img, sizedThumb, {
         priority: true,
         onError: function () { img.style.display = 'none'; }

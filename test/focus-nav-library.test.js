@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { installMinimalDom, createElement, layout } from './helpers/minimal-dom.js';
 import {
   handleKeyNav,
-  getFocusables
+  getFocusables,
+  invalidateFocusableCache
 } from '../src/ui/focus.js';
 
 var ARROW_DOWN = 40;
@@ -211,4 +212,102 @@ test('Up from card-7 returns to card-1 (same column, row 1)', function () {
   screen.querySelector('#card-7').focus();
   assert.equal(handleKeyNav(screen, keyEvent(ARROW_UP)), true);
   assert.equal(document.activeElement.id, 'card-1');
+});
+
+// --- Regression: virtual-grid rebuild must invalidate the focusable cache -----
+// Repro of the reported bug: after scrolling a couple of rows, DOWN jumped to the
+// sidebar and you couldn't get back into the grid. Cause: the virtual grid
+// rebuilds its card nodes on scroll, but focus.js caches focusables per
+// container — a stale cache holds detached cards, so DOWN's only in-direction
+// candidate is the (always-cached) bottom rail item. libraryScreen.renderWindow
+// now calls invalidateFocusableCache() on every rebuild; this locks that in.
+
+function buildOverlayRailFixture() {
+  var screen = createElement('div');
+  screen.className = 'screen library-screen';
+
+  // Overlay rail in the gutter, with a System/Settings item pinned low — exactly
+  // the candidate a stale cache wrongly picks on DOWN from mid-grid.
+  var rail = createElement('nav');
+  rail.className = 'browsing-hub-nav-host';
+  var home = hubBtn('hub-home');
+  layout(home, 0, 60, 64, 48);
+  var settings = hubBtn('hub-settings');
+  layout(settings, 0, 900, 64, 48);
+  rail.appendChild(home);
+  rail.appendChild(settings);
+
+  var grid = createElement('div');
+  grid.className = 'media-grid';
+  grid.id = 'media-grid';
+  var COLX = [150, 420, 690, 960, 1230, 1500];
+  var k = 0;
+  function addCard(col, y) {
+    var c = gridCard('card-' + (k++));
+    layout(c, COLX[col], y, 248, 372);
+    grid.appendChild(c);
+  }
+  var col;
+  for (col = 0; col < 6; col++) addCard(col, 100);  // row 1
+  for (col = 0; col < 6; col++) addCard(col, 500);  // row 2 (card-6..11)
+
+  screen.appendChild(rail);
+  screen.appendChild(grid);
+  return { screen: screen, grid: grid, COLX: COLX };
+}
+
+test('stale focusable cache after a grid rebuild traps DOWN on the sidebar', function () {
+  installMinimalDom();
+  invalidateFocusableCache();
+  var fx = buildOverlayRailFixture();
+  document.registerTree(fx.screen);
+
+  // Prime the cache while on a row-2 card (as real navigation does).
+  fx.screen.querySelector('#card-7').focus();
+  getFocusables(fx.screen);
+
+  // Virtual-scroll rebuild brings in a new row-3 card directly below card-7,
+  // but the cache is NOT refreshed.
+  var below = gridCard('card-new');
+  layout(below, fx.COLX[1], 920, 248, 372);
+  fx.grid.appendChild(below);
+
+  fx.screen.querySelector('#card-7').focus();
+  handleKeyNav(fx.screen, keyEvent(ARROW_DOWN));
+  assert.equal(
+    document.activeElement.id, 'hub-settings',
+    'stale cache: DOWN wrongly falls through to the bottom rail item'
+  );
+});
+
+test('invalidating the cache after a rebuild restores DOWN into the grid (and RIGHT back out of the rail)', function () {
+  installMinimalDom();
+  invalidateFocusableCache();
+  var fx = buildOverlayRailFixture();
+  document.registerTree(fx.screen);
+
+  fx.screen.querySelector('#card-7').focus();
+  getFocusables(fx.screen);
+
+  var below = gridCard('card-new');
+  layout(below, fx.COLX[1], 920, 248, 372);
+  fx.grid.appendChild(below);
+
+  // The fix: renderWindow invalidates after rebuilding.
+  invalidateFocusableCache();
+
+  fx.screen.querySelector('#card-7').focus();
+  handleKeyNav(fx.screen, keyEvent(ARROW_DOWN));
+  assert.equal(
+    document.activeElement.id, 'card-new',
+    'after invalidation DOWN reaches the rebuilt grid card'
+  );
+
+  // And focus is not trapped: RIGHT from the rail returns into the grid.
+  fx.screen.querySelector('#hub-settings').focus();
+  handleKeyNav(fx.screen, keyEvent(ARROW_RIGHT));
+  assert.ok(
+    document.activeElement.className.indexOf('media-card') >= 0,
+    'RIGHT from the rail returns to a grid card, got ' + document.activeElement.id
+  );
 });

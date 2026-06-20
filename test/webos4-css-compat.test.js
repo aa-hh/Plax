@@ -67,16 +67,19 @@ test('webOS 4 CSS: no aspect-ratio, inset, clamp(), or CSS min()/max()', functio
 });
 
 test('webOS 4 CSS: library grid uses margin gutters not gap', function () {
-  // Gutter widened to the Google 20dp grid gutter (half = 1.0417vw ≈ 20px each
-  // side → 40px gap); vertical stays 14px. Still margin-based, never `gap:`.
-  assert.match(cssSrc, /\.media-grid[\s\S]*margin:\s*-14px -1\.0417vw/);
-  assert.match(cssSrc, /\.media-grid > \.media-card[\s\S]*margin:\s*14px 1\.0417vw/);
+  // Full-width JetStream grid: 6 large (248px) cards across --content-max. The
+  // half-gutter is 14px (→ 28px between cards) — at the larger card a 20px half-
+  // gutter overflows the row to 5. Still margin-based, never `gap:`.
+  assert.match(cssSrc, /\.media-grid[\s\S]*margin:\s*-14px -14px/);
+  assert.match(cssSrc, /\.media-grid > \.media-card[\s\S]*margin:\s*14px 14px/);
 });
 
-test('webOS 4 CSS: library grid uses grid poster dimensions', function () {
+test('webOS 4 CSS: library grid uses the standard 2-col card dimensions', function () {
+  // Browse grid adopts the JetStream/Home card footprint (--row-poster-w/h,
+  // 248×372 2:3) for the full-width layout, not the old dense --grid-poster-*.
   assert.match(
     cssSrc,
-    /\.media-grid \.media-card \.card-poster-wrap[\s\S]*width:\s*var\(--grid-poster-w\)[\s\S]*height:\s*var\(--grid-poster-h\)/
+    /\.media-grid \.media-card \.card-poster-wrap[\s\S]*width:\s*var\(--row-poster-w\)[\s\S]*height:\s*var\(--row-poster-h\)/
   );
   assert.match(
     cssSrc,

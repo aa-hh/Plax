@@ -264,6 +264,40 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 - **Platform notes:** focus motion (`html.caps-motion`) is **enabled for webOS 4+ incl. the B8** (`app.js` `applyMotionCapabilityClass`: `osMajor >= 4 || dev`); the scale grow DOES run on the B8 and stays smooth because only transform/opacity animate. The hard focus ring is the always-on primary cue. (Historic bug: firmware-number misread once enabled a janky grow + big-blur shadow — see [[caps-motion-gate-bug]]; now strict OS major + transform-only.) Chrome53 ignores `scrollIntoViewOptions` (manual math). No `:focus-within`.
 - **Loading skeletons / empty rails:** `renderRowSkeletons` paints 3 grey placeholder rails while loading. A non-append (fresh) render in `renderRowsIntoFeed` **must clear them even when its `rows` are empty** — otherwise the initial phase resolving empty (e.g. brand-new user: empty On Deck + Recently Added/promoted still deferred) leaves the skeletons, the deferred rows append below them, and the leftover grey boxes clip under the immersive hero once a card is focused. Truly-empty rows never render a section (`renderHubRow` early-returns on `!items.length`).
 
+### Library / browse grid (Films & TV overview)
+
+- **Status:** ✅ to-spec · 2026-06-20 — rebuilt to the JetStream `categories-details` layout, reconciled to platform.
+- **Android TV guideline:** [Cards](https://developer.android.com/design/ui/tv/guides/components/cards) + [Layouts](https://developer.android.com/design/ui/tv/guides/styles/layouts)
+- **Figma source:** JetStream community file `YP3cp4DjvPKyDexIoeyOF0` node `3:503` (reference layout — adopted the even card grid + centered title, **dropped** the 40%-opacity backdrop image: standard flat bg per user). Cards = kit Card `219:1934` (2:3, radius 12). Caption title = Title Medium `8661:31904` (TV Design Kit).
+- **Code:** `libraryScreen()` (`src/ui/screens/libraryScreen.js`); `.library-layout`/`.library-main`/`.library-title`/`.library-toolbar`/`.media-grid` in `src/styles/app.css`; cards via `createMediaCard({layout:'grid'})`; season count from `mapLibraryItem.childCount` (`src/plex/library.js`).
+- **Anatomy:**
+  ```
+  .library-layout (overflow: visible — rail bleeds into the gutter)
+    nav.browsing-hub-nav-host        ← collapsed OVERLAY rail in the left safe-gutter (Home pattern); expands on focus
+    .library-main (full --content-max width)
+      h1.screen-title.library-title  ← CENTERED screen title = library name (Films / TV)
+      .library-toolbar               ← filter chips (left) · Scan button (right)
+        .library-filter-bar > .library-filter-chip × N
+        .library-scan-btn
+      .library-grid-host             ← vertical virtual-scroll viewport
+        .media-grid[data-cols=6]     ← flex-wrap, 6 cards/row
+          .media-card                ← 2:3 poster + 2-line caption
+  ```
+- **Resolved spec / values:**
+  - **Full-width reclaim ("better use of space"):** the nav rail collapses into the gutter as an overlay (was a 308px in-flow sidebar squeezing the grid); `.library-main` width 100% → grid spans `--content-max`.
+  - **Cards:** `--row-poster-w/h` (248×372, 2:3, radius `--radius-lg` 12) = the kit Card footprint (124×186dp ×2), **6 per row** (was dense `--grid-poster-*` 180px).
+  - **Gutter:** margin-based, never `gap:` (webOS4). `.media-grid margin:-14px -14px` + card `margin:14px` → 28px between cards + 16px ring-clearance inset; 6×248 fits inside content-max with slack (a 20px half-gutter overflows the row to 5).
+  - **Caption (Plax extension of the kit Card text-stack):** `.card-title` = Title Medium (Roboto Medium `--gt-weight-title`, +0.15 `--gt-ls-title`, on-surface); `.card-meta` = Label Medium (Roboto Medium `--gt-weight-label`, on-surface-variant). Films → `item.year`; shows → "N Seasons" from `item.childCount` (fallback episode count → year).
+  - **Title:** centered, `.screen-title` scale (`--font-title` 52); no text-shadow (flat bg, no backdrop image).
+  - **Filter chips → kit Chip `2506:17644`:** transparent + 1px outline `rgba(142,145,143,.35)` rest, radius 8, padding 8/16, label on-surface-variant Medium; selected `--active` = `--gt-secondary-container` #004A77 fill + `--gt-on-secondary-container` #C2E7FF; focus = shared control INVERSION (light fill + dark text, group rule), no ring. (Reconciles the Chip 🚧 fix-list for these instances.)
+  - **Scan button → kit Button (Outline):** pill `--gt-radius-button`, 1px outline, focus = INVERSION (`--focus-fill`/`--focus-on-fill`) — deliberately NOT the recorded-broken `.btn-outline:focus`.
+- **Focus:** cold landing moves to the first grid card (`focusFirstGridCardIfNeeded`, mirrors Home); sidebar tagged `data-initial-focus` so it yields. Card focus = 3px blue ring (`--border-focus`); scale gated to webOS5+.
+  - **Virtual-scroll reconcile (`renderWindow`):** windowed grid (`GRID_COLS` 6, `BUFFER_ROWS` 3) over a `topSpacer`/`bottomSpacer` scroll extent. On a scroll shift it **reconciles incrementally** — cards still inside the window are kept (their loaded posters survive), only the cards that left are removed and the ones that entered are inserted in item-index order. A full rebuild every scroll (the original) restarts every poster from its dark placeholder → the whole grid flashes black on each row step. A `displayDirty` flag (set in `applyFilterSort`) forces a full clear when the dataset itself changes (filter/sort/load), since the item *at* each index moved; pure scrolling reuses.
+    - **Scroll-back is cache-instant:** a card scrolled out of the window is destroyed and re-created on return, but the poster *bytes* stay cached (`posterImages.loadedUrls` + HTTP cache; no re-fetch). `createMediaCard` binds the poster at creation when `isPosterLoaded(url)` even if it would otherwise be deferred, so the returning card reveals from cache immediately instead of placeholder→fade. (IDB blob cache is off on B8, so this is session-scoped.)
+  - **D-pad nav coupling (critical):** when the node set changes, `renderWindow` **must call `invalidateFocusableCache()`** (focus.js caches focusables per container). Omitting it = the geometric nav keeps scoring detached cards, so DOWN falls through to the always-cached bottom rail item and you can't get back into the grid. Regression-tested in `test/focus-nav-library.test.js`.
+- **Platform deviations (ratified):** 2:3 not 16:9; blue focus accents; type up-scaled for 10-foot; no JetStream backdrop image (standard bg); `overflow:visible` on `.library-layout` so the negative-left rail shows (the screen + `.library-grid-host` clip their own overflow).
+- **Tests:** `test/webos4-css-compat.test.js` — "library grid uses margin gutters not gap" (`-14px -14px` / `14px 14px`) and "library grid uses the standard 2-col card dimensions" (`--row-poster-w/h`).
+
 ### Player overlay
 
 - **Status:** 📝 summary only — layout/behaviour captured, **anatomy not yet pulled from kit** (menu rows = Player track-selector)

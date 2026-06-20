@@ -154,6 +154,7 @@ function mapLibraryItem(item, server) {
     viewCount: parseInt(item.viewCount, 10) || 0,
     leafCount: parseInt(item.leafCount, 10) || 0,
     viewedLeafCount: parseInt(item.viewedLeafCount, 10) || 0,
+    childCount: parseInt(item.childCount, 10) || 0,
     librarySectionID: item.librarySectionID != null ? String(item.librarySectionID) : '',
     parentRatingKey: item.parentRatingKey,
     grandparentRatingKey: item.grandparentRatingKey,
