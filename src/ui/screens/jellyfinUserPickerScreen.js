@@ -11,6 +11,7 @@ import * as cache from '../../core/cache.js';
 import { fetchPublicUsers, authenticateByName } from '../../backends/jellyfin/auth.js';
 import { primaryUrl } from '../../backends/jellyfin/images.js';
 import { openTextInputModal } from '../components/controls.js';
+import { clampProfilePickerCols } from './profilePickerScreen.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
 
 /**
@@ -204,6 +205,13 @@ function jellyfinUserPickerScreen(root, params, navigate) {
       '<span class="profile-card-name">Other user</span>';
     other.addEventListener('click', onOtherUser);
     rowEl.appendChild(other);
+
+    // Drive the row's width from the card count (incl. the "Other user" tile) so it
+    // lays out horizontally like Plex. Without this, --profile-picker-cols stays at
+    // its default of 1 and the centered flex-wrap row collapses to a vertical stack.
+    var cols = clampProfilePickerCols(entries.length + 1);
+    screen.style.setProperty('--profile-picker-cols', String(cols));
+    rowEl.setAttribute('data-cols', String(cols));
 
     var first = rowEl.querySelector('.profile-card');
     if (first) first.focus(); else focusFirst(screen);
