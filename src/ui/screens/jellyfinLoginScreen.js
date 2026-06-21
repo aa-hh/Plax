@@ -1,5 +1,5 @@
 import { setState } from '../../core/store.js';
-import { persistAuth, upsertJellyfinSession } from '../../core/storage.js';
+import { persistAuth, upsertJellyfinSession, upsertJellyfinServer } from '../../core/storage.js';
 import { runAppBootstrap } from '../../core/appBootstrap.js';
 import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import { openTextInputModal } from '../components/controls.js';
@@ -105,6 +105,8 @@ function jellyfinLoginScreen(root, params, navigate) {
     }
     var token = authResult.AccessToken;
     var user = { id: authResult.User.Id, name: authResult.User.Name };
+    // Remember this server so the server picker offers it next time (no re-typing).
+    upsertJellyfinServer({ url: server.url, name: server.name, id: server.id, version: server.version });
     // Remember this user so the launch picker can offer instant switch next time.
     upsertJellyfinSession({
       userId: user.id, name: user.name, token: token,

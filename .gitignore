@@ -12,3 +12,6 @@ build/rollup.cache/
 # Local agent tooling (skills, worktrees) — not project source
 .claude/
 .agents/
+
+# Local TV deploy target (device name + IP)
+.tvtarget

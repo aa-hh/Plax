@@ -168,6 +168,8 @@ Tools (all work on a Dev seat): `get_design_context` = anatomy + geometry,
 |---|---|---|
 | `--icon-md` | 24px | nav-item icon, hub-icon, library hub-icon, player-menu chevron-icon, player-menu radio control |
 | `--icon-lg` | 28px | `.btn-icon-glyph`, `.library-item__icon` |
+| `--nav-rail-w` / `--nav-rail-w-expanded` | 80 / 280px | `.browsing-hub-nav-host` collapsed / expanded (kit Navigation drawer 563:4331) |
+| `--nav-item-h` | 48px | `.browsing-hub-item` (kit Nav Item 9:161) |
 | `--list-item-h` | 64px | `.player-menu-option` (kit List Item 561:3969). (`.gt-list-item` settings rows stay `--target-min` 52 — ratified.) |
 | `--field-pad-y` / `--field-pad-x` | 14 / 18px | `.tv-text-input`, `.search-input` (kit Text field 12×16 scaled) |
 | `--field-pad-y-auth` / `--field-pad-x-auth` | 18 / 24px | `.tv-text-input` auth variant, `.login-field__btn` (kit ×1.5) |
@@ -210,15 +212,17 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 - **Status:** ✅ to-spec · 2026-06-20 — reimagined on the JetStream reference; reconciled to platform.
 - **Reference source:** JetStream (android/tv-samples `JetStreamCompose` → `MovieDetails.kt` / `CastAndCrewList.kt`); Figma community file `YP3cp4DjvPKyDexIoeyOF0` node `3-432`. No kit frame in `TLtknC3rZXQqWe3uIivt94` (composed from existing kit components).
 - **Android TV guideline:** [Detail screens](https://developer.android.com/design/ui/tv) (browse → detail).
-- **Code:** `src/ui/screens/detailScreen.js` (`renderMovieDetail` / `renderEpisodeDetail`, helpers `buildGenreChipsHtml` / `buildCreditsRowHtml` / `buildCastRailHtml` / `bindCastImages` / `iconActionButtonHtml`); styles `.detail-genre-pill`, `.detail-credits-row`, `.detail-cast*`, `.detail-icon-btn*` in `src/styles/app.css:2231+`.
+- **Code:** `src/ui/screens/detailScreen.js` (`renderMovieDetail` / `renderEpisodeDetail`, helpers `buildGenreChipsHtml` / `buildCreditsRowHtml` / `buildCastRailHtml` / `bindCastImages` / `iconActionButtonHtml` / `moreActionsButtonHtml` / `openMoreActionsMenu`); `moreIconSvg` in `src/ui/icons/navIcons.js`; watchlist menu helpers `canOfferWatchlist` / `isItemOnWatchlist` / `openWatchlistPickerFor` in `src/ui/components/watchlistBookmark.js`; styles `.detail-genre-pill`, `.detail-credits-row`, `.detail-cast*`, `.detail-icon-btn*`, `.detail-more-btn` in `src/styles/app.css:2231+`.
 - **Anatomy (parts → slot), JetStream-mapped:**
   - hero: 2:3 poster (NOT JetStream's full-bleed backdrop — platform 2:3 rule) + info column; ultrablur backdrop stays as screen bg.
   - info: title → `detail-meta` dot row (year · runtime · rating · IMDb) → **genre pills** (≤4, `--radius-pill`) → summary → **credits row** (Director / Writer / Studio, label+value cols) → actions.
-  - actions: Play (primary) + **icon buttons** Subtitles (Radix chat-bubble) & Quality (Radix mixer) that open `openModal` drawers; label span shows current value. Then watchlist + mark watched/unwatched.
+  - actions (row): Play (primary) + **icon buttons** Subtitles (Radix chat-bubble) & Quality (Radix mixer) that open `openModal` drawers (label span shows current value) + an icon-only **⋯ "More"** opener (`.detail-more-btn`, Radix dots-horizontal `moreIconSvg`). Four buttons, no secondary row.
+  - **Options menu (⋯ → `openMoreActionsMenu`):** reuses the canonical `openModal` "Sheet/menu" drawer (title "Options", Close footer). Rows: **Mark as watched / Mark as unwatched** (contextual — only the state-changing row(s) show; `getWatchStatus`) and **Add to watchlist… / Edit watchlist…** (`canOfferWatchlist` gate → opens the existing `.detail-modal` watchlist picker via `openWatchlistPickerFor`). The watchlist bookmark + the old `.detail-secondary-actions` Mark-watched row are **no longer inline** — folded in here per user request (2026-06-21).
   - **Cast & Crew rail:** circular 104px avatars (JetStream uses 144dp portrait cards → swapped to circular 10-ft convention), name (2-line clamp) + character role; ≤12; display-only (actors not navigable), images via `bindPosterImage`.
   - episode: 16:9 still + series/title/meta/summary + credits + actions + Up Next + cast rail.
 - **Data:** `item.genres/directors/writers/roles/studio`; `writers` added to Plex (`src/plex/library.js`) + Jellyfin (`mapItem.js`) mappers. Cast thumb: full URL passthrough, else `getThumbUrl(server, thumb, 200)`.
-- **Platform deviations (ratified):** 2:3 poster vs JetStream backdrop; circular cast avatars vs portrait cards; flex `gap` retained (codebase convention). Subtitles/Quality kept per user request as icon-button drawer openers.
+- **Platform deviations (ratified):** 2:3 poster vs JetStream backdrop; circular cast avatars vs portrait cards; flex `gap` retained (codebase convention). Subtitles/Quality kept per user request as icon-button drawer openers. **Watchlist + Mark watched/unwatched consolidated into a ⋯ "Options" menu** (per user request 2026-06-21) — the action row is now Play · Subtitles · Quality · ⋯. The `.detail-more-btn` is built on the gold-standard `.btn` (inherits kit focus-inversion + caps-motion gating), squared off like `.btn-icon`, 28px glyph; menu reuses the canonical `openModal` so no new modal surface was introduced.
+- **Chrome 53 fix (2026-06-21) — episode-detail vertical overlap:** `.detail-episode-v2-panel` had `flex: 1` while being the child of the column-flex `.detail-layout--episode-v2`. `flex:1` (= `1 1 0%`) locks the panel to the viewport height, and Chrome 53's broken flex `min-height:auto` then **compresses the children to fit** — collapsing every vertical margin so the credits row, Play/Subtitles/Quality row, Mark watched/unwatched row, and Cast & Crew heading all overlapped (looked fine in the modern simulator, broken on the B8). Fix: `.detail-episode-v2-panel { flex: 0 0 auto; }` so it sizes to content and the parent's existing `overflow-y:auto` scrolls instead (`src/styles/app.css:2426`). The **movie** layout is structurally safe — `.detail-movie-info` is `flex:1` inside a *horizontal* hero row, so `flex:1` governs width, not height. Same family as the pre-existing `flex-shrink:0` guards on `.detail-show-info` / `.detail-cast`. Verified on real B8.
 
 ### Button  ⭐ gold-standard reference entry
 
@@ -269,21 +273,28 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - **Focus:** removed the off-spec ring+shadow override on `.detail-setting-chip:focus` so the chip uses the shared control INVERSION (light `--focus-fill` fill + dark `--focus-on-fill` text) from the focus group at `src/styles/app.css:346`.
 - **Platform deviations (ratified):** label **`--font-meta` 22px** kept (kit 14 → 10-foot up-scale, ratified Plax rule, do not shrink); blue `--accent`/secondary-container active tokens; border `@35%` (the reconciled Library-grid value) rather than literal kit `@20%`; focus motion via `html.caps-motion` only.
 
-### Nav item (browsing-hub sidebar)  ✅ reconciled 2026-06-20
+### Navigation drawer + Nav item (browsing-hub sidebar)  ✅ reconciled 2026-06-22
 
-- **Status:** ✅ to-spec · 2026-06-20 (reconciled to kit)
+- **Status:** ✅ to-spec · 2026-06-22 — **drawer container** (minimized + maximized) now follows the kit exactly per user direction (the earlier `--target-min` 52 item-height deviation was un-ratified and dropped to the kit's 48).
 - **Android TV guideline:** [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer)
-- **Figma source:** `TLtknC3rZXQqWe3uIivt94` / Nav item `9:161` (default `9:873`) · drawer `563:4331`
-- **Anatomy (canonical):** `container` (flex, **height 48**, `padding-x 16`, `gap 12`) + `content` (leading `icon` **24px**) + `label` (when `Expanded=True`) + `badge` (opt, top-right); states `Default|Focused|Selected` × `Expanded`
-- **Code (as-built):** `.browsing-hub-nav` / `.browsing-hub-item` (+ `__icon`) `src/styles/app.css:718+`
-- **Resolved spec / per-element:**
-  - icon box **24×24** = kit ✅ (was 40×40; reconciled 2026-06-20). Glyph `.hub-icon` also 24×24 (was 26) so it fills the kit box without overflow.
-  - `padding-x` **16px** = kit ✅ (`var(--space-3) 16px`).
-  - `gap` **12px** = kit ✅ (icon→label `margin-left: var(--space-3)`; was `--space-4`/16px).
-  - container `min-height: var(--target-min)` = **52px** — ratified deviation from kit 48. `--target-min` is the global 10-foot focus/hit floor used app-wide; kept ≥48 rather than pinned to 48 for d-pad target consistency. Container is `display:flex; align-items:center` so glyph/label center within the 52px row.
-  - expand/collapse via JS classes ✅ (Chrome53-correct, NO `:focus-within`).
+- **Figma source:** `TLtknC3rZXQqWe3uIivt94` / **drawer `563:4331`** (collapsed `563:4310` / expanded `542:4257`) · **Nav item `9:161`** (default `9:873`)
+- **Anatomy (canonical, drawer `563:4331`):** `container` (flex col, `justify-between`, `px-12`; **collapsed `w-80`, expanded `w-280`**) → three regions:
+  - `header` — Account Switch (kit: 32px avatar + Name 16/24 Medium + "Switch account" 12/16 @80%). **App substitutes a brand mark** (`.browsing-hub-brand`: 40px mark + "Plax") — there's no per-drawer account switch in Plax.
+  - `nav items` — stack of Nav Items, **gap 12**.
+  - `footer` — the Settings Nav Item, pinned to the bottom edge (`justify-between` / app uses `margin-top:auto` on the System section).
+- **Anatomy (Nav Item `9:161`):** `container` (flex, **height 48**, `px-16`, `gap-12`) + `content` (leading `icon` **24px** + `label` when `Expanded=True`, Roboto Medium 16/24 +0.15 `#C4C7C5`) + `badge` (opt). Selected = `rounded-24` indicator: kit collapsed = secondary-container `#004A77` @40%; **kit focused (expanded) = light inverse-surface `#E3E3E3` fill + `#303030` text/icon**.
+- **Code (as-built):** `.browsing-hub-nav-host` (drawer) / `.browsing-hub-nav` (region) / `.browsing-hub-item` (+ `__icon`/`__label`) / `.browsing-hub-brand` (header) in `src/styles/app.css:650+`, `:1540+`; mount in `src/ui/components/browsingHubNav.js`.
+- **Resolved spec / per-element (tokens in `:root`):**
+  - **Drawer width — `--nav-rail-w` 80px collapsed / `--nav-rail-w-expanded` 280px expanded** = kit ✅ (was 72 / 220). Toggled via JS `--expanded`/`--peek` class on focusin/out (Chrome53-correct, **NO `:focus-within`**); width transition 180ms.
+  - **Drawer padding `var(--space-3)` = 12px** all-round = kit `px-12` ✅ (was 8px horizontal). With `overflow:hidden` the expanding width reveals labels (no display pop).
+  - **Nav item height `--nav-item-h` = 48px** = kit ✅ (was `--target-min` 52 — deviation dropped per user; Google's 48 *is* the 10-ft rail spec). `padding: 0 16px` + `align-items:center` → glyph/label center in the 48px box.
+  - **Item-to-item gap `var(--space-3)` = 12px** = kit ✅ (`.browsing-hub-nav > * + *`; was 2px + a stray `margin-bottom:2px`, removed).
+  - icon box **24×24** = kit ✅; icon→label gap **12px** (`margin-left: var(--space-3)`) = kit ✅; `px-16` = kit ✅.
+  - **Collapsed centering:** items keep `px-16` (kit) + `justify-content:center`; on the 80px rail (inner 56 after `px-12`) `16+24+16 = 56`, so the icon centers like the kit's icon-only collapsed item (no bespoke `px-14` override anymore). Brand mark fits via collapsed `px-8` (`8+40+8 = 56`).
+  - **Focus = light-pill inversion** (`--focus-fill #E3E3E3` / `--focus-on-fill #303030`, dark icon), **no ring** — matches the kit's focused nav item AND the app's shared control-inversion focus (Button/Chip/Tabs). Replaced the off-spec `bg-surface-hover + --focus-shadow ring`; the `.active:focus .hub-icon` blue override was deleted so a focused active item inverts (dark icon) like the kit.
+- **Platform deviations (ratified):** label kept at `--gt-body` 22px (kit 16 → 10-ft up-scale, app-wide rule); **active (resting) indicator = `--accent-soft` + `--accent`** blue tint (registry-ratified "same family" as kit secondary-container — the focused state is the kit-exact light inversion); brand header substitutes for the kit Account Switch; Media/Search/System section split + dividers is a Plax structure mapping onto the kit header/nav/footer regions.
 - **Contract (unchanged):** nav order Home · Library · Search · Settings (Media / Search / System sections in `browsingHubNav.js`).
-- **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host`; CSS-only change, 600/600 tests pass.
+- **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host` (Home/Library overlay it in the left safe gutter, `--safe-x` 116px @1920 so the 80px collapsed rail sits fully in the gutter). CSS-only change; 600 pass (2 pre-existing fails: hub-poster-prefetch 180→210 bump + the WIP chrome53-css-guardrail on un-annotated pre-existing `gap`/`mix-blend`).
 
 ### Rail row
 
@@ -549,18 +560,22 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ### Provider-picker card (first-run backend chooser)
 
-- **Status:** ✅ to-spec · 2026-06-20 (app-specific; no kit selection-card component)
+- **Status:** ✅ to-spec · 2026-06-22 (app-specific; no kit selection-card component) — reconciled three bugs found in-sim (see Resolved below).
 - **Figma source:** none — built on the app `.card` base + foundation tokens (superseded an earlier low-contrast tile design per user feedback)
 - **Code:** `providerPickerScreen()`; `.provider-card*` in `src/styles/app.css`
 - **Anatomy:**
   ```
-  .provider-cards                          ← flex row, gap --space-7, centered
+  .provider-cards                          ← flex row, centered; margin gutter (NOT gap)
     button.provider-card.card  × 2         ← data-provider + data-brand=plex|jellyfin
-      span.provider-card__media → svg.provider-card__logo   ← branded gradient bg + brand logo
+      span.provider-card__media → svg.provider-card__logo   ← full-bleed branded panel + brand logo
       span.provider-card__desc             ← how this backend connects
   ```
-- **Tokens:** card bg `--bg-elevated #1B1B1B` + soft shadow; 1px `--border` / `--radius-lg 12`; 420px wide, media 200px tall (logo ≤96px); brand media — Plex radial gold `rgba(229,160,13,.18)`, Jellyfin radial purple→blue `rgba(123,92,230,.20)`→`rgba(0,164,220,.06)`; desc `--space-5 --space-6 --space-6`, `--gt-body`, `--text-secondary`→`--text-primary` on focus; focus = `border-color:--accent` + `--focus-shadow` + media `brightness(1.25)`.
-- **Platform notes:** ring only, no scale (caps-motion gate). Brand: Plex gold `#E5A00D`, Jellyfin gradient `#AA5CC3→#00A4DC`.
+- **Tokens:** card bg `--bg-elevated #1B1B1B` + soft shadow; 1px `--border` / `--radius-lg 12`; 420px wide, media 200px tall (logo `width:78%`, ≤120px); inter-card gutter `--space-7` via `.provider-card + .provider-card { margin-left }`; brand media = **full-bleed `linear-gradient(135deg, …)`** — Plex gold `rgba(229,160,13,.30)→.08`, Jellyfin `rgba(170,92,195,.38)→rgba(0,164,220,.16)`; desc `--space-5 --space-6 --space-6`, `--gt-body`, `--text-secondary`→`--text-primary` on focus; focus = `border-color:--accent` + `--focus-shadow` + media `brightness(1.25)`.
+- **Resolved (2026-06-22, in-sim):**
+  - **Focus was inverting to a light fill** (Plex card washed out, desc text vanished light-on-light): the shared control-inversion focus (`.card:not(.media-card):not(.profile-card):focus`) + the caps-motion `scale()` were leaking onto `.provider-card`. Fixed by adding `:not(.provider-card)` to both shared selectors so the card owns its focus (ring + media brightness only, per the platform note) — mirrors how `.profile-card` is excluded.
+  - **Media panel looked empty / not filling:** radial gradient faded to transparent before the box edges → swapped to a full-bleed `linear-gradient(135deg)`; added explicit `width:100%; box-sizing:border-box` on `.provider-card__media` (don't rely on flex stretch); logo bumped `70%/96` → `78%/120`.
+  - **Cards overlapped on the B8:** `.provider-cards` used flex `gap` (Chrome53 drops it) → switched to a `margin-left` gutter on the adjacent card (platform rule: margins, never gap).
+- **Platform notes:** ring only, no scale (caps-motion gate) — now actually enforced via the `:not(.provider-card)` exclusions. Brand: Plex gold `#E5A00D`, Jellyfin gradient `#AA5CC3→#00A4DC`. Spacing is margin-based (Chrome53-safe).
 
 ### Jellyfin login screen
 
@@ -581,7 +596,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 ### Jellyfin user picker ("Who's watching?")
 
 - **Status:** ✅ to-spec · 2026-06-20
-- **Reuses:** the Plex profile-picker DOM/CSS verbatim — `.profile-picker-screen`, `.profile-picker-row`, `.profile-card` (+ `-avatar`/`-name`/`-lock`). No new component; only the data source + select-logic differ.
+- **Reuses:** the Plex profile-picker DOM/CSS verbatim — `.profile-picker-screen`, `.profile-picker-row`, `.profile-card` (+ `-avatar`/`-name`/`-lock`). No new component; only the data source + select-logic differ. **Must set `--profile-picker-cols` from the card count** (via `clampProfilePickerCols`, like Plex's `applyProfilePickerCols`) — it defaults to `1`, which collapses the centered flex-wrap row into a vertical stack.
 - **Code:** `jellyfinUserPickerScreen()`; reuses `.profile-*` in `src/styles/app.css`.
 - **Anatomy:**
   ```
@@ -592,6 +607,24 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
       button.profile-card--other    ← "+" avatar → username/password entry
   ```
 - **Behavior (not visual):** lists `GET /Users/Public` merged with cached sessions (`storage.jellyfinSessions`); cached token → instant switch; `HasPassword=false` → instant `AuthenticateByName(name,'')`; passworded → `openTextInputModal` once then cached. Doubles as bootstrap host (→ Home).
+
+### Jellyfin server picker (saved servers + "Add a new server")
+
+- **Status:** ✅ to-spec · 2026-06-22 (new) — removes re-typing a server URL on the TV keyboard for returning users.
+- **Reuses:** `.screen-center` + the **List item** component (`createListItem` → `.gt-list-item`, kit `561:3969`) for each server row; `.btn` for the "Use a different service" escape hatch. No new visual primitive — only a width-constrained `.server-picker-list` card wrapper (reuses `--bg-surface`/`--border`/`--radius-lg`/`--login-fields-w`, mirroring the `.jellyfin-login` field box).
+- **Code:** `jellyfinServerPickerScreen()` (`src/ui/screens/jellyfinServerPickerScreen.js`); `.jellyfin-server-picker .server-picker-*` in `src/styles/app.css` (just below the `.jellyfin-login` block).
+- **Anatomy:**
+  ```
+  .screen.screen-center.jellyfin-server-picker[data-focus-mode=sequential]
+    h1.screen-title "Choose your server" · p.screen-subtitle
+    .server-picker-list                       ← surface card (width --login-fields-w)
+      button.gt-list-item × N                  ← label = server name · sublabel = URL host · trailing ›
+      .server-picker-divider                   ← hairline before the add row
+      button.gt-list-item.server-picker-add    ← "Add a new server" · trailing +
+    button.btn.login-switch-provider           ← "Use a different service" → provider-picker
+  ```
+- **Behavior (not visual) — routing:** persisted via `storage.getJellyfinServers/upsertJellyfinServer` (a server is saved on successful login in `jellyfinLoginScreen.finalize`; the list **survives sign-out** — `clearAuth` seeds it from the legacy single `jellyfinServer` and never removes `jellyfinServers`). `resolveStartupRoute` + the `pairing` route show this screen **only when ≥1 server is known**; first-run with none goes straight to `jellyfinLoginScreen` (type the address). Picking a server sets it active (`setState.activeServer` + `persistAuth.jellyfinServer`) and hands off to `jellyfin-users` ("Who's watching?"); "Add a new server" → `navigate('pairing', { provider:'jellyfin', addServer:true })` (forces the login form). Routes: `jellyfin-servers` (canonical) + the jellyfin `pairing` handler delegate here.
+- **Known follow-up (not this change):** `storage.jellyfinSessions` (cached per-user tokens) are **not keyed by server**, so with multiple servers a cached token can surface on the wrong server's user picker and fail on first API call (falls back to re-auth). Narrow edge; key sessions by `serverId` when multi-server sees real use.
 
 ---
 

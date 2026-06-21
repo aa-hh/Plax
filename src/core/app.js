@@ -6,7 +6,7 @@ import * as persistentCache from './persistentCache.js';
 import { setPersistentImpl as setCachePersistentImpl } from './cache.js';
 import { init as initRouter, register, navigate, getRoute } from './router.js';
 import { getState, setState } from './store.js';
-import { loadPersistedAuth, persistAuth, getOwnerAuthToken } from './storage.js';
+import { loadPersistedAuth, persistAuth, getOwnerAuthToken, getJellyfinServers } from './storage.js';
 import { isRestrictedProfile } from '../security/libraryAccess.js';
 import { resolveStartupRoute } from './startupRouting.js';
 import { initPlatform } from '../platform/webos.js';
@@ -32,6 +32,7 @@ import { watchlistScreen } from '../ui/screens/watchlistScreen.js';
 import { providerPickerScreen } from '../ui/screens/providerPickerScreen.js';
 import { jellyfinLoginScreen } from '../ui/screens/jellyfinLoginScreen.js';
 import { jellyfinUserPickerScreen } from '../ui/screens/jellyfinUserPickerScreen.js';
+import { jellyfinServerPickerScreen } from '../ui/screens/jellyfinServerPickerScreen.js';
 
 /**
  * One-shot boot diagnostic settling the webOS engine question: dumps the UA,
@@ -80,11 +81,19 @@ function startApp(platformMajor) {
   // The 'pairing' route is the per-provider auth entry: Jellyfin shows its own
   // login (server URL → Quick Connect / password); Plex keeps the PIN flow.
   register('pairing', function (root, params, navigate) {
-    if (params && params.provider === 'jellyfin') return jellyfinLoginScreen(root, params, navigate);
+    if (params && params.provider === 'jellyfin') {
+      // Returning Jellyfin user with known servers → let them pick one (or add a
+      // new one) instead of re-typing a URL. addServer:true forces the login form.
+      if (!(params && params.addServer) && getJellyfinServers().length) {
+        return jellyfinServerPickerScreen(root, params, navigate);
+      }
+      return jellyfinLoginScreen(root, params, navigate);
+    }
     return pairingScreen(root, params, navigate);
   });
   register('profile-picker', profilePickerScreen);
   register('jellyfin-users', jellyfinUserPickerScreen);
+  register('jellyfin-servers', jellyfinServerPickerScreen);
   register('home', homeScreen);
   register('library', libraryScreen);
   register('detail', detailScreen);
