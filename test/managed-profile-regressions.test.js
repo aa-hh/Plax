@@ -123,12 +123,37 @@ test('startup route sends signed-in Jellyfin users (with a configured server) to
   );
 });
 
-test('startup route sends jellyfin provider with NO server to login (not the empty picker)', function () {
-  // e.g. provider flipped to jellyfin while a stale Plex token lingered, or sign-in
-  // never finished — must configure the server via login, not land on who's-watching.
+test('startup route sends jellyfin provider with NO known servers to login (not the empty picker)', function () {
+  // First-ever Jellyfin connect (or provider flipped while a stale Plex token
+  // lingered) — must type the server address; there's nothing to pick yet.
   assert.deepEqual(
     resolveStartupRoute({ provider: 'jellyfin', authToken: 'stale-plex-token' }, ''),
     { route: 'pairing', params: { provider: 'jellyfin' }, mark: 'boot:navigate-pairing' }
+  );
+});
+
+test('startup route sends a returning Jellyfin user (known servers, not signed in) to the server picker', function () {
+  // e.g. after sign-out: token gone, but the list of previously-used servers
+  // survives → let them pick one (or add a new one) instead of re-typing a URL.
+  assert.deepEqual(
+    resolveStartupRoute({
+      provider: 'jellyfin', authToken: '',
+      jellyfinServers: [{ url: 'https://jf.example', name: 'Home' }]
+    }, ''),
+    { route: 'jellyfin-servers', params: {}, mark: 'boot:navigate-jellyfin-servers' }
+  );
+});
+
+test('startup route prefers who\'s-watching over the server picker when fully configured', function () {
+  // A live session (token + active server) skips the server picker even though the
+  // server is also in the known-servers list.
+  assert.deepEqual(
+    resolveStartupRoute({
+      provider: 'jellyfin', authToken: 'jf-token',
+      jellyfinServer: { url: 'https://jf.example' },
+      jellyfinServers: [{ url: 'https://jf.example', name: 'Home' }]
+    }, ''),
+    { route: 'jellyfin-users', params: { _from: 'launch' }, mark: 'boot:navigate-jellyfin-users' }
   );
 });
 

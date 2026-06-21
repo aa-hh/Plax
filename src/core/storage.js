@@ -109,6 +109,7 @@ function loadPersistedAuth() {
   return {
     provider: get('provider'),
     jellyfinServer: get('jellyfinServer'),
+    jellyfinServers: getJellyfinServers(),
     jellyfinSessions: get('jellyfinSessions') || [],
     authToken: get('authToken'),
     ownerAuthToken: getOwnerAuthToken(),
@@ -165,7 +166,56 @@ function upsertJellyfinSession(session) {
   set('jellyfinSessions', list);
 }
 
+/**
+ * Servers this device has connected to (powers the server picker so a returning
+ * user never re-types a URL). Survives sign-out — only the active token/session
+ * is cleared, not the list of known servers.
+ */
+function getJellyfinServers() {
+  var list = get('jellyfinServers') || [];
+  // Back-compat: fold the legacy single active server into the list if missing,
+  // so installs that predate the list still see their server in the picker.
+  var active = get('jellyfinServer');
+  if (active && active.url) {
+    var known = false;
+    for (var i = 0; i < list.length; i++) {
+      if ((active.id && list[i].id === active.id) || list[i].url === active.url) { known = true; break; }
+    }
+    if (!known) {
+      list = list.concat([{ url: active.url, name: active.name, id: active.id, version: active.version }]);
+    }
+  }
+  return list;
+}
+
+/** Add or replace a known Jellyfin server (keyed by id, falling back to url). */
+function upsertJellyfinServer(server) {
+  if (!server || !server.url) return;
+  var list = (get('jellyfinServers') || []).filter(function (s) {
+    if (server.id && s.id) return s.id !== server.id;
+    return s.url !== server.url;
+  });
+  list.push({
+    url: server.url,
+    name: server.name || 'Jellyfin',
+    id: server.id || null,
+    version: server.version || null
+  });
+  set('jellyfinServers', list);
+}
+
+/** Forget a known Jellyfin server (matched by id or url). */
+function removeJellyfinServer(idOrUrl) {
+  var list = (get('jellyfinServers') || []).filter(function (s) {
+    return s.id !== idOrUrl && s.url !== idOrUrl;
+  });
+  set('jellyfinServers', list);
+}
+
 function clearAuth() {
+  // Preserve the list of known Jellyfin servers across sign-out so the server
+  // picker still offers them — seed it from the legacy single server first.
+  upsertJellyfinServer(get('jellyfinServer'));
   remove('provider');
   remove('jellyfinServer');
   remove('jellyfinSessions');
@@ -185,6 +235,9 @@ export {
   clearAuth,
   getJellyfinSessions,
   upsertJellyfinSession,
+  getJellyfinServers,
+  upsertJellyfinServer,
+  removeJellyfinServer,
   getOwnerAuthToken,
   persistOwnerTokenForProfile,
   readSessionHomeSize,

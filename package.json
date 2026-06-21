@@ -11,6 +11,7 @@
     "package": "npm run build && node scripts/package-ipk.cjs",
     "package:tv": "npm run package",
     "validate": "node scripts/validate-compat.cjs && node scripts/validate-intro-markers.mjs && node scripts/validate-library-access.mjs",
+    "check:css-compat": "node scripts/check-chrome53-css.cjs",
     "icons": "node scripts/generate-icons.cjs",
     "prebuild": "node scripts/generate-icons.cjs",
     "postbuild": "node scripts/write-build-stamp.cjs --quiet",
@@ -41,5 +42,8 @@
   },
   "dependencies": {
     "hls.js": "^1.6.16"
-  }
+  },
+  "browserslist": [
+    "chrome 53"
+  ]
 }

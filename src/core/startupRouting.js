@@ -22,20 +22,25 @@ function resolveStartupRoute(persisted, ownerToken) {
     return { route: 'provider-picker', params: {}, mark: 'boot:navigate-provider-picker' };
   }
 
+  // Jellyfin has per-user sessions (no owner-proxy) and no plex.tv rediscovery, so
+  // its routing turns on whether we have an active server + token vs. just a list of
+  // previously-used servers:
+  //   • signed in with a configured server → "who's watching" (bootstrap host)
+  //   • known servers but not signed in     → server picker (choose one or add new)
+  //   • no known servers                     → login (type the server address)
+  if (provider === 'jellyfin') {
+    if (persisted.authToken && persisted.jellyfinServer) {
+      return { route: 'jellyfin-users', params: { _from: 'launch' }, mark: 'boot:navigate-jellyfin-users' };
+    }
+    if (persisted.jellyfinServers && persisted.jellyfinServers.length) {
+      return { route: 'jellyfin-servers', params: {}, mark: 'boot:navigate-jellyfin-servers' };
+    }
+    return { route: 'pairing', params: { provider: 'jellyfin' }, mark: 'boot:navigate-pairing' };
+  }
+
   // Backend chosen but not signed in → that backend's auth screen.
   if (!persisted.authToken) {
     return { route: 'pairing', params: { provider: provider }, mark: 'boot:navigate-pairing' };
-  }
-
-  // Jellyfin has per-user sessions (no owner-proxy). The user picker needs a
-  // configured server — without one (e.g. provider was set to jellyfin but a stale
-  // Plex token lingers, or sign-in never completed), send them to the login to
-  // configure the server, NOT to an empty "who's watching".
-  if (provider === 'jellyfin') {
-    if (persisted.jellyfinServer) {
-      return { route: 'jellyfin-users', params: { _from: 'launch' }, mark: 'boot:navigate-jellyfin-users' };
-    }
-    return { route: 'pairing', params: { provider: 'jellyfin' }, mark: 'boot:navigate-pairing' };
   }
 
   var params = { _from: 'launch', _alwaysChoose: true };

@@ -24,6 +24,34 @@ function supportsWatchlistBookmark(item) {
     item.type === 'season' || item.type === 'episode';
 }
 
+function resolveWatchlistUser() {
+  return getState().activeHomeUser || getState().user;
+}
+
+// Whether a watchlist action can be offered (item type supports it AND the
+// active user is allowed to use watchlists). Lets callers — e.g. the detail
+// "More" menu — decide whether to surface the row at all.
+function canOfferWatchlist(item) {
+  return supportsWatchlistBookmark(item) && canUseWatchlists(resolveWatchlistUser());
+}
+
+// Is the item currently on any of the user's watchlists? Drives the menu row
+// label ("Add to watchlist" vs "Edit watchlist").
+function isItemOnWatchlist(item) {
+  if (!item) return false;
+  var user = resolveWatchlistUser();
+  if (!canUseWatchlists(user)) return false;
+  return findWatchlistsContainingItem(user, item.ratingKey).length > 0;
+}
+
+// Open the watchlist picker without a bookmark button — resolves the active
+// user itself. Used by the detail "More" options menu.
+function openWatchlistPickerFor(screen, item, opts) {
+  var user = resolveWatchlistUser();
+  if (!canUseWatchlists(user) || !supportsWatchlistBookmark(item)) return null;
+  return openWatchlistPicker(screen, item, user, opts);
+}
+
 function updateBookmarkButton(btn, filled) {
   if (!btn) return;
   btn.setAttribute('aria-label', filled ? 'On watchlist' : 'Add to watchlist');
@@ -142,5 +170,8 @@ export {
   watchlistBookmarkButtonHtml,
   supportsWatchlistBookmark,
   wireWatchlistBookmark,
-  updateBookmarkButton
+  updateBookmarkButton,
+  canOfferWatchlist,
+  isItemOnWatchlist,
+  openWatchlistPickerFor
 };
