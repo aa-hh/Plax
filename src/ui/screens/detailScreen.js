@@ -35,7 +35,10 @@ import { focusFirst, attachFocusNav } from '../focus.js';
 import {
   watchlistBookmarkButtonHtml,
   supportsWatchlistBookmark,
-  wireWatchlistBookmark
+  wireWatchlistBookmark,
+  canOfferWatchlist,
+  isItemOnWatchlist,
+  openWatchlistPickerFor
 } from '../components/watchlistBookmark.js';
 import {
   buildUltraBlurColorGradient,
@@ -48,7 +51,7 @@ import {
 } from '../resumeChoice.js';
 import { prefetchDetailItems, abortPrefetch } from '../../core/idlePrefetch.js';
 import { getThumbUrl } from '../../backends/index.js';
-import { subtitlesIconSvg, qualityIconSvg } from '../icons/navIcons.js';
+import { subtitlesIconSvg, qualityIconSvg, moreIconSvg } from '../icons/navIcons.js';
 
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
@@ -855,38 +858,69 @@ function detailScreen(root, params, navigate) {
     if (label) label.textContent = text;
   }
 
+  // Icon-only ⋯ "More" opener. Sits where the watchlist bookmark used to, and
+  // folds the old secondary row (Mark watched/unwatched) + the watchlist into a
+  // single options menu (openMoreActionsMenu). Built on .btn so it inherits the
+  // kit focus-inversion + motion gating; .detail-more-btn just squares it off.
+  function moreActionsButtonHtml() {
+    return '<button class="btn detail-more-btn" id="btn-more" tabindex="0" ' +
+      'aria-label="More options" aria-haspopup="menu">' + moreIconSvg() + '</button>';
+  }
+
   function buildPlaybackActionsHtml(item) {
     return '<div class="detail-primary-actions" data-focus-zone="detail-primary-actions">' +
       '<button class="btn btn-primary detail-play-btn" id="btn-start" tabindex="0">' +
       (item.viewOffset ? 'Resume from ' + formatTimeOffset(item) : 'Play') + '</button>' +
       iconActionButtonHtml('btn-subtitles', 'Subtitles', subtitlesIconSvg()) +
       iconActionButtonHtml('btn-quality', 'Quality', qualityIconSvg()) +
-      buildWatchlistActionHtml(item) +
-      '</div>' +
-      '<div class="detail-secondary-actions" data-focus-zone="detail-secondary-actions">' +
-      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      moreActionsButtonHtml() +
       '</div>';
+  }
+
+  // Options menu opened by the ⋯ button on film/episode detail. Reuses the
+  // canonical openModal "Sheet/menu" drawer. Mark watched/unwatched options are
+  // contextual (only the ones that change state show); the watchlist row opens
+  // the existing watchlist picker.
+  function openMoreActionsMenu(item) {
+    var status = getWatchStatus(item);
+    var options = [];
+    if (status !== 'watched') {
+      options.push({ id: 'watched', label: 'Mark as watched' });
+    }
+    if (status !== 'unwatched') {
+      options.push({ id: 'unwatched', label: 'Mark as unwatched' });
+    }
+    if (canOfferWatchlist(item)) {
+      options.push({
+        id: 'watchlist',
+        label: isItemOnWatchlist(item) ? 'Edit watchlist…' : 'Add to watchlist…'
+      });
+    }
+    if (!options.length) return;
+    openModal({
+      title: 'Options',
+      options: options,
+      cancelLabel: 'Close',
+      onPick: function (id) {
+        if (id === 'watched') {
+          applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
+        } else if (id === 'unwatched') {
+          applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
+        } else if (id === 'watchlist') {
+          openWatchlistPickerFor(screen, item, { onChange: function () {} });
+        }
+      }
+    });
   }
 
   function wirePlaybackActions(item) {
     screen.querySelector('#btn-start').addEventListener('click', function () {
       offerResumeChoiceOrPlay(0);
     });
-    var btnWatched = screen.querySelector('#btn-mark-watched');
-    var btnUnwatched = screen.querySelector('#btn-mark-unwatched');
-    if (btnWatched) {
-      btnWatched.addEventListener('click', function () {
-        applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
-      });
+    var btnMore = screen.querySelector('#btn-more');
+    if (btnMore) {
+      btnMore.addEventListener('click', function () { openMoreActionsMenu(item); });
     }
-    if (btnUnwatched) {
-      btnUnwatched.addEventListener('click', function () {
-        applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
-      });
-    }
-    refreshWatchButtons(item);
-    if (supportsWatchlistBookmark(item)) wireWatchlistBookmark(screen, item);
   }
 
   function renderEpisodeDetail(item) {

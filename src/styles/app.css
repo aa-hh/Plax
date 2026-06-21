@@ -129,6 +129,13 @@
   --icon-md: 24px;          /* standard leading/control icon box (nav, list, menu) */
   --icon-lg: 28px;          /* larger glyph box (icon buttons, library sidebar) */
   --list-item-h: 64px;      /* kit List Item row height (561:3969) */
+  /* Navigation drawer — kit-exact widths (563:4331). Collapsed = icon rail
+     (563:4310), expanded = full drawer (542:4257). Item height = kit Nav Item
+     (9:161). Drop the 10-ft --target-min override here: Google's 48px rail item
+     is the 10-foot spec, so we follow it in both minimized and maximized views. */
+  --nav-rail-w: 80px;            /* Navigation drawer collapsed (kit 563:4310) */
+  --nav-rail-w-expanded: 280px;  /* Navigation drawer expanded (kit 542:4257) */
+  --nav-item-h: 48px;            /* Nav item row height (kit 9:161) */
   --field-pad-y: 14px;      /* Text field box — kit 12 scaled for 10-ft */
   --field-pad-x: 18px;      /* Text field box — kit 16 scaled for 10-ft */
   --field-pad-y-auth: 18px; /* Login/Auth field — kit ×1.5 */
@@ -313,7 +320,7 @@ body::after {
   opacity: 0.05;
   background-image: url("data:image/png;base64,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");
   background-repeat: repeat;
-  mix-blend-mode: soft-light;
+  mix-blend-mode: soft-light;  /* chrome53-ok: 5% grayscale noise; soft-light is cosmetic and degrades safely on CH53 */
 }
 
 #app-root { width: 100%; height: 100%; position: relative; }
@@ -366,7 +373,6 @@ body::after {
 .detail-network-retest,
 .detail-network-info-btn,
 .detail-watchlist-btn,
-.detail-secondary-actions .btn,
 .watchlist-row-link,
 .detail-season-link,
 .detail-modal-cancel,
@@ -380,7 +386,7 @@ body::after {
 }
 
 .btn:focus,
-.card:not(.media-card):not(.profile-card):focus,
+.card:not(.media-card):not(.profile-card):not(.provider-card):focus,
 .nav-item:focus,
 .library-item:focus,
 .row-item:not(.media-card):focus,
@@ -397,7 +403,6 @@ body::after {
 .detail-network-retest:focus,
 .detail-network-info-btn:focus,
 .detail-watchlist-btn:focus,
-.detail-secondary-actions .btn:focus,
 .watchlist-row-link:focus,
 .detail-season-link:focus,
 .detail-modal-cancel:focus,
@@ -452,7 +457,7 @@ html.caps-motion .player-stream-pill {
   transition: box-shadow var(--focus-motion-dur) ease, background var(--focus-motion-dur) ease;
 }
 
-html.caps-motion .card:not(.media-card):not(.profile-card):focus,
+html.caps-motion .card:not(.media-card):not(.profile-card):not(.provider-card):focus,
 html.caps-motion .nav-item:focus,
 html.caps-motion .library-item:focus,
 html.caps-motion .row-item:not(.media-card):focus,
@@ -651,11 +656,11 @@ html.caps-motion .detail-watchlist-btn:focus {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  width: 72px;
-  /* Horizontal padding keeps items + focus ring off the rail edges. With that
-     8px inset the ring fits inside the rail, so overflow:hidden is safe again —
-     and it makes the expanding width *reveal* the labels (no display pop). */
-  padding: var(--space-3) var(--space-2);
+  /* Kit Navigation drawer: collapsed = 80px icon rail (563:4310). The drawer's
+     own px-12 inset (kit `px-[12px]`) keeps items + focus pill off the edges, so
+     overflow:hidden is safe and the expanding width *reveals* the labels. */
+  width: var(--nav-rail-w);
+  padding: var(--space-3);
   overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   /* Expanding in-flow PUSHES the content (no overlay/cover). overflow:hidden
@@ -671,7 +676,8 @@ html.caps-motion .detail-watchlist-btn:focus {
    which previously killed both the expand and the label-hide rules on the B8. */
 .browsing-hub-nav-host--peek,
 .browsing-hub-nav-host--expanded {
-  width: 220px;
+  /* Kit Navigation drawer expanded (542:4257) = 280px. */
+  width: var(--nav-rail-w-expanded);
 }
 
 /* Hide labels and section headings when collapsed. */
@@ -681,15 +687,15 @@ html.caps-motion .detail-watchlist-btn:focus {
 }
 
 .browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
-  padding-left: 14px;
-  padding-right: 14px;
+  /* Collapsed: keep the kit px-16 (Nav Item 9:161). On the 80px rail (inner 56px
+     after the drawer's px-12) the 24px icon + 16/16 padding sum to exactly 56,
+     so the icon centers naturally — same as the kit's icon-only collapsed item. */
   justify-content: center;
 }
 
-/* Collapsed-but-labelled active section (E): when the rail is collapsed and not
-   peeking, the active item (aria-current="page") stacks its icon over a compact
-   accent label so the current section stays legible from a cold landing. The
-   72px width holds it; other items remain icon-only. */
+/* Collapsed-but-labelled active section (E): dormant opt-in (--label-active is
+   never applied by mountBrowsingHubNav — Google's collapsed rail is icon-only).
+   Kept as a hook only; the 80px width would hold the stacked icon+label. */
 .browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] {
   flex-direction: column;
   justify-content: center;
@@ -759,17 +765,19 @@ html.caps-motion .detail-watchlist-btn:focus {
 }
 
 .browsing-hub-nav > * + * {
-  margin-top: 2px;
+  /* Kit Nav items stack with gap-12 (margin, not gap — Chrome53). */
+  margin-top: var(--space-3);
 }
 
 .browsing-hub-item {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: var(--target-min);
+  /* Kit Nav Item (9:161): height 48, px-16, gap-12, 24px icon. The row centers
+     its content, so vertical padding stays 0 and the 48px box defines the pill. */
+  min-height: var(--nav-item-h);
   text-align: left;
-  padding: var(--space-3) 16px;
-  margin-bottom: 2px;
+  padding: 0 16px;
   border-radius: var(--gt-radius-button);
   background: transparent;
   color: var(--gt-text-2);
@@ -814,18 +822,18 @@ html.caps-motion .detail-watchlist-btn:focus {
   color: var(--accent);
 }
 
+/* Google TV nav focus = invert to a light pill with dark text + icon (kit
+   Navigation drawer 542:4257, focused item). This IS the focus cue — no ring —
+   matching the app's shared control-inversion focus (Button/Chip/Tabs). Wins
+   over .active, so focusing the current section also inverts (dark icon, not blue). */
 .browsing-hub-item:focus {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-  box-shadow: var(--focus-shadow);
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+  box-shadow: none;
 }
 
 .browsing-hub-item:focus .hub-icon {
-  color: var(--text-primary);
-}
-
-.browsing-hub-item.active:focus .hub-icon {
-  color: var(--accent);
+  color: var(--focus-on-fill);
 }
 
 .watchlist-row-link {
@@ -1571,9 +1579,10 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 /* Collapsed rail: hide brand name, center the mark */
 .browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand {
+  /* Center the 40px mark in the 80px rail's 56px inner (8+40+8). */
   justify-content: center;
-  padding-left: 14px;
-  padding-right: 14px;
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
 }
 .browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand__name {
   display: none;
@@ -2273,7 +2282,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-genre-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 8px;  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   margin: 0;
 }
 
@@ -2291,7 +2300,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-credits-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-7, 32px);
+  gap: var(--space-7, 32px);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   margin: 0;
 }
 
@@ -2317,7 +2326,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-icon-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 8px;  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
 }
 
 .detail-icon-btn__icon {
@@ -2329,6 +2338,21 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-icon-btn__icon svg {
   width: 100%;
   height: 100%;
+}
+
+/* "More" overflow opener (film/episode action row, ⋯). Icon-only square button
+   that replaces the inline watchlist bookmark + the Mark watched/unwatched row;
+   opens the options menu. Built on .btn so it inherits the kit focus-inversion
+   (light fill + dark glyph) and caps-motion gating; this only squares the
+   padding (matching .btn-icon) and sizes the glyph to the old bookmark's 28px. */
+.detail-more-btn {
+  min-width: var(--target-min);
+  padding: var(--space-3);
+}
+
+.detail-more-btn .hub-icon {
+  width: 28px;
+  height: 28px;
 }
 
 /* Cast & Crew rail — circular avatars with name + role beneath. */
@@ -2343,7 +2367,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .detail-cast-row {
   display: flex;
-  gap: var(--space-5, 24px);
+  gap: var(--space-5, 24px);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   padding-bottom: 8px;
 }
 
@@ -2475,32 +2499,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-layout--movie-v2 .detail-play-btn,
 .detail-layout--episode-v2 .detail-play-btn {
   min-width: 140px;
-}
-
-.detail-secondary-actions {
-  display: flex;
-  flex-wrap: wrap;
-  /* Breathing room around each secondary CTA (ring + grow); negative margin keeps
-     alignment. Matches .detail-primary-actions so rows don't clip on focus. */
-  margin: var(--space-2) -10px 0;
-  padding: 4px 0;
-}
-
-.detail-secondary-actions > * {
-  margin: 6px 10px;
-}
-
-.detail-secondary-actions .btn {
-  font-size: var(--font-small);
-  padding: 10px var(--space-5);
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--text-secondary);
-}
-
-.detail-secondary-actions .btn:focus {
-  border-color: var(--border-focus);
-  color: var(--text-primary);
 }
 
 /* Episode detail (TV) */
@@ -4117,7 +4115,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-2);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   text-align: left;
   width: 100%;
   min-height: var(--list-item-h);
@@ -4280,7 +4278,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   flex-wrap: wrap;
   -webkit-align-items: baseline;
   align-items: baseline;
-  gap: 4px 8px;
+  gap: 4px 8px;  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   padding: 10px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -5430,7 +5428,7 @@ html.caps-motion .gt-list-item:focus {
 .gt-text-input-wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;                    /* kit label↔field gap (base Text field) */
+  gap: 6px;                    /* kit label↔field gap (base Text field) */  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   padding: var(--space-6) 0 var(--space-4);
 }
 .tv-text-input-label {
@@ -5463,7 +5461,7 @@ html.caps-motion .gt-list-item:focus {
    The base Text field stays kit-scaled (settings/search); this ×1.5 sizing is
    gated to auth screens via openTextInputModal({ variant: 'auth' }), which adds
    .gt-text-input-wrap--auth. See registry "Login / Auth field". */
-.gt-text-input-wrap--auth { gap: 9px; }
+.gt-text-input-wrap--auth { gap: 9px; }  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
 .gt-text-input-wrap--auth .tv-text-input-label { font-size: 21px; line-height: 30px; }
 .gt-text-input-wrap--auth .tv-text-input { padding: var(--field-pad-y-auth) var(--field-pad-x-auth); line-height: 36px; }
 .tv-text-input::placeholder {
@@ -5484,9 +5482,12 @@ html.caps-motion .gt-list-item:focus {
 /* ── Provider picker: two branded "classic cards" (logo image + connect blurb) ── */
 .provider-cards {
   display: flex;
-  gap: var(--space-7);
+  justify-content: center;
   margin-top: var(--space-8);
 }
+/* Margin gutter, NOT flex gap — Chrome53/webOS4 drops `gap` so the cards would
+   collide on the B8 (see registry platform rule). */
+.provider-cards .provider-card + .provider-card { margin-left: var(--space-7); }
 .provider-card {
   display: flex;
   flex-direction: column;
@@ -5503,16 +5504,20 @@ html.caps-motion .gt-list-item:focus {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;                 /* fill the card edge-to-edge (don't rely on flex stretch) */
+  box-sizing: border-box;
   height: var(--provider-card-media-h);
   border-bottom: 1px solid var(--border);
 }
+/* Full-bleed branded panel (linear so it covers the whole box, not a faded radial
+   blob that left the media looking empty). */
 .provider-card[data-brand="plex"] .provider-card__media {
-  background: radial-gradient(120% 140% at 50% 25%, rgba(229, 160, 13, 0.18), rgba(229, 160, 13, 0.04) 70%);
+  background: linear-gradient(135deg, rgba(229, 160, 13, 0.30), rgba(229, 160, 13, 0.08));
 }
 .provider-card[data-brand="jellyfin"] .provider-card__media {
-  background: radial-gradient(120% 140% at 50% 25%, rgba(123, 92, 230, 0.20), rgba(0, 164, 220, 0.06) 70%);
+  background: linear-gradient(135deg, rgba(170, 92, 195, 0.38), rgba(0, 164, 220, 0.16));
 }
-.provider-card__logo { width: 70%; height: auto; max-height: 96px; }
+.provider-card__logo { width: 78%; height: auto; max-height: 120px; }
 .provider-card__desc {
   padding: var(--space-5) var(--space-6) var(--space-6);
   font-size: var(--gt-body);
@@ -5533,13 +5538,13 @@ html.caps-motion .gt-list-item:focus {
 .jellyfin-login .login-fields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-5);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   width: var(--login-fields-w);
   max-width: 90vw;
   margin-top: var(--space-7);
   text-align: left;
 }
-.jellyfin-login .login-field { display: flex; flex-direction: column; gap: 9px; }
+.jellyfin-login .login-field { display: flex; flex-direction: column; gap: 9px; }  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
 .jellyfin-login .login-field__label {
   font-size: 21px;             /* match Text Field label (kit ×1.5) */
   font-weight: 500;
@@ -5566,7 +5571,7 @@ html.caps-motion .gt-list-item:focus {
 }
 .jellyfin-login .login-actions {
   display: flex;
-  gap: var(--space-5);
+  gap: var(--space-5);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
   justify-content: center;
   margin-top: var(--space-7);
 }
@@ -5578,5 +5583,212 @@ html.caps-motion .gt-list-item:focus {
 }
 /* "Use a different service" → back to the provider picker (escape hatch). */
 .jellyfin-login .login-switch-provider { margin-top: var(--space-8); }
+
+/* ── Jellyfin server picker (saved servers + "Add a new server") ──────────────
+   Reuses .screen-center + the List item component (createListItem → .gt-list-item)
+   for each server row (name + URL subtitle + chevron). First-run with no saved
+   servers skips this screen entirely (router → jellyfinLoginScreen). */
+.jellyfin-server-picker .server-picker-list {
+  width: var(--login-fields-w);
+  max-width: 90vw;
+  margin-top: var(--space-7);
+  padding: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: left;
+}
+.jellyfin-server-picker .server-picker-divider {
+  height: 1px;
+  margin: var(--space-2) var(--space-3);
+  background: var(--border);
+}
+.jellyfin-server-picker .login-switch-provider { margin-top: var(--space-8); }
+
 /* Plex pairing places it beside "Refresh code". */
-.pairing-actions { display: flex; gap: var(--space-4); justify-content: center; }
+.pairing-actions { display: flex; gap: var(--space-4); justify-content: center; }  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
+
+
+/* ── Settings screen vocabulary (from feat/settings-redesign) ──────────────── */
+/* ── Inline edit-toggle field (Settings → Log sink URL) ──
+   A read-only value (disabled <input>) paired with a Set/Save/Edit CTA on the
+   right. Reuses the .tv-text-input spec; only adds row layout + a read state.
+   Text entry is gated behind the CTA so the on-screen keyboard only opens on
+   an explicit action (TV best practice). */
+.gt-inline-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
+  width: 100%;
+}
+/* Shorter field so the buttons keep their full .btn padding AND the Set/Save/Edit
+   CTA sits near the row centre — where vertical D-pad travel lands (the geometric
+   nav penalises horizontal offset, so a far-right CTA gets skipped). */
+.gt-inline-field__input {
+  flex: 0 1 380px;
+  min-width: 0;
+}
+/* CTA + Test: full button padding, never shrink. Neutral surface at rest so
+   they're visible on the card but NOT the always-on blue of btn-primary; they
+   invert to a light pill on focus via the shared .btn:focus rule. */
+.gt-inline-field__cta,
+.gt-inline-field__test {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: var(--bg-surface-hover);
+}
+/* Read state: the saved value reads as a calm, legible summary — clearly
+   inactive but NOT a dead/greyed-out control. */
+.gt-inline-field__input:disabled {
+  background: #303030;        /* inverse-on-surface */
+  color: #C4C7C5;             /* on-surface-variant */
+  -webkit-text-fill-color: #C4C7C5; /* Chrome53 keeps disabled text legible */
+  border: 1px solid #5F6368;  /* dimmer outline than active */
+  opacity: 1;
+  cursor: default;
+}
+/* Label turns primary while the keyboard is up (mirrors text-field active spec). */
+#log-sink-row.log-sink-row--typing > label {
+  color: #A8C7FA;             /* TV Compose/sys/dark/primary */
+}
+
+/* ── Settings vocabulary (grouped cards + list-item rows) ──
+   Single-scroll settings: overline-titled cards group related rows. Multi-choice
+   rows open the openModal picker; binary rows use an inline switch; read-only
+   info rows are non-focusable so D-pad skips them. Built on .gt-list-item. */
+.gt-settings-group {
+  margin: 0 0 var(--space-7);
+  max-width: 1000px;
+}
+.gt-settings-group__title {
+  margin: 0 0 var(--space-3) var(--space-2);
+  font-size: var(--font-small);
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.gt-settings-card {
+  background: var(--bg-surface);          /* surface-container */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+}
+/* Hairline divider between adjacent rows (focus fill sits above it). */
+.gt-settings-card > * + * {
+  border-top: 1px solid var(--border);
+}
+
+/* Read-only info row — matches list-item metrics but is a non-focusable <div>. */
+.gt-settings-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
+  min-height: var(--target-min);
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--gt-body);
+  color: var(--text-primary);
+}
+.gt-settings-info__value {
+  color: var(--text-secondary);
+  text-align: right;
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Trailing value + chevron on picker / action rows. */
+.gt-settings-value {
+  color: inherit;
+  opacity: 0.85;
+}
+.gt-settings-chevron {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-3);
+  opacity: 0.6;
+}
+.gt-list-item:focus .gt-settings-chevron { opacity: 1; }
+.gt-settings-item--destructive .gt-list-item__label { color: var(--danger, #F2B8B5); }
+.gt-settings-item--destructive:focus .gt-list-item__label { color: var(--focus-on-fill); }
+
+/* Binary switch (Material 3 TV). Off = outline track; on = primary track. */
+.gt-switch {
+  position: relative;
+  display: inline-block;
+  width: 64px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--text-muted);          /* outline (off) */
+  flex-shrink: 0;
+}
+.gt-switch__knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-dim);
+}
+.gt-switch--on { background: var(--accent); }
+.gt-switch--on .gt-switch__knob {
+  left: 32px;
+  background: var(--surface-dim);
+}
+/* On focus the row inverts to a light fill; keep the switch readable on it. */
+.gt-list-item:focus .gt-switch { background: rgba(11, 13, 18, 0.35); }
+.gt-list-item:focus .gt-switch--on { background: var(--accent); }
+
+/* Stacked row (label + control + hint), e.g. the log-sink inline field. */
+.gt-settings-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
+  padding: var(--space-4) var(--space-5);
+}
+.gt-settings-stacked > label {
+  font-size: var(--gt-body);
+  color: var(--text-primary);
+}
+
+/* Log-sink inline editor: revealed when the read row is selected. Full-width
+   input (offset moot — focus is trapped while editing) + a Save/Cancel/Test
+   button row. Buttons get a visible neutral surface; invert on focus. */
+.gt-settings-editor__actions {
+  display: flex;
+  gap: var(--space-4);  /* chrome53-ok: flex gap, spacing loss only on CH53 (known debt) */
+}
+/* Buttons inherit the solid .btn container (--button-container #303030), which
+   reads on the card and inverts to the light pill on focus. Just stop them
+   shrinking so the full padding is always honored. */
+.gt-settings-editor__actions .btn {
+  flex: 0 0 auto;
+}
+
+/* Footer actions (Sign out). */
+.gt-settings-footer {
+  margin: var(--space-6) 0 var(--space-8);
+  max-width: 1000px;
+}
+
+/* Settings sublabels (hints) wrap to multiple lines instead of truncating. */
+.gt-settings-item .gt-list-item__sublabel {
+  white-space: normal;
+  overflow: visible;
+}
+/* Muted notes + the async home-profiles list align with row content padding. */
+.gt-settings-card .settings-muted,
+.gt-settings-card .gt-settings-note {
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+}
+.gt-settings-card .settings-home-users {
+  padding: 0 var(--space-5) var(--space-3);
+}
+.gt-settings-card .settings-home-user-row:last-child { border-bottom: 0; }
+/* Watchlist rows sit flush inside the card. */
+.gt-settings-card .settings-watchlist-row { padding: var(--space-3) var(--space-5); }

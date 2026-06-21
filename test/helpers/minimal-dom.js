@@ -59,6 +59,7 @@ function createElement(tag) {
     children: [],
     attributes: Object.create(null),
     style: Object.create(null),
+    dataset: Object.create(null),
     parentElement: null,
     __rect: { x: 0, y: 0, width: 100, height: 40 },
     scrollTop: 0,

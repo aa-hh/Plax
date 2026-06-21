@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 .build-last-stamp.json
 .build-seq.json
@@ -12,3 +12,6 @@ build/rollup.cache/
 # Local agent tooling (skills, worktrees) — not project source
 .claude/
 .agents/
+
+# Local TV deploy target (device name + IP)
+.tvtarget

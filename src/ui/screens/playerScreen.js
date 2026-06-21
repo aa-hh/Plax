@@ -83,9 +83,9 @@ import {
   focusFirst,
   attachFocusNav,
   scrollFocusedIntoView,
-  focusableSelector,
   invalidateFocusableCache
 } from '../focus.js';
+import { setPlayerBottomFocusable } from './playerChromeFocus.js';
 import { getPlaybackPrefs, setPlaybackPrefs } from '../../settings/playbackSettings.js';
 import {
   loadScrubPreviewSource,
@@ -836,23 +836,6 @@ function playerScreen(root, params, navigate) {
     syncSubtitleDelayControls();
   }
 
-  function setPlayerBottomFocusable(enabled) {
-    var bottom = overlay.querySelector('.player-bottom');
-    if (!bottom) return;
-    bottom.querySelectorAll(focusableSelector).forEach(function (el) {
-      if (enabled) {
-        if (el.dataset.prevTabindex != null) {
-          if (el.dataset.prevTabindex === '') el.removeAttribute('tabindex');
-          else el.tabIndex = parseInt(el.dataset.prevTabindex, 10);
-          delete el.dataset.prevTabindex;
-        }
-      } else {
-        el.dataset.prevTabindex = el.hasAttribute('tabindex') ? String(el.tabIndex) : '';
-        el.tabIndex = -1;
-      }
-    });
-  }
-
   function shouldTrapPlayerChromeFocus() {
     return !!(menuOpen || infoPanelVisible || mediaInfoOpen ||
       (autoplayPanel && !autoplayPanel.hidden));
@@ -881,7 +864,7 @@ function playerScreen(root, params, navigate) {
   }
 
   function syncPlayerChromeFocusable() {
-    setPlayerBottomFocusable(!shouldTrapPlayerChromeFocus());
+    setPlayerBottomFocusable(overlay, !shouldTrapPlayerChromeFocus());
     syncPlaybackPausedForModal();
   }
 
