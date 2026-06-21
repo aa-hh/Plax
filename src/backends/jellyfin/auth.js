@@ -8,14 +8,8 @@
  */
 import { fetchJellyfinJson, normalizeBaseUrl } from './client.js';
 
-/**
- * Validate a user-entered server URL via the unauthenticated public-info endpoint.
- * Resolves to a normalized server descriptor; rejects if it isn't a Jellyfin server.
- */
-function validateServer(rawUrl) {
-  var base = normalizeBaseUrl(rawUrl);
-  if (!base) return Promise.reject(new Error('Enter a server address'));
-  if (!/^https?:\/\//i.test(base)) base = 'http://' + base;
+/** Probe one candidate base URL; resolves to a server descriptor or rejects. */
+function probeServer(base) {
   return fetchJellyfinJson('/System/Info/Public', { base: base, token: '', timeout: 12000 })
     .then(function (info) {
       if (!info || !info.Id || !info.Version) {
@@ -29,6 +23,25 @@ function validateServer(rawUrl) {
         type: 'jellyfin'
       };
     });
+}
+
+/**
+ * Validate a user-entered server URL via the unauthenticated public-info endpoint.
+ * Resolves to a normalized server descriptor; rejects if it isn't a Jellyfin server.
+ *
+ * When the user omits the scheme we MUST try https first: a public server that
+ * redirects http→https drops the `Authorization` header on the cross-scheme
+ * redirect (browsers strip it), so later authenticated POSTs — Quick Connect
+ * Initiate above all — would silently 400. Falling back to http keeps LAN
+ * servers (which are http-only) working.
+ */
+function validateServer(rawUrl) {
+  var base = normalizeBaseUrl(rawUrl);
+  if (!base) return Promise.reject(new Error('Enter a server address'));
+  if (/^https?:\/\//i.test(base)) return probeServer(base);
+  return probeServer('https://' + base).catch(function () {
+    return probeServer('http://' + base);
+  });
 }
 
 /** Login-screen user list (no auth). Users configured to show publicly. */
