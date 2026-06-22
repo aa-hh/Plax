@@ -2161,6 +2161,31 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   color: var(--accent);
 }
 
+/* Rating badge: Material star icon (Google design library) + score. Shown when
+   no official source logo is available. Inherits --accent. No flex `gap`
+   (unsupported on Chrome 53) — the icon carries its own right margin. */
+.detail-rating-badge {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  color: var(--accent);
+}
+
+.detail-rating-icon {
+  width: 1em;
+  height: 1em;
+  margin-right: 4px;
+  flex: 0 0 auto;
+}
+
+.detail-rating-score {
+  font-weight: 600;
+}
+
+.detail-meta-sep {
+  color: var(--text-secondary);
+}
+
 .detail-show-overview {
   margin: var(--space-3) 0 0;
   font-size: var(--gt-body-lg);

@@ -160,13 +160,13 @@ function libraryScreen(root, params, navigate) {
 
   function friendlyScanError(err) {
     if (err && err.status === 403) {
-      return 'Scan not allowed. Restricted Plex Home users may not have permission.';
+      return 'Scan not allowed. Your account may not have permission (admin only).';
     }
     if (err && err.status === 401) {
-      return 'Plex sign-in expired. Sign in again to scan.';
+      return 'Sign-in expired. Sign in again to scan.';
     }
     if (err && err.status >= 500) {
-      return 'Plex server unreachable. Try again in a moment.';
+      return 'Server unreachable. Try again in a moment.';
     }
     if (err && err.message && err.message.toLowerCase().indexOf('timeout') >= 0) {
       return 'Scan request timed out.';
@@ -190,9 +190,11 @@ function libraryScreen(root, params, navigate) {
     var sortKey = SORT_OPTIONS[activeSortIndex].key;
     items = items.slice(); // don't mutate
     if (sortKey === 'addedAt') {
-      // addedAt is not in mapLibraryItem — fall back to server-returned order
-      // (items already arrive sorted by titleSort from server; reorder not possible
-      //  without the addedAt field, so we leave as-is for now)
+      // Newest first. addedAt is normalized to epoch ms by both backends
+      // (Plex addedAt*1000, Jellyfin DateCreated→ms); 0 sinks to the bottom.
+      items.sort(function (a, b) {
+        return (b.addedAt || 0) - (a.addedAt || 0);
+      });
     } else if (sortKey === 'originallyAvailableAt') {
       items.sort(function (a, b) {
         var da = a.originallyAvailableAt || '';

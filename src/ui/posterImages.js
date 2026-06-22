@@ -212,7 +212,15 @@ function drainPosterLoadQueue() {
 
 function startPosterImageLoad(img, url, opts) {
   opts = opts || {};
-  activePosterLoads += 1;
+  // Already mid-load for this exact URL — the in-flight load will reveal it.
+  // Without this guard a re-bind (e.g. re-hydrate on nav-back before the first
+  // load finished) would take a SECOND concurrency slot while only one onload
+  // ever fires, leaking the slot until activePosterLoads is permanently pinned
+  // at MAX_CONCURRENT_POSTER_LOADS and the whole queue wedges (posters stop
+  // hydrating app-wide). Reuse the slot the <img> already holds.
+  if (img.__posterLoading && img.dataset.posterSrc === url) return;
+  if (!img.__posterLoading) activePosterLoads += 1;
+  img.__posterLoading = true;
   watchPosterReveal(img);
 
   img.decoding = 'async';
@@ -222,6 +230,7 @@ function startPosterImageLoad(img, url, opts) {
   function finishLoad() {
     img.onload = null;
     img.onerror = null;
+    img.__posterLoading = false;
     markPosterLoaded(url);
     releasePosterLoadSlot();
     if (img.naturalWidth > 0) {
@@ -240,6 +249,7 @@ function startPosterImageLoad(img, url, opts) {
     maybeSwapToCachedBlob(img, url);
   }
   if (img.complete && img.naturalWidth > 0) {
+    img.__posterLoading = false;
     markPosterLoaded(url);
     revealPosterImage(img);
     releasePosterLoadSlot();
@@ -263,6 +273,9 @@ function bindPosterImage(img, url, opts) {
     revealPosterImage(img);
     return;
   }
+  // Already loading this exact URL — don't enqueue/start a duplicate (which would
+  // leak a concurrency slot; see startPosterImageLoad).
+  if (img.__posterLoading && img.dataset.posterSrc === url) return;
   if (activePosterLoads >= MAX_CONCURRENT_POSTER_LOADS) {
     posterLoadQueue.push({ img: img, url: url, opts: opts });
     return;

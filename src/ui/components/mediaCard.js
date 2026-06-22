@@ -180,7 +180,12 @@ function resolveCardThumb(item, options) {
   ) {
     return item.grandparentThumbUrl;
   }
-  return item && item.thumb ? item.thumb : '';
+  if (item && item.thumb) return item.thumb;
+  // Episode cards with no still: fall back to the backdrop so the slot isn't empty.
+  if (item && item.type === 'episode' && options.layout === 'episode' && item.art) {
+    return item.art;
+  }
+  return '';
 }
 
 function createMediaCard(item, onSelect, options) {

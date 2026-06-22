@@ -48,7 +48,7 @@ import {
 } from '../resumeChoice.js';
 import { prefetchDetailItems, abortPrefetch } from '../../core/idlePrefetch.js';
 import { getThumbUrl } from '../../backends/index.js';
-import { subtitlesIconSvg, qualityIconSvg } from '../icons/navIcons.js';
+import { subtitlesIconSvg, qualityIconSvg, starIconSvg } from '../icons/navIcons.js';
 
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
@@ -147,14 +147,30 @@ function detailScreen(root, params, navigate) {
     return String(season && season.title || '').trim().toLowerCase() === 'all episodes';
   }
 
-  function formatImdbRating(item) {
-    if (!item || !item.audienceRating) return '';
-    var img = (item.audienceRatingImage || '').toLowerCase();
-    var label = img.indexOf('imdb') >= 0 ? 'IMDb' : 'Audience';
-    var score = Number(item.audienceRating);
+  // Identify an official rating source from the Plex-style image token, if any.
+  function ratingSourceLabel(item) {
+    var img = ((item && (item.audienceRatingImage || item.ratingImage)) || '').toLowerCase();
+    if (img.indexOf('imdb') >= 0) return 'IMDb';
+    if (img.indexOf('rottentomatoes') >= 0 || img.indexOf('rotten') >= 0) return 'Rotten Tomatoes';
+    return '';
+  }
+
+  // Rating badge: always show the score we have. When it comes from an official
+  // source we have a logo for, show that logo; otherwise show a Material star icon
+  // (Google design library) in the logo's place. No official logo assets are
+  // bundled yet, so we render the star for every source today — the seam is here
+  // (ratingSourceLabel) for dropping logos in later.
+  function buildRatingHtml(item) {
+    if (!item) return '';
+    var score = Number(item.audienceRating || item.rating || 0);
     if (!score || isNaN(score)) return '';
     var text = score % 1 === 0 ? String(score) : score.toFixed(1);
-    return label + ' ' + text;
+    var source = ratingSourceLabel(item);
+    return '<span class="detail-rating-badge" aria-label="' +
+      escapeHtml((source || 'Rating') + ' ' + text) + '">' +
+      starIconSvg('detail-rating-icon') +
+      '<span class="detail-rating-score">' + escapeHtml(text) + '</span>' +
+      '</span>';
   }
 
   // ── JetStream-inspired info blocks ──────────────────────────────────────
@@ -573,13 +589,13 @@ function detailScreen(root, params, navigate) {
 
   function friendlyRefreshError(err) {
     if (err && err.status === 403) {
-      return 'Refresh not allowed. Restricted Plex Home users may not have permission.';
+      return 'Refresh not allowed. Your account may not have permission (admin only).';
     }
     if (err && err.status === 401) {
-      return 'Plex sign-in expired. Sign in again to refresh.';
+      return 'Sign-in expired. Sign in again to refresh.';
     }
     if (err && err.status >= 500) {
-      return 'Plex server unreachable. Try again in a moment.';
+      return 'Server unreachable. Try again in a moment.';
     }
     if (err && err.message && err.message.toLowerCase().indexOf('timeout') >= 0) {
       return 'Refresh request timed out.';
@@ -592,7 +608,7 @@ function detailScreen(root, params, navigate) {
     isRefreshing = true;
     var btn = screen.querySelector('#btn-refresh');
     if (btn) btn.disabled = true;
-    setRefreshMessage('Refresh requested. Plex is scanning…', false);
+    setRefreshMessage('Refresh requested. Scanning…', false);
 
     refreshItem(server, ratingKey).then(function () {
       return new Promise(function (r) { setTimeout(r, 3000); });
@@ -920,7 +936,7 @@ function detailScreen(root, params, navigate) {
       formatDuration(item.duration),
       item.contentRating
     ].filter(Boolean);
-    var imdb = formatImdbRating(item);
+    var ratingHtml = buildRatingHtml(item);
 
     screen.innerHTML = wrapDetailShell(
       '<div class="detail-layout detail-layout--episode-v2">' +
@@ -938,7 +954,7 @@ function detailScreen(root, params, navigate) {
         ? '<p class="detail-episode-line detail-episode-line--secondary">' +
           escapeHtml(secondaryParts.join(' · ')) + '</p>'
         : '') +
-      (imdb ? '<p class="detail-episode-line detail-episode-rating">' + escapeHtml(imdb) + '</p>' : '') +
+      (ratingHtml ? '<p class="detail-episode-line detail-episode-rating">' + ratingHtml + '</p>' : '') +
       (item.summary ? '<p class="detail-episode-summary">' + escapeHtml(item.summary) + '</p>' : '') +
       buildCreditsRowHtml(item) +
       '</div>' +
@@ -1042,9 +1058,13 @@ function detailScreen(root, params, navigate) {
       ? '<div class="progress-track detail-progress-bar" aria-hidden="true">' +
         '<div class="progress-fill" style="width:' + progressPct + '%"></div></div>'
       : '';
-    var imdb = formatImdbRating(item);
-    var metaParts = [item.year, formatDuration(item.duration), item.contentRating, imdb]
+    var ratingHtml = buildRatingHtml(item);
+    var metaParts = [item.year, formatDuration(item.duration), item.contentRating]
       .filter(Boolean);
+    // Rating is rendered as an icon badge, so it can't go through escapeHtml(join);
+    // append it (with a separator) after the escaped text parts on the same line.
+    var metaInner = escapeHtml(metaParts.join(' · ')) +
+      (ratingHtml ? (metaParts.length ? '<span class="detail-meta-sep"> · </span>' : '') + ratingHtml : '');
 
     screen.innerHTML = wrapDetailShell(
       '<div class="detail-layout detail-layout--movie-v2">' +
@@ -1056,8 +1076,8 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-movie-info">' +
       buildDetailTopBar(buildFilmBreadcrumbTrail()) +
       '<h1 class="detail-movie-title">' + escapeHtml(item.title || '') + '</h1>' +
-      (metaParts.length
-        ? '<p class="detail-meta">' + escapeHtml(metaParts.join(' · ')) + '</p>'
+      (metaInner
+        ? '<p class="detail-meta">' + metaInner + '</p>'
         : '') +
       buildGenreChipsHtml(item) +
       (item.summary
@@ -1118,7 +1138,7 @@ function detailScreen(root, params, navigate) {
     activeDetailRoute = buildActiveDetailRoute(item);
     showSeasons = null;
     activeSeasonKey = null;
-    var imdb = formatImdbRating(item);
+    var ratingHtml = buildRatingHtml(item);
 
     screen.innerHTML = wrapDetailShell(
       '<div class="detail-layout detail-layout--show-v2">' +
@@ -1128,7 +1148,7 @@ function detailScreen(root, params, navigate) {
       buildWatchlistActionHtml(item) +
       '</div>' +
       '<p class="detail-show-meta" id="detail-show-meta">' + escapeHtml(showMetaLine(item)) + '</p>' +
-      (imdb ? '<p class="detail-show-meta detail-show-rating">' + escapeHtml(imdb) + '</p>' : '') +
+      (ratingHtml ? '<p class="detail-show-meta detail-show-rating">' + ratingHtml + '</p>' : '') +
       (item.summary
         ? '<p class="detail-show-overview">' + escapeHtml(item.summary) + '</p>'
         : '') +
@@ -1367,7 +1387,7 @@ function detailScreen(root, params, navigate) {
       setRefreshMessage(pendingRefreshMessage.text, pendingRefreshMessage.isError);
       pendingRefreshMessage = null;
     } else if (isRefreshing) {
-      setRefreshMessage('Refresh requested. Plex is scanning…', false);
+      setRefreshMessage('Refresh requested. Scanning…', false);
     }
 
     var canSetWatch = item.type === 'movie' || item.type === 'episode';
