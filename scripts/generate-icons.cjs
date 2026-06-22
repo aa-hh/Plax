@@ -104,6 +104,11 @@ function crc32(buf) {
 var assets = path.join(__dirname, '..', 'assets');
 if (!fs.existsSync(assets)) fs.mkdirSync(assets, { recursive: true });
 
-fs.writeFileSync(path.join(assets, 'icon.png'), makePng(80));
-fs.writeFileSync(path.join(assets, 'icon-large.png'), makePng(130));
-console.log('Wrote icon.png (80x80) and icon-large.png (130x130) to assets/');
+// Generate placeholder icons ONLY when none are committed — never clobber a real
+// (e.g. branded) icon checked into the repo. To regenerate, delete the asset first.
+var iconPath = path.join(assets, 'icon.png');
+var largeIconPath = path.join(assets, 'icon-large.png');
+var wrote = [];
+if (!fs.existsSync(iconPath)) { fs.writeFileSync(iconPath, makePng(80)); wrote.push('icon.png'); }
+if (!fs.existsSync(largeIconPath)) { fs.writeFileSync(largeIconPath, makePng(130)); wrote.push('icon-large.png'); }
+console.log(wrote.length ? ('Generated placeholder ' + wrote.join(' + ')) : 'Kept committed icons (no placeholders generated).');
