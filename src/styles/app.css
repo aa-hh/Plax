@@ -374,7 +374,6 @@ body::after {
 .detail-secondary-actions .btn,
 .watchlist-row-link,
 .detail-season-link,
-.detail-modal-cancel,
 .player-control-pill,
 .player-stream-pill,
 .player-media-info-btn,
@@ -405,7 +404,6 @@ body::after {
 .detail-secondary-actions .btn:focus,
 .watchlist-row-link:focus,
 .detail-season-link:focus,
-.detail-modal-cancel:focus,
 .player-control-pill:focus,
 .player-stream-pill:focus,
 .player-media-info-btn:focus,
@@ -3258,11 +3256,91 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* .detail-modal-cancel is NOT a visual variant — it is just a focus-system marker
-   (listed in focus.js focusableSelector). The button's look comes entirely from the
-   composed canonical classes: every call site uses `.btn .btn-outline .btn--sm`
-   (kit Outline / Size=S). The old bespoke override (radius 6, min-height 38, muted
+/* .detail-modal-cancel is an inert marker class — it carries NO visual rules. The
+   button's look comes entirely from the composed canonical classes: every call site
+   uses `.btn .btn-outline .btn--sm` (kit Outline / Size=S). Focusability + focus
+   inversion both come from the `button`/`.btn` entries (focus.js focusableSelector +
+   the `.btn:focus` group). The old bespoke override (radius 6, min-height 38, muted
    color, ad-hoc border) is deleted — it diverged from the kit pill + inversion. */
+
+/* ── Modal drawer — side panel (kit Direction=Right, node 4498:31402) ──
+   The ONE overlay primitive for transient single-select option lists, built by
+   openSidePanel(). Surface-container floating panel anchored to the right edge,
+   scrim @60%, kit radius 16 / --space-5 padding / dark-3 shadow, borderless
+   List/Header title, then kit List-Item rows (reuses the .player-menu-option
+   anatomy that the player track-selector already ships — min-height 64, radius 8,
+   padding 12/16, 24px radio control, light-fill :focus inversion, soft --active).
+   Explicit top/right/bottom/left edges (no `inset` — Chrome53). */
+.gt-side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: calc(var(--z-player-overlay) + 2);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  /* float in from the right edge with the kit floating inset */
+  padding: var(--safe-y) var(--drawer-edge-gap);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.gt-side-panel[hidden] {
+  display: none !important;
+}
+
+.gt-side-panel-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--modal-sheet-max-w);
+  /* content-sized between a floor and the available height; the list scrolls */
+  min-height: var(--drawer-side-min-h);
+  max-height: 100%;
+  overflow: hidden;
+  padding: var(--space-5);
+  background: var(--bg-surface);          /* kit surface-container #1E1F20 */
+  border-radius: var(--radius-xl);        /* kit rounded-16 (floating panel) */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15); /* kit dark/3 */
+}
+
+/* Margin-based vertical rhythm (flex `gap` no-ops on Chromium 53). */
+.gt-side-panel-sheet > * + * {
+  margin-top: var(--space-4);
+}
+
+/* kit List/Header: pt-8 pb-16 px-16, borderless (no divider). */
+.gt-side-panel-header {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+.gt-side-panel-title {
+  margin: 0;
+  font-size: var(--font-body);
+  font-weight: var(--gt-weight-title);
+  letter-spacing: var(--gt-ls-title);
+  color: var(--text-primary);
+}
+
+/* The list is the flex scroll region; header + footer stay pinned. */
+.gt-side-panel-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: var(--space-2) var(--space-3);
+}
+
+.gt-side-panel-footer {
+  flex-shrink: 0;
+  padding: var(--space-3) 0 0;
+}
 
 /* Exit-confirm modal removed — Google TV prohibits gating back-to-exit behind a
    confirm screen. Quitting is now a global long-press Back/Exit (see router.js). */
@@ -4114,7 +4192,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  /* No flex `gap` (no-ops on Chromium 53). The row is space-between with a single
+     label + trailing control, so the gap is decorative-only and safe to drop. */
   text-align: left;
   width: 100%;
   min-height: var(--list-item-h);
@@ -5385,27 +5464,6 @@ video.native-player.subtitle-no-bg ::cue {
 .gt-list-item:focus .gt-list-item__trailing,
 .gt-list-item:focus .gt-list-item__sublabel { color: var(--focus-on-fill); }
 
-/* Picker modal: selected = light pill + trailing checkmark */
-.gt-modal-option {
-  display: flex;
-  align-items: center;
-}
-.gt-modal-option__label { flex: 1; min-width: 0; }
-.gt-modal-option__detail {
-  margin-left: var(--space-4);
-  color: var(--gt-text-muted);
-  font-size: var(--gt-card-sub);
-}
-.gt-modal-option__check {
-  margin-left: var(--space-4);
-  flex-shrink: 0;
-  color: var(--accent);
-  font-weight: 700;
-}
-.gt-modal-option--selected {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
 
 /* List items keep the tiny 1.025x lift (text blur imperceptible at that scale).
    Chips/tabs are text-bearing → no scale (fuzz); ring + background lift instead. */
@@ -5436,6 +5494,7 @@ html.caps-motion .gt-list-item:focus {
 html.caps-motion .detail-modal,
 html.caps-motion .gt-modal,
 html.caps-motion .gt-dialog,
+html.caps-motion .gt-side-panel,
 html.caps-motion .player-track-modal,
 html.caps-motion .player-media-info-modal {
   animation: gt-overlay-in 0.16s ease;
@@ -5445,8 +5504,11 @@ html.caps-motion .gt-modal-sheet,
 html.caps-motion .gt-dialog-sheet {
   animation: gt-sheet-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+/* Side panel = kit Direction=Right → slides in from the right edge (compositor
+   translateX only). Matches the player track-selector / media-info drawers. */
 html.caps-motion .player-track-modal-sheet,
-html.caps-motion .player-media-info-sheet {
+html.caps-motion .player-media-info-sheet,
+html.caps-motion .gt-side-panel-sheet {
   animation: gt-drawer-right-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 html.caps-motion .gt-list-item:focus {

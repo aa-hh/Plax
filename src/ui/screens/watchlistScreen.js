@@ -10,7 +10,7 @@ import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resol
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
-import { openModal, openTextInputModal } from '../components/controls.js';
+import { openSidePanel, openTextInputModal } from '../components/controls.js';
 import { primeVisiblePosters } from '../posterImages.js';
 
 function watchlistScreen(root, params, navigate) {
@@ -80,14 +80,14 @@ function watchlistScreen(root, params, navigate) {
   });
 
   document.getElementById('btn-delete-watchlist').addEventListener('click', function () {
-    openModal({
-      title: 'Delete "' + wl.name + '"?',
-      options: [
+    openSidePanel({
+      header: 'Delete "' + wl.name + '"?',
+      rows: [
         { id: 'delete', label: 'Delete' },
         { id: 'cancel', label: 'Keep' }
       ],
       cancelLabel: 'Cancel',
-      onPick: function (id) {
+      onSelect: function (id) {
         if (id === 'delete') {
           deleteWatchlist(user, wl.id);
           navigate('home', { hub: 'watchlist' });

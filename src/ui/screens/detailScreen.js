@@ -13,7 +13,7 @@ import {
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
-import { createTabs, openModal } from '../components/controls.js';
+import { createTabs, openSidePanel } from '../components/controls.js';
 import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
@@ -422,13 +422,13 @@ function detailScreen(root, params, navigate) {
     btn._plaxQualityWired = true;
     updateQualityBtnLabel();
     btn.addEventListener('click', function () {
-      openModal({
-        title: 'Quality',
+      openSidePanel({
+        header: 'Quality',
         selectedId: getDetailQuality(),
-        options: listProfiles().map(function (p) {
+        rows: listProfiles().map(function (p) {
           return { id: p.id, label: p.label };
         }),
-        onPick: function (id) {
+        onSelect: function (id) {
           selectedQuality = id;
           setPlaybackPrefs({ quality: id });
           updateQualityBtnLabel();
@@ -454,12 +454,12 @@ function detailScreen(root, params, navigate) {
     btn.disabled = !subList.length;
     refreshLabel();
     btn.addEventListener('click', function () {
-      openModal({
-        title: 'Subtitles',
-        options: subOptions.map(function (o) {
+      openSidePanel({
+        header: 'Subtitles',
+        rows: subOptions.map(function (o) {
           return { id: o.id, label: o.label, selected: isActiveOption(o.id, selectedSubtitle) };
         }),
-        onPick: function (id) {
+        onSelect: function (id) {
           selectedSubtitle = id;
           refreshLabel();
         }
@@ -800,10 +800,10 @@ function detailScreen(root, params, navigate) {
     if (!seasonKey) return;
     ensureSeasonEpisodesLoaded(seasonKey).then(function (episodes) {
       if (destroyed) return;
-      openModal({
-        title: 'Episodes · ' + seasonLabel(item),
+      openSidePanel({
+        header: 'Episodes · ' + seasonLabel(item),
         selectedId: String(item.ratingKey),
-        options: episodes.map(function (ep) {
+        rows: episodes.map(function (ep) {
           var code = episodeCode(ep);
           return {
             id: String(ep.ratingKey),
@@ -811,7 +811,7 @@ function detailScreen(root, params, navigate) {
             data: ep
           };
         }),
-        onPick: function (id, opt) {
+        onSelect: function (id, opt) {
           if (String(id) === String(item.ratingKey)) return;
           navigate('detail', buildEpisodeNavRoute(opt.data, seasonKey));
         }
