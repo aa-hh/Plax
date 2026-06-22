@@ -158,6 +158,9 @@ function mapLibraryItem(item, server) {
     leafCount: parseInt(item.leafCount, 10) || 0,
     viewedLeafCount: parseInt(item.viewedLeafCount, 10) || 0,
     childCount: parseInt(item.childCount, 10) || 0,
+    // Plex addedAt is unix epoch seconds; normalize to ms so the "Date Added"
+    // sort comparator is uniform across backends (Jellyfin maps DateCreated→ms).
+    addedAt: (parseInt(item.addedAt, 10) || 0) * 1000,
     librarySectionID: item.librarySectionID != null ? String(item.librarySectionID) : '',
     parentRatingKey: item.parentRatingKey,
     grandparentRatingKey: item.grandparentRatingKey,

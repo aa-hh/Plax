@@ -456,10 +456,19 @@ function classifyHomeRowKind(row) {
 
 function normalizeHomeRowItems(items, rowKind) {
   return (items || []).map(function (item) {
-    if (!item || item.type !== 'episode') return item;
+    if (!item) return item;
     if (rowKind === 'films') return item;
-    if (!item.grandparentThumbUrl) return item;
-    return Object.assign({}, item, { thumb: item.grandparentThumbUrl });
+    // Known episode type OR landscape primary image (ar ≥ 1.0 = still/screenshot) →
+    // swap to the nearest portrait source so rails show uniform 2:3 cards.
+    // If no portrait source exists, leave thumb as-is for CSS cover-crop (option 4).
+    var isEpisode = item.type === 'episode';
+    var ar = Number(item.primaryImageAspectRatio);
+    var isLandscape = ar >= 1.0;
+    if (isEpisode || isLandscape) {
+      var portraitThumb = item.grandparentThumbUrl || item.parentThumbUrl || '';
+      if (portraitThumb) return Object.assign({}, item, { thumb: portraitThumb });
+    }
+    return item;
   });
 }
 
@@ -584,5 +593,6 @@ export {
   isRecentlyAddedHub,
   composeHomeRows,
   filterItemsToAccessibleLibraries,
-  dedupeDeferredRowsAgainstInitial
+  dedupeDeferredRowsAgainstInitial,
+  normalizeHomeRow
 };
