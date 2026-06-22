@@ -56,7 +56,7 @@ function openTextInputModal(opts) {
     '</div>' +
     '<div class="detail-modal-footer">' +
     '<button type="button" class="btn btn-primary" id="tv-text-input-confirm" tabindex="0">Confirm</button>' +
-    '<button type="button" class="btn btn-outline detail-modal-cancel" id="tv-text-input-cancel" tabindex="0">Cancel</button>' +
+    '<button type="button" class="btn btn-outline" id="tv-text-input-cancel" tabindex="0">Cancel</button>' +
     '</div>' +
     '</div>';
 

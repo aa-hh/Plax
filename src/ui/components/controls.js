@@ -160,74 +160,130 @@ function isModalBack(e) {
 }
 
 /**
- * Vertical-list picker modal (generalizes resumeChoice / detail option modals).
- * Selected option shows a light pill + trailing checkmark. Self-contained D-pad
- * (UP/DOWN through options + cancel, Back/Enter). Lives in document.body so it
- * handles its own keys (attachFocusNav never sees it).
+ * Side panel (kit Modal drawer, Direction=Right — node 4498:31402). The one
+ * option/selection-list overlay. Reuses the kit-correct `.player-menu-option`
+ * rows (List Item 561:3969 anatomy) on the floating `.gt-side-panel` surface.
+ * Self-contained D-pad (UP/DOWN through rows + footer, Back/Enter), lives in
+ * document.body so it handles its own keys (attachFocusNav never sees it).
  *
- * opts: { title, options:[{id,label,detail,selected}], selectedId, onPick(id),
- *         onCancel, cancelLabel }
+ * Two modes:
+ *   - single-select (default): rows are `role=radio`, picking fires onPick and
+ *     closes. Selected row = soft `--active` fill + filled accent radio.
+ *   - multiSelect: rows are `role=checkbox`, picking toggles `aria-checked` via
+ *     onToggle and stays open; a Done/footer action closes. Checked row = the
+ *     same `--active` fill + checked checkbox control.
+ *
+ * opts (shared): { title, options:[{id,label,detail,selected,checked}],
+ *   onCancel, footerActions:[{id,label,className,onSelect,keepOpen}] }
+ * single-select extras: { selectedId, onPick(id,opt), cancelLabel }
+ * multi-select extras:  { multiSelect:true, onToggle(id,opt,nowChecked) }
+ *
  * Returns a teardown function.
  */
-function openModal(opts) {
+function openSidePanel(opts) {
   opts = opts || {};
   var options = opts.options || [];
+  var multi = !!opts.multiSelect;
   var returnFocus = document.activeElement;
 
-  var overlay = el('div', 'detail-modal gt-modal');
+  var overlay = el('div', 'gt-side-panel player-track-modal');
   overlay.setAttribute('role', 'presentation');
-  var sheet = el('div', 'detail-modal-sheet gt-modal-sheet');
+  var sheet = el('div', 'gt-side-panel-sheet player-track-modal-sheet');
   sheet.setAttribute('role', 'dialog');
   sheet.setAttribute('aria-modal', 'true');
 
   if (opts.title) {
-    var title = el('p', 'detail-modal-title');
+    var header = el('div', 'player-track-modal-header');
+    var title = el('p', 'player-track-modal-title');
     title.textContent = String(opts.title);
-    sheet.appendChild(title);
+    header.appendChild(title);
+    sheet.appendChild(header);
   }
 
-  var list = el('div', 'detail-modal-list gt-modal-list');
+  var list = el('div', 'player-menu-list gt-side-panel-list');
+  list.setAttribute('role', multi ? 'group' : 'radiogroup');
+
+  // Tracks each row so multi-select can repaint a single row in place.
+  var rows = [];
+
+  function paintRow(row, on) {
+    if (multi) {
+      row.btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    } else {
+      row.btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    if (on) row.btn.classList.add('player-menu-option--active');
+    else row.btn.classList.remove('player-menu-option--active');
+  }
+
   options.forEach(function (o) {
-    var selected = (opts.selectedId != null && o.id === opts.selectedId) || !!o.selected;
-    var btn = el('button', 'detail-modal-option gt-modal-option' +
-      (selected ? ' detail-modal-option--active gt-modal-option--selected' : ''));
+    var on = multi
+      ? !!o.checked
+      : ((opts.selectedId != null && o.id === opts.selectedId) || !!o.selected);
+    var btn = el('button', 'player-menu-option' + (on ? ' player-menu-option--active' : ''));
     btn.type = 'button';
     btn.tabIndex = 0;
+    btn.setAttribute('role', multi ? 'checkbox' : 'radio');
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
     btn.setAttribute('data-option-id', String(o.id));
 
-    var label = el('span', 'gt-modal-option__label');
+    var label = el('span', 'player-menu-option-label');
     label.textContent = o.label != null ? String(o.label) : String(o.id);
     btn.appendChild(label);
-    if (o.detail) {
-      var det = el('span', 'gt-modal-option__detail');
-      det.textContent = String(o.detail);
-      btn.appendChild(det);
-    }
-    if (selected) {
-      var check = el('span', 'gt-modal-option__check');
-      check.textContent = '✓';
-      btn.appendChild(check);
-    }
+
+    // control: 24px radio (single) or checkbox (multi). Glyph revealed on
+    // checked via transform/opacity only (Chrome53-safe, no layout).
+    var control = el('span', 'player-menu-option-check' +
+      (multi ? ' player-menu-option-check--checkbox' : ''));
+    btn.appendChild(control);
+
+    var rowRec = { btn: btn, o: o };
+    rows.push(rowRec);
+
     btn.addEventListener('click', function () {
-      teardown();
-      if (typeof opts.onPick === 'function') opts.onPick(o.id, o);
+      if (multi) {
+        var now = btn.getAttribute('aria-checked') !== 'true';
+        paintRow(rowRec, now);
+        if (typeof opts.onToggle === 'function') opts.onToggle(o.id, o, now);
+      } else {
+        teardown();
+        if (typeof opts.onPick === 'function') opts.onPick(o.id, o);
+      }
     });
     list.appendChild(btn);
   });
   sheet.appendChild(list);
 
-  var footer = el('div', 'detail-modal-footer');
-  var cancel = el('button', 'btn detail-modal-cancel');
-  cancel.type = 'button';
-  cancel.tabIndex = 0;
-  cancel.textContent = opts.cancelLabel || 'Cancel';
-  cancel.addEventListener('click', function () {
-    teardown();
-    if (typeof opts.onCancel === 'function') opts.onCancel();
+  // Footer actions. Single-select keeps a Cancel; multi-select supplies its own
+  // (e.g. New list + Done) via footerActions. keepOpen actions don't teardown.
+  var footer = el('div', 'player-track-modal-footer gt-side-panel-footer');
+  var footerActions = opts.footerActions;
+  if (!footerActions) {
+    footerActions = [{
+      id: 'cancel',
+      label: opts.cancelLabel || 'Cancel',
+      className: 'btn-outline btn--sm',
+      onSelect: function () { if (typeof opts.onCancel === 'function') opts.onCancel(); }
+    }];
+  }
+  footerActions.forEach(function (a) {
+    var fbtn = el('button', 'btn' + (a.className ? ' ' + a.className : ''));
+    fbtn.type = 'button';
+    fbtn.tabIndex = 0;
+    if (a.id != null) fbtn.setAttribute('data-action-id', String(a.id));
+    fbtn.textContent = a.label != null ? String(a.label) : String(a.id);
+    fbtn.addEventListener('click', function () {
+      if (!a.keepOpen) teardown();
+      if (typeof a.onSelect === 'function') a.onSelect(a.id, a);
+    });
+    footer.appendChild(fbtn);
   });
-  footer.appendChild(cancel);
   sheet.appendChild(footer);
   overlay.appendChild(sheet);
+
+  function focusables() {
+    return Array.prototype.slice.call(overlay.querySelectorAll('button'));
+  }
 
   function teardown() {
     document.removeEventListener('keydown', onKeyDown, true);
@@ -244,10 +300,10 @@ function openModal(opts) {
       if (typeof opts.onCancel === 'function') opts.onCancel();
       return;
     }
-    if (key === 38 || key === 40) { // UP / DOWN
+    if (key === 38 || key === 40) { // UP / DOWN walk rows + footer
       e.preventDefault();
       e.stopPropagation();
-      var btns = Array.prototype.slice.call(overlay.querySelectorAll('button'));
+      var btns = focusables();
       var cur = btns.indexOf(document.activeElement);
       if (cur < 0) cur = 0;
       var next = cur + (key === 40 ? 1 : -1);
@@ -263,7 +319,7 @@ function openModal(opts) {
 
   document.body.appendChild(overlay);
   document.addEventListener('keydown', onKeyDown, true);
-  var selectedEl = list.querySelector('.gt-modal-option--selected');
+  var selectedEl = !multi && list.querySelector('.player-menu-option--active');
   if (selectedEl) selectedEl.focus();
   else focusFirst(sheet);
 
@@ -409,7 +465,7 @@ function openTextInputModal(opts) {
   confirmBtn.type = 'button';
   confirmBtn.tabIndex = 0;
   confirmBtn.textContent = opts.confirmLabel || 'Confirm';
-  var cancelBtn = el('button', 'btn btn-outline detail-modal-cancel');
+  var cancelBtn = el('button', 'btn btn-outline btn--sm detail-modal-cancel');
   cancelBtn.type = 'button';
   cancelBtn.tabIndex = 0;
   cancelBtn.textContent = opts.cancelLabel || 'Cancel';
@@ -518,7 +574,7 @@ export {
   createChip,
   createTabs,
   createListItem,
-  openModal,
+  openSidePanel,
   openActionDialog,
   openTextInputModal
 };

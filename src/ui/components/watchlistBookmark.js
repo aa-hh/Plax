@@ -9,6 +9,7 @@ import {
   createWatchlist
 } from '../../watchlists/store.js';
 import { bookmarkIconSvg } from '../icons/navIcons.js';
+import { openSidePanel } from './controls.js';
 
 function watchlistBookmarkButtonHtml(filled) {
   return '<button type="button" class="detail-watchlist-btn" id="detail-watchlist-btn" ' +
@@ -60,82 +61,61 @@ function wireWatchlistBookmark(screen, item, opts) {
 
 function openWatchlistPicker(screen, item, user, opts) {
   opts = opts || {};
-  var lists = listWatchlists(user);
-  if (!lists.length) ensureDefaultWatchlist(user);
-  lists = listWatchlists(user);
+  if (!listWatchlists(user).length) ensureDefaultWatchlist(user);
 
+  // Which lists currently contain this title — the checked set.
   var containing = {};
   findWatchlistsContainingItem(user, item.ratingKey).forEach(function (wl) {
     containing[wl.id] = 1;
   });
 
-  var overlay = document.createElement('div');
-  overlay.className = 'detail-modal';
-  overlay.id = 'watchlist-picker-modal';
-  overlay.innerHTML =
-    '<div class="detail-modal-sheet" role="dialog" aria-modal="true">' +
-    '<p class="detail-modal-title">Watchlist</p>' +
-    '<div class="detail-modal-list" id="watchlist-picker-list"></div>' +
-    '<div class="detail-modal-footer">' +
-    '<button type="button" class="btn" id="watchlist-picker-new" tabindex="0">New list</button>' +
-    '<button type="button" class="btn detail-modal-cancel" id="watchlist-picker-close" tabindex="0">Done</button>' +
-    '</div></div>';
+  // Multi-select kit side panel (Modal drawer Direction=Right). Each row toggles
+  // add/remove via a checkbox control and stays open; footer = New list + Done.
+  // "New list" must re-render the row set, so it closes + reopens the panel.
+  var teardown = null;
 
-  screen.appendChild(overlay);
-  overlay.hidden = false;
-
-  var listEl = overlay.querySelector('#watchlist-picker-list');
-
-  function renderList() {
-    lists = listWatchlists(user);
-    listEl.innerHTML = '';
-    lists.forEach(function (wl) {
-      var row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'detail-modal-option';
-      row.tabIndex = 0;
-      var onList = !!containing[wl.id];
-      row.textContent = wl.name + (onList ? ' ✓' : '');
-      if (onList) row.classList.add('detail-modal-option--active');
-      row.addEventListener('click', function () {
-        if (containing[wl.id]) {
-          removeItemFromWatchlist(user, wl.id, item.ratingKey);
-          delete containing[wl.id];
+  function open() {
+    var lists = listWatchlists(user);
+    teardown = openSidePanel({
+      title: 'Watchlist',
+      multiSelect: true,
+      options: lists.map(function (wl) {
+        return { id: wl.id, label: wl.name, checked: !!containing[wl.id] };
+      }),
+      onToggle: function (id, o, nowChecked) {
+        if (nowChecked) {
+          addItemToWatchlist(user, id, item);
+          containing[id] = 1;
         } else {
-          addItemToWatchlist(user, wl.id, item);
-          containing[wl.id] = 1;
+          removeItemFromWatchlist(user, id, item.ratingKey);
+          delete containing[id];
         }
-        renderList();
         if (opts.onChange) opts.onChange();
-      });
-      listEl.appendChild(row);
+      },
+      footerActions: [
+        {
+          id: 'new',
+          label: 'New list',
+          keepOpen: true,
+          onSelect: function () {
+            var name = 'Watchlist ' + (listWatchlists(user).length + 1);
+            var wl = createWatchlist(user, name);
+            addItemToWatchlist(user, wl.id, item);
+            containing[wl.id] = 1;
+            if (opts.onChange) opts.onChange();
+            if (teardown) teardown();
+            open(); // rebuild rows to include the new list (now checked)
+          }
+        },
+        { id: 'done', label: 'Done', className: 'btn-outline btn--sm' }
+      ],
+      onCancel: function () {}
     });
-    if (!lists.length) {
-      listEl.innerHTML = '<p class="status-msg">No watchlists yet.</p>';
-    }
   }
 
-  renderList();
+  open();
 
-  overlay.querySelector('#watchlist-picker-close').addEventListener('click', close);
-  overlay.querySelector('#watchlist-picker-new').addEventListener('click', function () {
-    var name = 'Watchlist ' + (lists.length + 1);
-    var wl = createWatchlist(user, name);
-    addItemToWatchlist(user, wl.id, item);
-    containing[wl.id] = 1;
-    renderList();
-    if (opts.onChange) opts.onChange();
-  });
-
-  function close() {
-    overlay.remove();
-  }
-
-  var first = listEl.querySelector('.detail-modal-option');
-  if (first) first.focus();
-  else overlay.querySelector('#watchlist-picker-close').focus();
-
-  return { close: close };
+  return { close: function () { if (teardown) teardown(); } };
 }
 
 export {

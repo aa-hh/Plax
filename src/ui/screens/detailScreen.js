@@ -13,7 +13,7 @@ import {
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
-import { createTabs, openModal } from '../components/controls.js';
+import { createTabs, openSidePanel } from '../components/controls.js';
 import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
@@ -438,7 +438,7 @@ function detailScreen(root, params, navigate) {
     btn._plaxQualityWired = true;
     updateQualityBtnLabel();
     btn.addEventListener('click', function () {
-      openModal({
+      openSidePanel({
         title: 'Quality',
         selectedId: getDetailQuality(),
         options: listProfiles().map(function (p) {
@@ -470,7 +470,7 @@ function detailScreen(root, params, navigate) {
     btn.disabled = !subList.length;
     refreshLabel();
     btn.addEventListener('click', function () {
-      openModal({
+      openSidePanel({
         title: 'Subtitles',
         options: subOptions.map(function (o) {
           return { id: o.id, label: o.label, selected: isActiveOption(o.id, selectedSubtitle) };
@@ -816,7 +816,7 @@ function detailScreen(root, params, navigate) {
     if (!seasonKey) return;
     ensureSeasonEpisodesLoaded(seasonKey).then(function (episodes) {
       if (destroyed) return;
-      openModal({
+      openSidePanel({
         title: 'Episodes · ' + seasonLabel(item),
         selectedId: String(item.ratingKey),
         options: episodes.map(function (ep) {
@@ -880,8 +880,8 @@ function detailScreen(root, params, navigate) {
       buildWatchlistActionHtml(item) +
       '</div>' +
       '<div class="detail-secondary-actions" data-focus-zone="detail-secondary-actions">' +
-      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       '</div>';
   }
 
@@ -1277,8 +1277,8 @@ function detailScreen(root, params, navigate) {
       'data-focus-zone="detail-secondary-actions" data-cols="5">' +
       '<button class="btn" id="btn-play" tabindex="0">Play from start</button>' +
       '<button class="btn" id="btn-resume" tabindex="0"' + (item.viewOffset ? '' : ' disabled') + '>Resume</button>' +
-      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       '<button class="btn" id="btn-refresh" tabindex="0">Refresh metadata</button>' +
       '</div>' +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +

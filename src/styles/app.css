@@ -22,6 +22,10 @@
   --progress-track-color: rgba(0, 0, 0, 0.55);
   --progress-fill-color: var(--accent);
   --progress-radius: 2px;
+  /* Player seek track is taller than the 4px badge bar: the 28px scrub thumb
+     makes a 4px track read thin, so the player uses a dedicated 6px height
+     while still sharing the progress track/fill colors + radius. */
+  --player-seek-track-h: 6px;
   --brand: #e50914;
   --brand-soft: rgba(229, 9, 20, 0.14);
   --border: #444746;             /* outline-variant */
@@ -216,6 +220,7 @@
   --gt-radius-button: 999px;              /* text/icon buttons fully rounded */
   --gt-radius-wide: var(--radius-lg);     /* 12px — wide/image buttons + cards */
   --gt-radius-card: var(--radius-lg);
+  --profile-avatar-radius: 50%;           /* profile-picker avatar is a circle (kit Account Switch 557:3895 / JetStream CircleShape) */
 
   /* Focus & elevation (Google: scale + glow + outline; motion gated to webOS5+,
      static outline-only on webOS4/B8 via the existing caps-motion gate) */
@@ -369,7 +374,6 @@ body::after {
 .detail-secondary-actions .btn,
 .watchlist-row-link,
 .detail-season-link,
-.detail-modal-cancel,
 .player-control-pill,
 .player-stream-pill,
 .player-media-info-btn,
@@ -400,7 +404,6 @@ body::after {
 .detail-secondary-actions .btn:focus,
 .watchlist-row-link:focus,
 .detail-season-link:focus,
-.detail-modal-cancel:focus,
 .player-control-pill:focus,
 .player-stream-pill:focus,
 .player-media-info-btn:focus,
@@ -1300,32 +1303,10 @@ html.caps-motion .detail-watchlist-btn:focus {
 /* Secondary action = TV Design Kit Button (Outline), reconciled: fully-rounded
    pill container (kit "text/icon buttons fully rounded"), 1px outline, focus =
    the kit light-fill INVERSION (not the broken .btn-outline ring). */
-.library-scan-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--target-min);
-  padding: var(--space-2) var(--space-6);
-  border-radius: var(--gt-radius-button);
-  background: transparent;
-  border: 1px solid rgba(142, 145, 143, 0.35);
-  color: var(--text-secondary);
-  font-size: var(--font-small);
-  font-weight: var(--gt-weight-medium);
-  letter-spacing: var(--gt-ls-label);
-  cursor: pointer;
-}
-
-.library-scan-btn:focus {
-  outline: none;
-  background: var(--focus-fill);
-  border-color: var(--focus-fill);
-  color: var(--focus-on-fill);
-}
-
-.library-scan-btn:disabled {
-  opacity: 0.6;
-}
+/* Scan library button — composes the canonical outline Button (.btn .btn-outline
+   .btn--sm, registry ⭐ / Library-grid entry). All fill/outline/size/focus-inversion
+   come from the composed classes; nothing bespoke remains (was a redundant
+   hand-roll of the same kit values). */
 
 .library-grid-host {
   flex: 1 1 0;
@@ -2515,18 +2496,9 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin: 6px 10px;
 }
 
-.detail-secondary-actions .btn {
-  font-size: var(--font-small);
-  padding: 10px var(--space-5);
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--text-secondary);
-}
-
-.detail-secondary-actions .btn:focus {
-  border-color: var(--border-focus);
-  color: var(--text-primary);
-}
+/* Mark watched / unwatched = kit Outline / Size=S. The buttons compose
+   `.btn .btn-outline .btn--sm` (set in detailScreen.js), so the look + focus
+   inversion come from the canonical classes; no contextual override needed. */
 
 /* Episode detail (TV) */
 .detail-layout--episode {
@@ -2757,15 +2729,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: var(--accent-soft);
 }
 
+/* Focus = the shared kit inversion (light fill + dark glyph), same as .btn — this
+   button is in the .btn:focus group rule (src/styles/app.css:382). The bespoke
+   accent ring was removed so the watchlist icon button matches every other
+   control's focus cue. Override the inverted glyph color on the active (filled)
+   state below. */
 .detail-watchlist-btn:focus {
-  border-color: var(--border-focus);
-  color: var(--text-primary);
-  box-shadow: var(--focus-shadow);
+  border-color: transparent;
 }
 
 .detail-watchlist-btn--active:focus,
 .detail-watchlist-btn[aria-pressed="true"]:focus {
-  color: var(--accent);
+  color: var(--focus-on-fill);
 }
 
 .settings-watchlists-list {
@@ -3284,15 +3259,99 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.detail-modal-cancel {
-  width: auto;
-  min-height: 38px;
-  padding: 6px 18px;
-  font-size: var(--font-small);
-  color: var(--text-muted);
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
+/* .detail-modal-cancel is an inert marker class — it carries NO visual rules. The
+   button's look comes entirely from the composed canonical classes: every call site
+   uses `.btn .btn-outline .btn--sm` (kit Outline / Size=S). Focusability + focus
+   inversion both come from the `button`/`.btn` entries (focus.js focusableSelector +
+   the `.btn:focus` group). The old bespoke override (radius 6, min-height 38, muted
+   color, ad-hoc border) is deleted — it diverged from the kit pill + inversion. */
+
+/* ── Modal drawer — side panel (kit Direction=Right, node 4498:31402) ──
+   The ONE overlay primitive for transient single-select option lists, built by
+   openSidePanel(). Surface-container floating panel anchored to the right edge,
+   scrim @60%, kit radius 16 / --space-5 padding / dark-3 shadow, borderless
+   List/Header title, then kit List-Item rows (reuses the .player-menu-option
+   anatomy that the player track-selector already ships — min-height 64, radius 8,
+   padding 12/16, 24px radio control, light-fill :focus inversion, soft --active).
+   Explicit top/right/bottom/left edges (no `inset` — Chrome53). */
+.gt-side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: calc(var(--z-player-overlay) + 2);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  /* float in from the right edge with the kit floating inset */
+  padding: var(--safe-y) var(--drawer-edge-gap);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.gt-side-panel[hidden] {
+  display: none !important;
+}
+
+.gt-side-panel-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--modal-sheet-max-w);
+  /* content-sized between a floor and the available height; the list scrolls */
+  min-height: var(--drawer-side-min-h);
+  max-height: 100%;
+  overflow: hidden;
+  padding: var(--space-5);
+  background: var(--bg-surface);          /* kit surface-container #1E1F20 */
+  border-radius: var(--radius-xl);        /* kit rounded-16 (floating panel) */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15); /* kit dark/3 */
+}
+
+/* Margin-based vertical rhythm (flex `gap` no-ops on Chromium 53). */
+.gt-side-panel-sheet > * + * {
+  margin-top: var(--space-4);
+}
+
+/* kit List/Header: pt-8 pb-16 px-16, borderless (no divider). */
+.gt-side-panel-header {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+.gt-side-panel-title {
+  margin: 0;
+  font-size: var(--font-body);
+  font-weight: var(--gt-weight-title);
+  letter-spacing: var(--gt-ls-title);
+  color: var(--text-primary);
+}
+
+/* The list is the flex scroll region; header + footer stay pinned. */
+.gt-side-panel-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: var(--space-2) var(--space-3);
+}
+
+.gt-side-panel-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--space-3) 0 0;
+}
+
+/* Multi-select footer carries two actions (e.g. New list + Done) — margin gap,
+   never flex `gap` (Chromium 53 no-op). */
+.gt-side-panel-footer .btn + .btn {
+  margin-left: var(--space-3);
 }
 
 /* Exit-confirm modal removed — Google TV prohibits gating back-to-exit behind a
@@ -3353,27 +3412,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   visibility: hidden;
 }
 
+/* Skip Intro / Skip Credits prompt — composes the canonical filled Button
+   (.btn, registry ⭐ node 169:1649): solid container, pill radius, label, and the
+   shared .btn:focus light-pill INVERSION (= "selected" since the prompt is auto-
+   focused when shown) all come from .btn. Only the bottom-center overlay
+   positioning + the credits-countdown fill overlay remain bespoke. (Was a literal
+   re-declaration of .btn's rest look instead of composing it.) */
 .player-skip-intro-prompt {
   position: absolute;
   left: 50%;
   bottom: 96px;
   transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* Canonical filled Button (registry ⭐ node 169:1649): solid container, pill
-     radius, no outline/halo. Selected (auto-focused) state inverts to the light
-     pill via the shared .btn:focus rule below. */
-  padding: var(--space-5) var(--space-6);
   margin: 0;
-  border: 0;
-  border-radius: var(--gt-radius-button);
-  background: var(--button-container);
-  color: var(--gt-text);
-  font-size: var(--font-meta);
-  font-weight: var(--gt-weight-label);
-  letter-spacing: var(--gt-ls-label);
-  cursor: pointer;
   z-index: 2;
   overflow: hidden;
 }
@@ -3509,7 +3559,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-now-playing-subtitle {
-  font-size: 20px;
+  font-size: var(--font-meta);
   line-height: 1.25;
   margin: 0;
   color: var(--text-secondary);
@@ -3676,16 +3726,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-seek-bar--scrubbing .player-seek-played {
-  background: #fff;
+  background: var(--accent);
 }
 
 .player-seek-track {
   position: relative;
   display: block;
   width: 100%;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 6px;
+  /* Shares the Progress-bar track tokens (dark scrim + 2px radius); height is
+     the seek-specific 6px so the track doesn't read thin under the 28px thumb. */
+  height: var(--player-seek-track-h);
+  background: var(--progress-track-color);
+  border-radius: var(--progress-radius);
   overflow: visible;
 }
 
@@ -3695,9 +3747,10 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   top: 0;
   bottom: 0;
   width: 0;
-  /* Player spec: solid-white fill on the translucent-white track. */
-  background: #fff;
-  border-radius: 5px;
+  /* Player spec: blue --accent fill (= --progress-fill-color), matching every
+     other progress/seek surface; the white thumb provides the scrub contrast. */
+  background: var(--accent);
+  border-radius: var(--progress-radius);
 }
 
 .player-seek-thumb {
@@ -4092,7 +4145,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-time {
-  font-size: 24px;
+  font-size: var(--font-body);
   font-weight: 500;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -4142,7 +4195,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  /* No flex `gap` (no-ops on Chromium 53). The row is space-between with a single
+     label + trailing control, so the gap is decorative-only and safe to drop. */
   text-align: left;
   width: 100%;
   min-height: var(--list-item-h);
@@ -4223,6 +4277,51 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: var(--focus-on-fill);
 }
 
+/* Multi-select control: 24px checkbox (kit Controls 591:4649, checkbox variant).
+   Square (radius 6) instead of round; checked reveals a tick drawn from the
+   ::after box via transform/opacity only (no layout) — Chrome53-safe. Composes
+   the base .player-menu-option-check, overriding shape + the revealed glyph. */
+.player-menu-option-check--checkbox {
+  border-radius: 6px;
+}
+
+.player-menu-option-check--checkbox::after {
+  width: 7px;
+  height: 12px;
+  border: solid var(--accent);
+  border-width: 0 3px 3px 0;
+  border-radius: 0;
+  background: transparent;
+  margin-top: -2px;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0);
+}
+
+.player-menu-option--active .player-menu-option-check--checkbox::after {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1);
+}
+
+/* Checked checkbox: fill the box accent + dark tick (kit Selected control). */
+.player-menu-option--active .player-menu-option-check--checkbox {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.player-menu-option--active .player-menu-option-check--checkbox::after {
+  border-color: var(--bg-base, #131314);
+}
+
+/* Focused + checked checkbox: dark filled box + light tick, so it stays legible
+   against the light-fill focus row (overrides the accent-fill resting style). */
+.player-menu-option--active:focus .player-menu-option-check--checkbox {
+  background: var(--focus-on-fill);
+  border-color: var(--focus-on-fill);
+}
+
+.player-menu-option--active:focus .player-menu-option-check--checkbox::after {
+  background: transparent;
+  border-color: var(--focus-fill);
+}
+
 .player-hint {
   margin-top: 14px;
   font-size: 22px;
@@ -4238,30 +4337,25 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 /* ── Media info button (top-right of player overlay) ── */
+/* Circular ⓘ overlay button — composes the canonical filled Button (.btn .btn-icon,
+   registry ⭐ node 169:1649); the solid --button-container reads over live video.
+   Only the player-overlay positioning, the circular radius, and the fixed 52px
+   square remain bespoke; fill/label-color, focus INVERSION (shared .btn:focus
+   light-pill), and caps-motion scale all come from the composed classes. No :hover
+   (D-pad TV — pointer-hover is the global body.cursor-visible affordance, not a
+   per-control rule) and no accent-tint focus override (was the off-spec blue-bg/
+   border focus; now the shared inversion). */
 .player-media-info-btn {
   position: fixed;
   top: 28px;
   right: 28px;
   z-index: calc(var(--z-player-overlay) + 2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 52px;
   height: 52px;
+  min-width: 52px;
+  min-height: 52px;
   padding: 0;
-  background: rgba(13, 17, 26, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 50%;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.player-media-info-btn:hover,
-.player-media-info-btn:focus {
-  background: rgba(168, 199, 250, 0.14);
-  border-color: var(--accent);
-  color: var(--accent);
-  outline: none;
 }
 .player-media-info-btn[hidden] { display: none !important; }
 .player-media-info-btn-icon { width: 26px; height: 26px; flex-shrink: 0; }
@@ -4668,8 +4762,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .profile-card-avatar {
   width: 100%;
-  height: var(--profile-card-min);   /* square: width == card width */
-  border-radius: var(--gt-radius-card);
+  height: var(--profile-card-min);   /* 1:1 — width == card width */
+  border-radius: var(--profile-avatar-radius);   /* circular (kit Account Switch avatar) */
   border: var(--focus-w) solid transparent;   /* ring target (no reflow on focus) */
   box-sizing: border-box;
   display: flex;
@@ -4715,7 +4809,7 @@ html.caps-motion .profile-card-avatar {
   transition: transform var(--focus-motion-dur) ease;
 }
 html.caps-motion .profile-card:focus .profile-card-avatar {
-  transform: scale(var(--focus-scale-med));
+  transform: scale(var(--gt-focus-scale-med));
 }
 
 /* SELECTED = WHITE: persistent bright ring + bright title (the chosen profile,
@@ -4731,8 +4825,11 @@ html.caps-motion .profile-card:focus .profile-card-avatar {
 
 .profile-card-lock {
   position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
+  /* Nudged inward so the badge sits on the round avatar's top-right edge,
+     not floating off the (now-circular) corner; stays inside the avatar
+     bounds + clear of the focus ring. */
+  top: 14%;
+  right: 14%;
   font-size: 18px;
   opacity: 0.8;
 }
@@ -5206,6 +5303,17 @@ video.native-player.subtitle-no-bg ::cue {
   color: var(--gt-on-secondary-container);
 }
 
+/* Focused-while-selected must still invert to the light focus pill. The shared
+   :focus group above is overridden by --active (equal specificity, later in
+   source), so a selected chip would otherwise keep its blue fill and show NO
+   focus feedback. Higher specificity here restores the inversion — mirrors
+   Jetstream's focusedSelectedContainer/Content colors. */
+.library-filter-chip--active:focus {
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+  border-color: transparent;
+}
+
 /* ── Virtual grid spacers ── */
 .vgrid-spacer {
   pointer-events: none;
@@ -5223,7 +5331,9 @@ video.native-player.subtitle-no-bg ::cue {
 /* Button variants (extend the base .btn at the top of the file) */
 .btn-outline {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  /* kit Outline border = sys/dark/outline #8E918F @35% (the reconciled value also
+     used by .library-scan-btn), not the ad-hoc white@15%. */
+  border: 1px solid rgba(142, 145, 143, 0.35);
   color: var(--gt-text-2);
   font-weight: var(--gt-weight-medium);
 }
@@ -5235,9 +5345,36 @@ video.native-player.subtitle-no-bg ::cue {
 .btn-outline:focus {
   border-color: var(--focus-fill);
 }
-.btn-icon {
+/* Icon button (kit node 911:6945) — square, content-less control carrying only a
+   glyph. Same fill/outline + focus-inversion as .btn; just a circular footprint.
+   Compose `.btn .btn--icon` (filled) or `.btn .btn-outline .btn--icon` (outline).
+   Default footprint = M (--target-min target floor); pair with .btn--sm/.btn--lg
+   for the kit S/L sizes. */
+.btn-icon,
+.btn--icon {
   min-width: var(--target-min);
-  padding: var(--space-3);
+  width: var(--target-min);
+  height: var(--target-min);
+  padding: 0;
+  border-radius: 50%;
+}
+/* Size L (kit Icon button Size=L / Button Size=L): larger footprint + label. */
+.btn--lg {
+  min-height: var(--player-icon-btn-lg);
+  padding: var(--space-6) var(--space-7);
+  font-size: var(--font-row-label);
+}
+.btn--icon.btn--lg {
+  width: var(--player-icon-btn-lg);
+  height: var(--player-icon-btn-lg);
+  min-height: var(--player-icon-btn-lg);
+  padding: 0;
+}
+.btn--icon.btn--sm {
+  width: var(--space-9);
+  height: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0;
 }
 .btn-wide {
   border-radius: var(--gt-radius-wide);
@@ -5381,27 +5518,6 @@ video.native-player.subtitle-no-bg ::cue {
 .gt-list-item:focus .gt-list-item__trailing,
 .gt-list-item:focus .gt-list-item__sublabel { color: var(--focus-on-fill); }
 
-/* Picker modal: selected = light pill + trailing checkmark */
-.gt-modal-option {
-  display: flex;
-  align-items: center;
-}
-.gt-modal-option__label { flex: 1; min-width: 0; }
-.gt-modal-option__detail {
-  margin-left: var(--space-4);
-  color: var(--gt-text-muted);
-  font-size: var(--gt-card-sub);
-}
-.gt-modal-option__check {
-  margin-left: var(--space-4);
-  flex-shrink: 0;
-  color: var(--accent);
-  font-weight: 700;
-}
-.gt-modal-option--selected {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
 
 /* List items keep the tiny 1.025x lift (text blur imperceptible at that scale).
    Chips/tabs are text-bearing → no scale (fuzz); ring + background lift instead. */
@@ -5432,6 +5548,7 @@ html.caps-motion .gt-list-item:focus {
 html.caps-motion .detail-modal,
 html.caps-motion .gt-modal,
 html.caps-motion .gt-dialog,
+html.caps-motion .gt-side-panel,
 html.caps-motion .player-track-modal,
 html.caps-motion .player-media-info-modal {
   animation: gt-overlay-in 0.16s ease;
@@ -5441,8 +5558,11 @@ html.caps-motion .gt-modal-sheet,
 html.caps-motion .gt-dialog-sheet {
   animation: gt-sheet-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+/* Side panel = kit Direction=Right → slides in from the right edge (compositor
+   translateX only). Matches the player track-selector / media-info drawers. */
 html.caps-motion .player-track-modal-sheet,
-html.caps-motion .player-media-info-sheet {
+html.caps-motion .player-media-info-sheet,
+html.caps-motion .gt-side-panel-sheet {
   animation: gt-drawer-right-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 html.caps-motion .gt-list-item:focus {
