@@ -545,6 +545,36 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ---
 
+### Profile picker screen + Profile card
+
+- **Status:** ✅ to-spec · 2026-06-22 — the three recorded deviations (square avatar, dead focus-scale token, off-corner lock badge) are resolved as-built; nothing open.
+- **Figma source:** kit **Account Switch** avatar `557:3895` (round 1:1) + JetStream `UserAvatar` `CircleShape`; 10-foot identity convention. `--gt-focus-scale-med` from the foundation focus tokens.
+- **Code:** Plex `profilePickerScreen()`; `.profile-picker-*` / `.profile-card*` in `src/styles/app.css` (~4530–4825). **Reused verbatim by the Jellyfin user picker** (`jellyfinUserPickerScreen.js`) — one stylesheet, two consumers; do not fork.
+- **Anatomy:**
+  ```
+  .profile-picker-screen > .profile-picker-main
+    h1.profile-picker-title
+    .profile-picker-row[data-focus-zone]
+      button.profile-card × N
+        .profile-card-avatar (--img variant → img; else initials)
+        .profile-card-lock (🔒, conditional)
+        .profile-card-name
+      button.profile-card--other  ← "+"
+  ```
+- **As-built per-element spec:**
+  | Element | Property | Value |
+  |---|---|---|
+  | `.profile-card-avatar` | shape | **circular** — `border-radius: var(--profile-avatar-radius)` (`50%`, new `:root` token), 1:1 (`width:100%`, `height:--profile-card-min` 160px) |
+  | `.profile-card-avatar` | ring target | `--focus-w` transparent border (no reflow on focus) |
+  | `.profile-card:focus .profile-card-avatar` | focus (hover) | **blue** ring `--accent` + `--focus-shadow`; **scale `var(--gt-focus-scale-med)` (1.05×)** — transform-only, **`html.caps-motion`-gated** |
+  | `.profile-card:focus .profile-card-name` | focus | name → `--accent` |
+  | `.profile-card--selected .profile-card-avatar` | selected | **white** ring `--text-primary` + `0 0 0 3px` |
+  | `.profile-card-lock` | anchor | `top:14%; right:14%` — sits on the round avatar's top-right edge, inside avatar bounds, clear of the focus ring (re-anchored from the old square `--space-3` corner inset) |
+- **Preserved invariants:** `.profile-card` is **excluded** from the generic control focus-inversion group (`:not(.profile-card)`) — it does NOT invert like a button; its focus = blue avatar ring + 1.05× scale + blue name; selected = white ring. Lock change is CSS-only (no JS markup change).
+- **Platform notes (Chrome53/webOS4):** no `gap`/`:focus-within`/`inset` shorthand; transform+opacity only; the 1.05× scale stays under the `html.caps-motion` gate (static ring-only on B8).
+
+---
+
 ## Jellyfin backend (app screens — feat/jellyfin-backend)
 
 ### Provider-picker card (first-run backend chooser)
@@ -581,7 +611,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 ### Jellyfin user picker ("Who's watching?")
 
 - **Status:** ✅ to-spec · 2026-06-20
-- **Reuses:** the Plex profile-picker DOM/CSS verbatim — `.profile-picker-screen`, `.profile-picker-row`, `.profile-card` (+ `-avatar`/`-name`/`-lock`). No new component; only the data source + select-logic differ.
+- **Reuses:** the Plex profile-picker DOM/CSS verbatim — `.profile-picker-screen`, `.profile-picker-row`, `.profile-card` (+ `-avatar`/`-name`/`-lock`). No new component; only the data source + select-logic differ. See the **Profile picker screen + Profile card** entry above for the as-built spec (circular avatar via `--profile-avatar-radius`, `--gt-focus-scale-med` focus grow, `14%` lock anchor) — these land here automatically.
 - **Code:** `jellyfinUserPickerScreen()`; reuses `.profile-*` in `src/styles/app.css`.
 - **Anatomy:**
   ```
