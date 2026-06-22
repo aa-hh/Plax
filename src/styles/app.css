@@ -216,6 +216,7 @@
   --gt-radius-button: 999px;              /* text/icon buttons fully rounded */
   --gt-radius-wide: var(--radius-lg);     /* 12px — wide/image buttons + cards */
   --gt-radius-card: var(--radius-lg);
+  --profile-avatar-radius: 50%;           /* profile-picker avatar is a circle (kit Account Switch 557:3895 / JetStream CircleShape) */
 
   /* Focus & elevation (Google: scale + glow + outline; motion gated to webOS5+,
      static outline-only on webOS4/B8 via the existing caps-motion gate) */
@@ -4643,8 +4644,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .profile-card-avatar {
   width: 100%;
-  height: var(--profile-card-min);   /* square: width == card width */
-  border-radius: var(--gt-radius-card);
+  height: var(--profile-card-min);   /* 1:1 — width == card width */
+  border-radius: var(--profile-avatar-radius);   /* circular (kit Account Switch avatar) */
   border: var(--focus-w) solid transparent;   /* ring target (no reflow on focus) */
   box-sizing: border-box;
   display: flex;
@@ -4690,7 +4691,7 @@ html.caps-motion .profile-card-avatar {
   transition: transform var(--focus-motion-dur) ease;
 }
 html.caps-motion .profile-card:focus .profile-card-avatar {
-  transform: scale(var(--focus-scale-med));
+  transform: scale(var(--gt-focus-scale-med));
 }
 
 /* SELECTED = WHITE: persistent bright ring + bright title (the chosen profile,
@@ -4706,8 +4707,11 @@ html.caps-motion .profile-card:focus .profile-card-avatar {
 
 .profile-card-lock {
   position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
+  /* Nudged inward so the badge sits on the round avatar's top-right edge,
+     not floating off the (now-circular) corner; stays inside the avatar
+     bounds + clear of the focus ring. */
+  top: 14%;
+  right: 14%;
   font-size: 18px;
   opacity: 0.8;
 }
