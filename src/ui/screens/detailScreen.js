@@ -864,8 +864,8 @@ function detailScreen(root, params, navigate) {
       buildWatchlistActionHtml(item) +
       '</div>' +
       '<div class="detail-secondary-actions" data-focus-zone="detail-secondary-actions">' +
-      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       '</div>';
   }
 
@@ -1257,8 +1257,8 @@ function detailScreen(root, params, navigate) {
       'data-focus-zone="detail-secondary-actions" data-cols="5">' +
       '<button class="btn" id="btn-play" tabindex="0">Play from start</button>' +
       '<button class="btn" id="btn-resume" tabindex="0"' + (item.viewOffset ? '' : ' disabled') + '>Resume</button>' +
-      '<button class="btn" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
+      '<button class="btn btn-outline btn--sm" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       '<button class="btn" id="btn-refresh" tabindex="0">Refresh metadata</button>' +
       '</div>' +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +

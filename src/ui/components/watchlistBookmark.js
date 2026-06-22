@@ -78,7 +78,7 @@ function openWatchlistPicker(screen, item, user, opts) {
     '<div class="detail-modal-list" id="watchlist-picker-list"></div>' +
     '<div class="detail-modal-footer">' +
     '<button type="button" class="btn" id="watchlist-picker-new" tabindex="0">New list</button>' +
-    '<button type="button" class="btn detail-modal-cancel" id="watchlist-picker-close" tabindex="0">Done</button>' +
+    '<button type="button" class="btn btn-outline btn--sm detail-modal-cancel" id="watchlist-picker-close" tabindex="0">Done</button>' +
     '</div></div>';
 
   screen.appendChild(overlay);

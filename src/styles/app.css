@@ -2495,18 +2495,9 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin: 6px 10px;
 }
 
-.detail-secondary-actions .btn {
-  font-size: var(--font-small);
-  padding: 10px var(--space-5);
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--text-secondary);
-}
-
-.detail-secondary-actions .btn:focus {
-  border-color: var(--border-focus);
-  color: var(--text-primary);
-}
+/* Mark watched / unwatched = kit Outline / Size=S. The buttons compose
+   `.btn .btn-outline .btn--sm` (set in detailScreen.js), so the look + focus
+   inversion come from the canonical classes; no contextual override needed. */
 
 /* Episode detail (TV) */
 .detail-layout--episode {
@@ -2737,15 +2728,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: var(--accent-soft);
 }
 
+/* Focus = the shared kit inversion (light fill + dark glyph), same as .btn — this
+   button is in the .btn:focus group rule (src/styles/app.css:382). The bespoke
+   accent ring was removed so the watchlist icon button matches every other
+   control's focus cue. Override the inverted glyph color on the active (filled)
+   state below. */
 .detail-watchlist-btn:focus {
-  border-color: var(--border-focus);
-  color: var(--text-primary);
-  box-shadow: var(--focus-shadow);
+  border-color: transparent;
 }
 
 .detail-watchlist-btn--active:focus,
 .detail-watchlist-btn[aria-pressed="true"]:focus {
-  color: var(--accent);
+  color: var(--focus-on-fill);
 }
 
 .settings-watchlists-list {
@@ -3264,16 +3258,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.detail-modal-cancel {
-  width: auto;
-  min-height: 38px;
-  padding: 6px 18px;
-  font-size: var(--font-small);
-  color: var(--text-muted);
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-}
+/* .detail-modal-cancel is NOT a visual variant — it is just a focus-system marker
+   (listed in focus.js focusableSelector). The button's look comes entirely from the
+   composed canonical classes: every call site uses `.btn .btn-outline .btn--sm`
+   (kit Outline / Size=S). The old bespoke override (radius 6, min-height 38, muted
+   color, ad-hoc border) is deleted — it diverged from the kit pill + inversion. */
 
 /* Exit-confirm modal removed — Google TV prohibits gating back-to-exit behind a
    confirm screen. Quitting is now a global long-press Back/Exit (see router.js). */
@@ -5209,7 +5198,9 @@ video.native-player.subtitle-no-bg ::cue {
 /* Button variants (extend the base .btn at the top of the file) */
 .btn-outline {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  /* kit Outline border = sys/dark/outline #8E918F @35% (the reconciled value also
+     used by .library-scan-btn), not the ad-hoc white@15%. */
+  border: 1px solid rgba(142, 145, 143, 0.35);
   color: var(--gt-text-2);
   font-weight: var(--gt-weight-medium);
 }
@@ -5221,9 +5212,36 @@ video.native-player.subtitle-no-bg ::cue {
 .btn-outline:focus {
   border-color: var(--focus-fill);
 }
-.btn-icon {
+/* Icon button (kit node 911:6945) — square, content-less control carrying only a
+   glyph. Same fill/outline + focus-inversion as .btn; just a circular footprint.
+   Compose `.btn .btn--icon` (filled) or `.btn .btn-outline .btn--icon` (outline).
+   Default footprint = M (--target-min target floor); pair with .btn--sm/.btn--lg
+   for the kit S/L sizes. */
+.btn-icon,
+.btn--icon {
   min-width: var(--target-min);
-  padding: var(--space-3);
+  width: var(--target-min);
+  height: var(--target-min);
+  padding: 0;
+  border-radius: 50%;
+}
+/* Size L (kit Icon button Size=L / Button Size=L): larger footprint + label. */
+.btn--lg {
+  min-height: var(--player-icon-btn-lg);
+  padding: var(--space-6) var(--space-7);
+  font-size: var(--font-row-label);
+}
+.btn--icon.btn--lg {
+  width: var(--player-icon-btn-lg);
+  height: var(--player-icon-btn-lg);
+  min-height: var(--player-icon-btn-lg);
+  padding: 0;
+}
+.btn--icon.btn--sm {
+  width: var(--space-9);
+  height: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0;
 }
 .btn-wide {
   border-radius: var(--gt-radius-wide);

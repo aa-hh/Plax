@@ -217,7 +217,7 @@ function openModal(opts) {
   sheet.appendChild(list);
 
   var footer = el('div', 'detail-modal-footer');
-  var cancel = el('button', 'btn detail-modal-cancel');
+  var cancel = el('button', 'btn btn-outline btn--sm detail-modal-cancel');
   cancel.type = 'button';
   cancel.tabIndex = 0;
   cancel.textContent = opts.cancelLabel || 'Cancel';
@@ -409,7 +409,7 @@ function openTextInputModal(opts) {
   confirmBtn.type = 'button';
   confirmBtn.tabIndex = 0;
   confirmBtn.textContent = opts.confirmLabel || 'Confirm';
-  var cancelBtn = el('button', 'btn btn-outline detail-modal-cancel');
+  var cancelBtn = el('button', 'btn btn-outline btn--sm detail-modal-cancel');
   cancelBtn.type = 'button';
   cancelBtn.tabIndex = 0;
   cancelBtn.textContent = opts.cancelLabel || 'Cancel';
