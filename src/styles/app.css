@@ -5278,6 +5278,17 @@ video.native-player.subtitle-no-bg ::cue {
   color: var(--gt-on-secondary-container);
 }
 
+/* Focused-while-selected must still invert to the light focus pill. The shared
+   :focus group above is overridden by --active (equal specificity, later in
+   source), so a selected chip would otherwise keep its blue fill and show NO
+   focus feedback. Higher specificity here restores the inversion — mirrors
+   Jetstream's focusedSelectedContainer/Content colors. */
+.library-filter-chip--active:focus {
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
+  border-color: transparent;
+}
+
 /* ── Virtual grid spacers ── */
 .vgrid-spacer {
   pointer-events: none;
