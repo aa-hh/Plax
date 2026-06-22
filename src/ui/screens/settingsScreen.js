@@ -18,6 +18,16 @@ import {
   deleteWatchlist
 } from '../../watchlists/store.js';
 
+/* Build identifier from the generated build-info.js global (window.__PLAX_BUILD__).
+   Surfaced in the Account card's "App version" row so a deploy can be verified
+   on-device: if the build number here doesn't change after ./tvpush.sh, the new
+   bundle didn't actually install. */
+function buildStampLabel() {
+  var b = (typeof window !== 'undefined' && window.__PLAX_BUILD__) || null;
+  if (!b || !b.buildNumber) return '';
+  return ' · build ' + b.buildNumber + (b.gitCommit ? ' · ' + b.gitCommit : '');
+}
+
 /**
  * TV-safe text input modal. Opens a full-screen overlay with an <input>
  * pre-filled with `defaultValue`. Calls onConfirm(value) on confirm,
@@ -247,7 +257,7 @@ function settingsScreen(root, params, navigate) {
     '<div class="settings-row settings-row--info"><label>Client ID</label>' +
     '<span>' + truncateId(state.clientId) + '</span></div>' +
     '<div class="settings-row settings-row--info"><label>App version</label>' +
-    '<span>' + escapeHtml(VERSION) + '</span></div>';
+    '<span>' + escapeHtml(VERSION + buildStampLabel()) + '</span></div>';
 
   var accountUserEl = document.getElementById('account-user-name');
   if (accountUserEl) {

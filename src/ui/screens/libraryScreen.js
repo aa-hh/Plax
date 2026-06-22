@@ -54,7 +54,7 @@ function libraryScreen(root, params, navigate) {
     '<div class="library-filter-bar" id="library-filter-bar">' +
     '<button class="library-filter-chip library-filter-chip--active" id="filter-chip-all" data-filter="all" tabindex="0">All</button>' +
     '<button class="library-filter-chip" id="filter-chip-unwatched" data-filter="unwatched" tabindex="0">Unwatched</button>' +
-    '<button class="library-filter-chip" id="filter-chip-sort" data-sort-index="0" tabindex="0">Sort: Title ▾</button>' +
+    '<button class="library-filter-chip library-filter-chip--sort" id="filter-chip-sort" data-sort-index="0" tabindex="0">Sort: Title</button>' +
     '</div>' +
     '<button class="btn btn-outline btn--sm library-scan-btn" id="btn-scan-library" tabindex="0">Scan library</button>' +
     '</div>' +
@@ -215,7 +215,7 @@ function libraryScreen(root, params, navigate) {
     if (!filterChipAll || !filterChipUnwatched || !filterChipSort) return;
     filterChipAll.className = 'library-filter-chip' + (activeFilter === 'all' ? ' library-filter-chip--active' : '');
     filterChipUnwatched.className = 'library-filter-chip' + (activeFilter === 'unwatched' ? ' library-filter-chip--active' : '');
-    filterChipSort.textContent = 'Sort: ' + SORT_OPTIONS[activeSortIndex].label + ' ▾';
+    filterChipSort.textContent = 'Sort: ' + SORT_OPTIONS[activeSortIndex].label;
   }
 
   function onFilterChange() {

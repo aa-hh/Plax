@@ -2714,19 +2714,10 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin-bottom: var(--space-4);
 }
 
-.detail-watchlist-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--target-min);
-  min-height: var(--target-min);
-  padding: 10px;
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-muted);
-}
-
+/* Circular icon toggle — composes the canonical `.btn .btn-icon` (circular
+   footprint, filled container, shared inversion focus + caps-motion scale). Only
+   the bookmarked (--active) accent state below is bespoke. Was a square
+   `--radius-md` button (off the icon-button convention) — reconciled 2026-06-22. */
 .detail-watchlist-btn .hub-icon {
   width: 28px;
   height: 28px;
@@ -5306,6 +5297,20 @@ video.native-player.subtitle-no-bg ::cue {
   font-weight: var(--gt-weight-medium);
   letter-spacing: var(--gt-ls-label);
   margin-right: var(--space-2);
+}
+
+/* Sort chip trailing down-chevron, drawn with borders (font-independent — the ▾
+   glyph is missing from the webOS 4 system font, so it rendered as nothing).
+   Uses currentColor so it inverts to dark on the light-fill focus state. */
+.library-filter-chip--sort::after {
+  content: '';
+  display: inline-block;
+  margin-left: var(--space-2);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
 }
 
 .library-filter-chip--active {

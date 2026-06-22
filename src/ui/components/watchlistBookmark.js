@@ -12,7 +12,7 @@ import { bookmarkIconSvg } from '../icons/navIcons.js';
 import { openSidePanel } from './controls.js';
 
 function watchlistBookmarkButtonHtml(filled) {
-  return '<button type="button" class="detail-watchlist-btn" id="detail-watchlist-btn" ' +
+  return '<button type="button" class="btn btn-icon detail-watchlist-btn" id="detail-watchlist-btn" ' +
     'tabindex="0" aria-label="' + (filled ? 'On watchlist' : 'Add to watchlist') + '" ' +
     'aria-pressed="' + (filled ? 'true' : 'false') + '">' +
     bookmarkIconSvg(!!filled) +

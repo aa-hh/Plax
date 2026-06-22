@@ -281,13 +281,13 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   | `.player-skip-intro-prompt` | **reconciled 2026-06-22** → composes `.btn` (duplicate rest paint deleted); overlay position + credits-countdown fill preserved; auto-focused = inverted (selected) |
   | `.login-field__btn` / `.login-switch-provider` | compose `.btn`; `login-field__btn` ratified as the Auth-field-shaped input launcher (Login/Auth field entry); `login-switch-provider` = plain `.btn` |
   | `.player-control-pill` / `.player-stream-pill` (+`--icon`/`--play`/`--danger`/`--on`) | **ratified distinct** — transient transport controls (see reason below) |
-  | `.detail-watchlist-btn` (+`--active`) | **ratified distinct** icon toggle — square `--radius-md` footprint + accent-soft active fill; **focus reconciled** to the shared inversion (bespoke accent ring removed) |
+  | `.detail-watchlist-btn` (+`--active`) | **reconciled 2026-06-22** → composes `.btn .btn-icon` (circular icon button — was a bespoke **square** `--radius-md` button, off the icon-button convention). Only the bookmarked `--active` accent-soft fill + active-focus glyph override remain bespoke; inversion focus inherited from `.btn`. |
   | `.watchlist-row-link` | **ratified distinct** — a borderless inline text link (not a container button); focus = accent text, no inversion |
   | `.pin-pad-btn` | **ratified distinct** — fixed-grid PIN keypad cell (84×64); inherits the shared `.btn:focus` inversion via the focus group |
   | `.provider-card` | **ratified distinct** — a selection *card*, not a button (Provider-picker entry) |
 - **Deliberately distinct (with reason):**
   - **Player pills** (`.player-control-pill` / `.player-stream-pill`) — transient auto-hiding transport controls over live video: dark-translucent rest (must read over any frame), circular icon variants, active-marks, `--play`/`--danger` semantics, no scale (never clip in tight rows). They already share the kit focus-inversion; their footprint/rest are video-overlay-specific.
-  - **`.detail-watchlist-btn`** — a *toggle* (bookmarked on/off) with an accent-soft filled active state; square `--radius-md` footprint matches the adjacent detail icon buttons. Shares the kit inversion focus.
+  - **`.detail-watchlist-btn`** — a *toggle* (bookmarked on/off). Composes the canonical **circular** `.btn .btn-icon` (reconciled 2026-06-22 from a bespoke square button); the only bespoke part is the bookmarked `--active` accent-soft fill. Shares the kit inversion focus.
   - **`.watchlist-row-link`** — an inline text link inside a list row, not a pill container.
   - **`.pin-pad-btn`** — a fixed-geometry keypad cell; size is dictated by the keypad grid, not content.
 
@@ -324,6 +324,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - **Focus:** removed the off-spec ring+shadow override on `.detail-setting-chip:focus` so the chip uses the shared control INVERSION (light `--focus-fill` fill + dark `--focus-on-fill` text) from the focus group at `src/styles/app.css:346`.
   - **Focused-while-selected (added 2026-06-22):** `.library-filter-chip--active:focus` explicitly re-applies the inversion (`--focus-fill`/`--focus-on-fill`). Without it the `--active` blue fill (source-ordered *after* the shared `:focus` group, equal specificity) won → a selected+focused chip kept its blue fill and showed **no focus feedback** on Chrome 53. Mirrors Jetstream `MovieFilterChip`'s `focusedSelectedContainerColor`/`focusedSelectedContentColor`. Jetstream cross-check also confirms: 1px border @50% rest, no focus scale (`focusedScale=1f` — chips clip), optional leading Check icon on selected.
 - **Platform deviations (ratified):** label **`--font-meta` 22px** kept (kit 14 → 10-foot up-scale, ratified Plax rule, do not shrink); blue `--accent`/secondary-container active tokens; border `@35%` (the reconciled Library-grid value) rather than literal kit `@20%`; focus motion via `html.caps-motion` only.
+- **Trailing-glyph note (2026-06-22):** the Library **Sort** chip (`.library-filter-chip--sort`) shows a down-chevron via a **CSS border-triangle `::after`** (`currentColor`, so it inverts on focus) — NOT a Unicode glyph. The webOS 4 system font does not include `▾` (U+25BE), which rendered as nothing on the B8. Use border-triangle or SVG for any chip/tab glyph; never a bare Unicode arrow.
 
 ### Nav item (browsing-hub sidebar)  ✅ reconciled 2026-06-20
 
