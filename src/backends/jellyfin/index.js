@@ -8,8 +8,8 @@
  * docs/jellyfin/integration-research.md for the full API + field mapping.
  */
 import { fetchJellyfinJson, jfUrl } from './client.js';
-import { browseByType, getMetadata, getChildren } from './library.js';
-import { loadHomeFeedPhased } from './hubs.js';
+import { browseByType, getMetadata, getChildren, refreshSection, refreshItem } from './library.js';
+import { loadHomeFeedPhased, loadSimilar, loadHubRows } from './hubs.js';
 import { search } from './search.js';
 import {
   resolveStreamUrl,
@@ -100,14 +100,14 @@ var jellyfinBackend = {
   browseByType: browseByType,
   getMetadata: getMetadata,
   getChildren: getChildren,
-  refreshSection: notImplemented, // Jellyfin library scan is admin-only; no-op for now
-  refreshItem: notImplemented,
+  refreshSection: refreshSection, // POST /Items/{id}/Refresh (admin-only; 403 → friendlyScanError)
+  refreshItem: refreshItem,
 
   // home feed / hubs
   prefetchHomeHubs: function () { return Promise.resolve({ hubList: [], rows: [] }); },
   loadHomeFeedPhased: loadHomeFeedPhased,
-  loadHubRows: function () { return Promise.resolve([]); },
-  getMetadataRelatedHubList: function () { return Promise.resolve([]); }, // "More like this" — Phase 3 polish
+  loadHubRows: loadHubRows,
+  getMetadataRelatedHubList: function (server, id, size) { return loadSimilar(server, id, size); },
 
   // search
   search: search,

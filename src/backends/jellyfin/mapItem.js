@@ -4,7 +4,7 @@
  * the player, and the caches already speak. Field mapping validated against a live
  * 10.11 server; see docs/jellyfin/integration-research.md Part B §8.
  */
-import { primaryUrl, backdropUrl } from './images.js';
+import { primaryUrl, thumbStillUrl, backdropUrl } from './images.js';
 
 var TYPE_MAP = {
   Movie: 'movie',
@@ -24,6 +24,23 @@ function firstStreamByType(streams, type) {
     if (streams[i].streamType === type) return streams[i];
   }
   return null;
+}
+
+/** Height → Plex-style videoResolution token ('4k'/'1080'/'720'/'480'/'sd'). */
+function resolutionLabel(height) {
+  var h = Number(height) || 0;
+  if (h >= 2160) return '4k';
+  if (h >= 1080) return '1080';
+  if (h >= 720) return '720';
+  if (h >= 480) return '480';
+  if (h > 0) return 'sd';
+  return '';
+}
+
+/** Frame rate number → Plex-style label ('24p'/'60p'). */
+function frameRateLabel(fps) {
+  var n = Number(fps);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) + 'p' : '';
 }
 
 /** ProviderIds → a Plex-ish guid (imdb/tmdb/tvdb), else fall back to the item id. */
@@ -50,6 +67,9 @@ function mapStreams(mediaStreams) {
       width: s.Width != null ? s.Width : undefined,
       height: s.Height != null ? s.Height : undefined,
       profile: s.Profile || '',
+      frameRate: s.RealFrameRate != null ? s.RealFrameRate
+        : (s.AverageFrameRate != null ? s.AverageFrameRate : undefined),
+      aspectRatio: s.AspectRatio || '',
       level: s.Level != null ? s.Level : undefined,
       title: s.DisplayTitle || '',
       default: !!s.IsDefault,
@@ -79,6 +99,13 @@ function mapMediaSources(sources) {
       audioCodec: a ? a.codec : undefined,
       width: v ? v.width : undefined,
       height: v ? v.height : undefined,
+      // Top-level wrapper fields the player/version logic reads off the Media node
+      // (Plex sets these on the Media element; Jellyfin only on per-stream nodes).
+      videoResolution: v ? resolutionLabel(v.height) : '',
+      videoProfile: v ? (v.profile || '') : '',
+      videoFrameRate: v ? frameRateLabel(v.frameRate) : '',
+      aspectRatio: v ? (v.aspectRatio || '') : '',
+      audioChannels: a && a.channels != null ? a.channels : undefined,
       _tag: 'Media',
       _children: [{
         id: ms.Id,
@@ -118,10 +145,6 @@ function mapItem(raw, server) {
   // Image source resolution with parent fallback (episodes/seasons borrow series art).
   var primaryId = raw.Id;
   var primaryTag = raw.ImageTags && raw.ImageTags.Primary;
-  if (!primaryTag && raw.SeriesId && raw.SeriesPrimaryImageTag) {
-    primaryId = raw.SeriesId;
-    primaryTag = raw.SeriesPrimaryImageTag;
-  }
   var backdropId = raw.Id;
   var backdropTag = raw.BackdropImageTags && raw.BackdropImageTags[0];
   if (!backdropTag && raw.ParentBackdropItemId && raw.ParentBackdropImageTags) {
@@ -129,8 +152,48 @@ function mapItem(raw, server) {
     backdropTag = raw.ParentBackdropImageTags[0];
   }
 
-  var thumb = primaryTag ? primaryUrl(server, primaryId, primaryTag) : '';
+  var thumb;
+  if (raw.Type === 'Episode') {
+    // Episodes: prefer the Thumb still (16:9 screenshot stored as ImageTags.Thumb);
+    // fall back to Primary if present. Never inherit the series poster here — home
+    // rails use grandparentThumbUrl (set below) and normalizeHomeRowItems swaps it in.
+    var thumbStillTag = raw.ImageTags && raw.ImageTags.Thumb;
+    if (thumbStillTag) {
+      thumb = thumbStillUrl(server, raw.Id, thumbStillTag);
+    } else if (primaryTag) {
+      thumb = primaryUrl(server, primaryId, primaryTag);
+    } else {
+      thumb = '';
+    }
+  } else {
+    // Non-episodes (Movie, Series, Season): fall back to series poster when own
+    // Primary is absent (seasons commonly lack their own poster).
+    if (!primaryTag && raw.SeriesId && raw.SeriesPrimaryImageTag) {
+      primaryId = raw.SeriesId;
+      primaryTag = raw.SeriesPrimaryImageTag;
+    }
+    thumb = primaryTag ? primaryUrl(server, primaryId, primaryTag) : '';
+  }
   var art = backdropTag ? backdropUrl(server, backdropId, backdropTag) : '';
+
+  // Series ("grandparent") poster, used by card fallbacks and the home-row
+  // episode→series-poster swap so TV rails show the 2:3 series poster instead of
+  // the 16:9 episode still. The tag is optional: minimal hub payloads
+  // (HUB_FIELDS) often omit SeriesPrimaryImageTag, but /Items/{SeriesId}/Images/
+  // Primary resolves fine without it — so build from SeriesId alone when present.
+  // The season ("parent") primary tag isn't carried on the episode DTO, so
+  // parentThumbUrl falls back to the series poster.
+  var seriesThumb = raw.SeriesId
+    ? primaryUrl(server, raw.SeriesId, raw.SeriesPrimaryImageTag || '')
+    : '';
+
+  // Ratings (Plex-aligned): CriticRating (Rotten Tomatoes, 0-100) → critic slot
+  // with an official logo; CommunityRating → audience slot with no official logo
+  // (the consumer renders a generic Material icon in the logo's place).
+  var community = Number(raw.CommunityRating) || 0;
+  var critic = raw.CriticRating != null ? Number(raw.CriticRating) : null;
+  var criticImage = critic != null
+    ? ('rottentomatoes://image.rating.' + (critic >= 60 ? 'ripe' : 'rotten')) : '';
 
   var leafCount = raw.RecursiveItemCount != null ? raw.RecursiveItemCount
     : (raw.ChildCount != null ? raw.ChildCount : 0);
@@ -150,9 +213,9 @@ function mapItem(raw, server) {
     year: raw.ProductionYear || null,
     originallyAvailableAt: raw.PremiereDate ? String(raw.PremiereDate).slice(0, 10) : '',
     contentRating: raw.OfficialRating || '',
-    rating: Number(raw.CommunityRating) || 0,
-    ratingImage: '',
-    audienceRating: Number(raw.CommunityRating) || 0,
+    rating: critic != null ? Math.round(critic) / 10 : community,
+    ratingImage: criticImage,
+    audienceRating: community,
     audienceRatingImage: '',
     studio: (raw.Studios && raw.Studios[0] && raw.Studios[0].Name) || '',
     summary: raw.Overview || '',
@@ -162,11 +225,18 @@ function mapItem(raw, server) {
     art: art,
     thumbPath: thumb,
     artPath: art,
+    parentThumbUrl: seriesThumb,
+    grandparentThumbUrl: seriesThumb,
+    grandparentThumb: seriesThumb,
+    primaryImageAspectRatio: raw.PrimaryImageAspectRatio != null ? Number(raw.PrimaryImageAspectRatio) : null,
     viewOffset: ticksToMs(ud.PlaybackPositionTicks),
     duration: ticksToMs(raw.RunTimeTicks),
     viewCount: ud.PlayCount || 0,
     leafCount: leafCount,
     viewedLeafCount: viewedLeaf,
+    childCount: raw.ChildCount != null ? raw.ChildCount : 0,
+    // DateCreated (ISO) → epoch ms, matching the Plex addedAt normalization.
+    addedAt: raw.DateCreated ? (Date.parse(raw.DateCreated) || 0) : 0,
     librarySectionID: raw.ParentId != null ? String(raw.ParentId) : '',
     parentRatingKey: raw.SeasonId || raw.ParentId || '',
     grandparentRatingKey: raw.SeriesId || '',

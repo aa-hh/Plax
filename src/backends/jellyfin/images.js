@@ -17,9 +17,13 @@ function primaryUrl(server, itemId, tag, maxWidth) {
   return imageUrl(server, itemId, 'Primary', tag, maxWidth || 450);
 }
 
+function thumbStillUrl(server, itemId, tag, maxWidth) {
+  return imageUrl(server, itemId, 'Thumb', tag, maxWidth || 640);
+}
+
 function backdropUrl(server, itemId, tag, maxWidth) {
   // Backdrop is an indexed image type; index 0 is the first backdrop.
   return imageUrl(server, itemId, 'Backdrop/0', tag, maxWidth || 1280);
 }
 
-export { imageUrl, primaryUrl, backdropUrl };
+export { imageUrl, primaryUrl, thumbStillUrl, backdropUrl };

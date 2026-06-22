@@ -4,13 +4,13 @@
  * Cache keys are scoped 'jf:<serverId>' so Plex and Jellyfin never collide.
  */
 import { fetchJellyfinJson } from './client.js';
-import { mapItem } from './mapItem.js';
+import { mapItem, ticksToMs } from './mapItem.js';
 import * as cache from '../../core/cache.js';
 
 // Lists/cards need only image+userdata (returned by default with userId) plus a
 // couple of extras; detail pulls the heavy fields.
-var LIST_FIELDS = 'ProviderIds,ParentId,PrimaryImageAspectRatio';
-var DETAIL_FIELDS = 'Overview,Genres,People,Studios,MediaSources,MediaStreams,ProviderIds,ParentId';
+var LIST_FIELDS = 'ProviderIds,ParentId,PrimaryImageAspectRatio,ChildCount,DateCreated';
+var DETAIL_FIELDS = 'Overview,Genres,People,Studios,MediaSources,MediaStreams,ProviderIds,ParentId,ChildCount,RecursiveItemCount,DateCreated';
 
 function scope(server) {
   return 'jf:' + ((server && (server.id || server.url)) || 'srv');
@@ -57,17 +57,55 @@ function browseByType(server, sectionId, sectionType, opts) {
   });
 }
 
+// Jellyfin Media Segment Type → the app's normalized marker type. Outro = credits.
+var SEGMENT_TYPE_MAP = { Intro: 'intro', Outro: 'credit' };
+
+/**
+ * Skip-intro / skip-credits markers via the Media Segments API (Jellyfin 10.10+,
+ * requires the segments provider). Returns the normalized marker shape
+ * ({ id, type, startMs, endMs }) the player consumes. Absent/old servers 404 →
+ * resolve to [] so detail/playback degrade gracefully.
+ */
+function loadMediaSegments(server, ratingKey) {
+  return fetchJellyfinJson('/MediaSegments/' + ratingKey, {
+    base: server.url, token: server.accessToken,
+    params: { includeSegmentTypes: 'Intro,Outro' }
+  }).then(function (res) {
+    return ((res && res.Items) || []).map(function (s) {
+      var type = SEGMENT_TYPE_MAP[s.Type];
+      if (!type) return null;
+      var startMs = ticksToMs(s.StartTicks);
+      var endMs = ticksToMs(s.EndTicks);
+      if (endMs <= startMs) return null;
+      return { id: s.Id || 0, type: type, startMs: startMs, endMs: endMs, final: type === 'credit' };
+    }).filter(Boolean);
+  }).catch(function () { return []; });
+}
+
 /** Single item (full detail). Cached like Plex's getMetadata. */
 function getMetadata(server, ratingKey, opts) {
   opts = opts || {};
   var key = cache.buildKey(scope(server), ratingKey);
   if (opts.fresh) cache.invalidate('metadata', key);
   return cache.remember('metadata', key, function () {
-    return fetchJellyfinJson('/Users/' + server.userId + '/Items/' + ratingKey, {
-      base: server.url, token: server.accessToken, params: { fields: DETAIL_FIELDS }
-    }).then(function (raw) {
+    return Promise.all([
+      fetchJellyfinJson('/Users/' + server.userId + '/Items/' + ratingKey, {
+        base: server.url, token: server.accessToken, params: { fields: DETAIL_FIELDS }
+      }),
+      loadMediaSegments(server, ratingKey)
+    ]).then(function (results) {
+      var raw = results[0];
+      var segments = results[1] || [];
       if (!raw || !raw.Id) throw new Error('Not found on Jellyfin server');
-      return mapItem(raw, server);
+      var item = mapItem(raw, server);
+      if (segments.length) {
+        var intros = segments.filter(function (m) { return m.type === 'intro'; });
+        item.markers = segments;
+        item.introMarkers = intros;
+        item.introMarker = intros.length ? intros[0] : null;
+        item.creditMarkers = segments.filter(function (m) { return m.type === 'credit'; });
+      }
+      return item;
     });
   });
 }
@@ -92,4 +130,42 @@ function getChildren(server, ratingKey, opts) {
   });
 }
 
-export { browseByType, getMetadata, getChildren };
+/**
+ * Trigger a server-side library scan: POST /Items/{id}/Refresh. Admin-only on
+ * Jellyfin — non-admin users get a 403, which fetchJson surfaces as err.status
+ * 403 so libraryScreen's friendlyScanError shows the "not allowed" message
+ * (instead of the old fake success). Returns 204 (no body) on success.
+ */
+function refreshSection(server, sectionId, opts) {
+  opts = opts || {};
+  return fetchJellyfinJson('/Items/' + sectionId + '/Refresh', {
+    base: server.url, token: server.accessToken, method: 'POST',
+    params: {
+      Recursive: true,
+      metadataRefreshMode: opts.force ? 'FullRefresh' : 'Default',
+      imageRefreshMode: opts.force ? 'FullRefresh' : 'Default',
+      replaceAllMetadata: !!opts.force,
+      replaceAllImages: false
+    }
+  });
+}
+
+/**
+ * Refresh a single item's metadata: POST /Items/{id}/Refresh. Same admin-gated
+ * endpoint as refreshSection; non-recursive, pulls fresh metadata + images.
+ */
+function refreshItem(server, ratingKey, opts) {
+  opts = opts || {};
+  return fetchJellyfinJson('/Items/' + ratingKey + '/Refresh', {
+    base: server.url, token: server.accessToken, method: 'POST',
+    params: {
+      Recursive: false,
+      metadataRefreshMode: 'FullRefresh',
+      imageRefreshMode: 'FullRefresh',
+      replaceAllMetadata: !!opts.force,
+      replaceAllImages: false
+    }
+  });
+}
+
+export { browseByType, getMetadata, getChildren, refreshSection, refreshItem };
