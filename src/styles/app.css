@@ -2279,8 +2279,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-genre-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
+  /* margin-based gutter (flex `gap` is a no-op on Chromium 53 / webOS 4) */
+  margin: 0 calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0;
 }
 
 .detail-genre-pill {
@@ -2291,14 +2291,19 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-pill);
   padding: 8px 16px;
+  margin: 0 var(--space-2) var(--space-2) 0;
   white-space: nowrap;
 }
 
 .detail-credits-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-7, 32px);
-  margin: 0;
+  /* margin-based gutter (flex `gap` no-op on Chromium 53) */
+  margin: 0 calc(-1 * var(--space-7, 32px)) 0 0;
+}
+
+.detail-credits-row > .detail-credit-col {
+  margin: 0 var(--space-7, 32px) var(--space-4) 0;
 }
 
 .detail-credit-col {
@@ -2323,13 +2328,14 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-icon-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
 }
 
 .detail-icon-btn__icon {
   display: inline-flex;
   width: 22px;
   height: 22px;
+  /* icon↔label gap as margin (flex `gap` no-op on Chromium 53) */
+  margin-right: 8px;
 }
 
 .detail-icon-btn__icon svg {
@@ -2349,8 +2355,12 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .detail-cast-row {
   display: flex;
-  gap: var(--space-5, 24px);
   padding-bottom: 8px;
+}
+
+/* card spacing as margin (flex `gap` no-op on Chromium 53) */
+.detail-cast-row > .detail-cast-card + .detail-cast-card {
+  margin-left: var(--space-5, 24px);
 }
 
 .detail-cast-card {
@@ -4399,10 +4409,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   flex-wrap: wrap;
   -webkit-align-items: baseline;
   align-items: baseline;
-  gap: 4px 8px;
   padding: 10px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
+/* row/column gap as margins (flex `gap` no-op on Chromium 53) */
+.pmi-row > * { margin: 0 8px 4px 0; }
 .pmi-row:last-child { border-bottom: none; }
 .pmi-label {
   -webkit-flex: 0 0 86px;
@@ -5575,9 +5586,10 @@ html.caps-motion .gt-list-item:focus {
 .gt-text-input-wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;                    /* kit label↔field gap (base Text field) */
   padding: var(--space-6) 0 var(--space-4);
 }
+/* kit label↔field gap as margin (flex `gap` no-op on Chromium 53) */
+.gt-text-input-wrap > * + * { margin-top: 6px; }
 .tv-text-input-label {
   font-size: 14px;             /* kit label/large (base Text field); Login/Auth variant scales ×1.5 */
   font-weight: 500;
@@ -5608,7 +5620,7 @@ html.caps-motion .gt-list-item:focus {
    The base Text field stays kit-scaled (settings/search); this ×1.5 sizing is
    gated to auth screens via openTextInputModal({ variant: 'auth' }), which adds
    .gt-text-input-wrap--auth. See registry "Login / Auth field". */
-.gt-text-input-wrap--auth { gap: 9px; }
+.gt-text-input-wrap--auth > * + * { margin-top: 9px; }
 .gt-text-input-wrap--auth .tv-text-input-label { font-size: 21px; line-height: 30px; }
 .gt-text-input-wrap--auth .tv-text-input { padding: var(--field-pad-y-auth) var(--field-pad-x-auth); line-height: 36px; }
 .tv-text-input::placeholder {
@@ -5629,9 +5641,10 @@ html.caps-motion .gt-list-item:focus {
 /* ── Provider picker: two branded "classic cards" (logo image + connect blurb) ── */
 .provider-cards {
   display: flex;
-  gap: var(--space-7);
   margin-top: var(--space-8);
 }
+/* card spacing as margin (flex `gap` no-op on Chromium 53) */
+.provider-cards > * + * { margin-left: var(--space-7); }
 .provider-card {
   display: flex;
   flex-direction: column;
@@ -5678,13 +5691,15 @@ html.caps-motion .gt-list-item:focus {
 .jellyfin-login .login-fields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
   width: var(--login-fields-w);
   max-width: 90vw;
   margin-top: var(--space-7);
   text-align: left;
 }
-.jellyfin-login .login-field { display: flex; flex-direction: column; gap: 9px; }
+/* column/row gaps as margins (flex `gap` no-op on Chromium 53) */
+.jellyfin-login .login-fields > * + * { margin-top: var(--space-5); }
+.jellyfin-login .login-field { display: flex; flex-direction: column; }
+.jellyfin-login .login-field > * + * { margin-top: 9px; }
 .jellyfin-login .login-field__label {
   font-size: 21px;             /* match Text Field label (kit ×1.5) */
   font-weight: 500;
@@ -5711,10 +5726,11 @@ html.caps-motion .gt-list-item:focus {
 }
 .jellyfin-login .login-actions {
   display: flex;
-  gap: var(--space-5);
   justify-content: center;
   margin-top: var(--space-7);
 }
+/* button spacing as margin (flex `gap` no-op on Chromium 53) */
+.jellyfin-login .login-actions > * + * { margin-left: var(--space-5); }
 .jellyfin-login .login-step { display: none; }
 .jellyfin-login .login-step.is-active {
   display: flex;
@@ -5724,4 +5740,6 @@ html.caps-motion .gt-list-item:focus {
 /* "Use a different service" → back to the provider picker (escape hatch). */
 .jellyfin-login .login-switch-provider { margin-top: var(--space-8); }
 /* Plex pairing places it beside "Refresh code". */
-.pairing-actions { display: flex; gap: var(--space-4); justify-content: center; }
+.pairing-actions { display: flex; justify-content: center; }
+/* button spacing as margin (flex `gap` no-op on Chromium 53) */
+.pairing-actions > * + * { margin-left: var(--space-4); }

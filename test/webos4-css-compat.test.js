@@ -51,6 +51,24 @@ test('webOS 4 CSS: no flex/grid gap in critical layout containers', function () 
   });
 });
 
+test('webOS 4 CSS: no flex/grid gap ANYWHERE in app.css (global guard)', function () {
+  // flex/grid `gap` (incl. row-gap/column-gap) landed in Chrome 84 — a no-op on
+  // the B8's Chromium 53, silently collapsing spacing. Use margin-based rhythm
+  // (`> * + * { margin-... }` or negative-margin gutters). Escape hatch: append
+  // `/* chrome53-ok */` on the line with a justification.
+  var offenders = cssSrc.split('\n').reduce(function (acc, line, i) {
+    if (/(^|[^-])\bgap\s*:/.test(line) && !/chrome53-ok/.test(line)) {
+      acc.push((i + 1) + ': ' + line.trim());
+    }
+    return acc;
+  }, []);
+  assert.deepEqual(
+    offenders,
+    [],
+    'flex/grid gap is dead on Chromium 53 — convert to margins:\n' + offenders.join('\n')
+  );
+});
+
 test('webOS 4 CSS: no display grid or repeat(var()) column templates', function () {
   assert.doesNotMatch(cssSrc, /display:\s*grid/);
   assert.doesNotMatch(cssSrc, /grid-template-columns:\s*repeat\(var\(/);
