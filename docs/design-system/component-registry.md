@@ -222,7 +222,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ### Button  ⭐ gold-standard reference entry
 
-- **Status:** ✅ · 2026-06-20 — fully reconciled to the kit Button (`169:1649`): rest fill adopts the kit `#444746 @80%`; `.btn-outline:focus` now inverts correctly (light fill + dark label). Earlier fix-list cleared.
+- **Status:** ✅ · 2026-06-22 — re-pulled + optimized: the canonical `.btn` is now the **single source of truth for the whole button family**. Every button-family class either composes `.btn` (+ a variant/size modifier) or is a ratified distinct component documented below. Killed the last bespoke per-instance overrides (`.detail-modal-cancel`, `.detail-secondary-actions .btn`), unified `.btn-outline` border on the kit outline token, reconciled `.detail-watchlist-btn` focus to the shared inversion, and added the `.btn--icon`/`.btn--lg` size modifiers from the kit Icon button (`911:6945`). (Prior 2026-06-20: rest fill `#444746 @80%`; `.btn-outline:focus` inversion fix.)
 - **Android TV guideline:** [Buttons](https://developer.android.com/design/ui/tv/guides/components/buttons) — incl. the [Button container](https://developer.android.com/design/ui/tv/guides/components/buttons#button-container) section ("solid color containers for filled buttons; container width from content with consistent padding; text/icon = fully rounded")
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `169:1649` (canonical Button)
 - **Code:** `.btn` / `.btn-primary` / `.btn-outline` in `src/styles/app.css`
@@ -253,6 +253,58 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - **Rest fill** adopted kit canonical `#444746 @80%` (`rgba(68,71,70,.8)`, surface-variant, node `169:1649`), replacing the off-spec `#303030` (which had been pulled from an ImageButton node). The 80% alpha composites over the darkest settings-card surfaces (`#131314`–`#282A2C`) lighter than `#303030` did, so card legibility improved rather than regressed — the original reason to keep `#303030` no longer holds.
   - **`.btn-outline:focus` fixed** — removed the `color:--gt-text` override that fought the shared `.btn:focus` inversion (caused light-on-light). Outline buttons now invert like the filled button (light `--focus-fill` fill + dark `--focus-on-fill` label); the rule only sets `border-color:--focus-fill` to match the inverted surface. Verified on the two focusable call sites (`.detail-modal-cancel`). Focusable outline buttons are now safe to use.
 - **Platform deviations (ratified):** blue `--accent` focus accents; type up-scaled to 22px for 10-foot; kit 1.1× focus scale runs under caps-motion (webOS 4+).
+- **Canonical state model (single source of truth)** — every variant × size × state, as-built in `app.css`:
+
+  | | Rest | Focused (= Pressed/Selected cue) | Disabled |
+  |---|---|---|---|
+  | **Filled** (`.btn`) | fill `--button-container` (#444746 @80%), label `--gt-text` | **invert**: bg `--focus-fill` #E3E3E3 + label `--focus-on-fill` #303030, border transparent, +1.1× scale under caps-motion | `opacity .4`, `pointer-events:none` |
+  | **Primary** (`.btn .btn-primary`) | fill `--gt-primary` (blue), label `--gt-on-primary`, weight 600 | same inversion | same |
+  | **Outline** (`.btn .btn-outline`) | transparent + 1px `#8E918F @35%` (kit outline token), label `--gt-text-2` | same inversion + `border-color:--focus-fill` | same |
+  | **Icon** (`.btn .btn--icon`) | circular footprint (`--target-min`), fill/outline per Filled/Outline above | same inversion | same |
+
+  - **Sizes (pure footprint modifiers, keep pill + fill + inversion):** base/M = `--target-min` 52, py/px `--space-5/--space-6`, label `--font-meta` 22. `.btn--sm` (kit S) = `--space-9` 40, py/px `--space-2/--space-4`, label `--font-small`. `.btn--lg` (kit L) = `--player-icon-btn-lg` 88, py/px `--space-6/--space-7`, label `--font-row-label`. Icon footprints: M `--target-min`, S `--space-9`, L `--player-icon-btn-lg`, all circular.
+- **App class map (every button-family class → its resolution):**
+
+  | Class | Resolution |
+  |---|---|
+  | `.btn` / `.btn-primary` / `.btn-outline` / `.btn--sm` | **canonical** (vocabulary preserved — referenced widely) |
+  | `.btn--icon` / `.btn--lg` | **new** canonical modifiers (kit Icon button `911:6945` S/M/L) |
+  | `.btn-icon` | legacy alias of `.btn--icon` (kept; `createButton({variant:'icon'})`) |
+  | `.btn-wide` | canonical wide variant (`--gt-radius-wide` 12) |
+  | `.btn-icon-glyph` / `.btn-label` | canonical inner slots (glyph box + label span) |
+  | `.detail-modal-cancel` | **bespoke override deleted** → now a focus-system marker only; composes `.btn .btn-outline .btn--sm` at every call site |
+  | `.detail-secondary-actions .btn` (Mark watched/unwatched) | **contextual override deleted** → composes `.btn .btn-outline .btn--sm` |
+  | `.library-scan-btn` | composes the canonical Outline values inline (kit Outline pill + inversion focus); ratified distinct (named + tested) — now identical to `.btn-outline` |
+  | `.player-skip-intro-prompt` | canonical Filled (`--button-container` + `gt-radius-button` + shared `.btn:focus` inversion); auto-focused = selected |
+  | `.login-field__btn` / `.login-switch-provider` | compose `.btn`; `login-field__btn` ratified as the Auth-field-shaped input launcher (Login/Auth field entry); `login-switch-provider` = plain `.btn` |
+  | `.player-control-pill` / `.player-stream-pill` (+`--icon`/`--play`/`--danger`/`--on`) | **ratified distinct** — transient transport controls (see reason below) |
+  | `.detail-watchlist-btn` (+`--active`) | **ratified distinct** icon toggle — square `--radius-md` footprint + accent-soft active fill; **focus reconciled** to the shared inversion (bespoke accent ring removed) |
+  | `.watchlist-row-link` | **ratified distinct** — a borderless inline text link (not a container button); focus = accent text, no inversion |
+  | `.pin-pad-btn` | **ratified distinct** — fixed-grid PIN keypad cell (84×64); inherits the shared `.btn:focus` inversion via the focus group |
+  | `.provider-card` | **ratified distinct** — a selection *card*, not a button (Provider-picker entry) |
+- **Deliberately distinct (with reason):**
+  - **Player pills** (`.player-control-pill` / `.player-stream-pill`) — transient auto-hiding transport controls over live video: dark-translucent rest (must read over any frame), circular icon variants, active-marks, `--play`/`--danger` semantics, no scale (never clip in tight rows). They already share the kit focus-inversion; their footprint/rest are video-overlay-specific.
+  - **`.detail-watchlist-btn`** — a *toggle* (bookmarked on/off) with an accent-soft filled active state; square `--radius-md` footprint matches the adjacent detail icon buttons. Shares the kit inversion focus.
+  - **`.watchlist-row-link`** — an inline text link inside a list row, not a pill container.
+  - **`.pin-pad-btn`** — a fixed-geometry keypad cell; size is dictated by the keypad grid, not content.
+
+### Icon button  ⭐ sub-entry of Button (kit node `911:6945`)
+
+- **Status:** ✅ · 2026-06-22 — pulled fresh; mapped onto the `.btn--icon` modifier.
+- **Android TV guideline:** [Buttons](https://developer.android.com/design/ui/tv/guides/components/buttons) (Icon button — compact, single glyph, fully rounded; sizes S/M/L; "don't use two icons", "don't center icon+text together").
+- **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `911:6945` (axes Type=Filled|Outline, Size=S|M|L, State=Default|Focused|Pressed, Enabled).
+- **Anatomy:** `container` (square, fully-rounded) + `background-layer` (fill/outline + focus halo) + single `icon` (centered, vertically + horizontally). No label slot.
+- **Per-state kit values** (node `911:6945`):
+
+  | | Default | Focused | Pressed | Disabled |
+  |---|---|---|---|---|
+  | S | p6 / r14 / icon16 | p5.2 / r24.2 / icon17.6 + halo 30.8 | p6 / r14 | icon @40% |
+  | M | p10 / r20 / icon20 | p9 / r24.2 / icon22 + halo 44 | p10 / r20 | icon @40% |
+  | L | p14 / r28 / icon28 | p12.6 / r30.8 / icon30.8 + halo 61.6 | p14 / r28 | icon @40% |
+
+  Fill/label colors inherit the Button table (Filled = surface-variant fill → invert on focus; Outline = `#8E918F` border → invert). Focus = invert + ~1.1× scale + circular halo.
+- **App reconciliation (as-built):** `.btn--icon` = circular footprint (`border-radius:50%`, square `--target-min` 52 = M). `.btn--icon.btn--sm` = `--space-9` 40 (kit S up-scaled), `.btn--icon.btn--lg` = `--player-icon-btn-lg` 88 (kit L). Fill/outline + focus inversion + caps-motion scale all inherited from `.btn`. Compose `.btn .btn--icon` (filled) or `.btn .btn-outline .btn--icon`. Glyph via `.btn-icon-glyph` (or `--play .player-control-icon` in the player).
+- **Platform deviations (ratified):** footprints up-scaled to the 10-ft target floor (`--target-min`/`--player-icon-btn-lg`) rather than literal kit px; halo expressed as the caps-motion scale + the shared inversion, not a separate ring layer; blue accents.
 
 ### Chip  ✅ reconciled 2026-06-20
 
@@ -356,7 +408,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ### Player overlay
 
-- **Status:** 🚧 anatomy-complete · 2026-06-22 — kit anatomy + JetStream layout now pulled and reconciled to platform; replaces the prior 📝 summary-only entry. Most parts are **already to-spec in code**; two deviations to fix (seek track height/color, time-label type) are flagged below.
+- **Status:** ✅ to-spec · 2026-06-22 — kit anatomy + JetStream layout pulled, reconciled to platform, and the seek-bar fix-list **applied** (commit `d9db401`): track → `--player-seek-track-h` 6px + `--progress-track-color` dark scrim + `--progress-radius`; played fill → blue `--accent`; subtitle/time tokenized to `--font-meta`/`--font-body`; thumb kept white. Earlier 📝 summary-only entry superseded.
 - **Android TV guideline:** [Design for TV — Foundations](https://developer.android.com/design/ui/tv/guides/foundations/design-for-tv) (10-ft sizing, D-pad nav, communal device) + [Focus system](https://developer.android.com/design/ui/tv/guides/styles/focus-system). The page has no dedicated "transport controls" section; the canonical transient-transport pattern is taken from JetStream (`VideoPlayerOverlay`/`VideoPlayerControls`): bottom-anchored vertical scrim, controls slide in on activity, auto-hide on idle, focus requested on show.
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `8842:27004` ("Player UI"). **NB:** this kit node is a **low-fidelity wireframe** (grey "Block" placeholders, 844×86, `bg-white` @5–20% opacity — `get_design_context` returns no real tokens beyond `neutral100 #FFFFFF`). It encodes **anatomy + geometry/ratios**, not styled tokens; colors/type are resolved from the reconciled component entries it composes (Button `169:1649`, Progress bar `719:6043`, List Item `561:3969`, Modal drawer `4498:31402`). Child node-ids (from `get_metadata`):
   - `8842:26355` — title line — x0 y0 **w200 h24**
@@ -412,8 +464,8 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   | **up-next** | (Plax) | `.player-next-up` **18px** / `--text-secondary`, ellipsis | ➕ Plax extension (no kit slot). Acceptable; if tokenized → `--font-small`. |
   | **action icons (CC/audio/quality)** | 3× `36×36` @ 16px gap, right-aligned (`27005-07`) | `.player-actions` flex row, `margin-left --space-6` from title block, items `margin-left --space-3` (12px); pills `.player-stream-pill--icon` (`--player-icon-btn` 80px target) | ✅ **to-spec** — count/order/right-alignment match kit; targets up-scaled to the 80px 10-ft icon-button floor (kit 36dp glyph inside). Inter-icon gap 12px vs kit 16 — within tolerance; the larger pill targets already exceed kit pitch. |
   | **seek row layout** | elapsed (L) · track (mid) · total (R), label↔track gap **12px** | `.player-seek-row` flex, `> * + * { margin-left: 20px }`; `.player-seek-wrap` flex:1 min-width 320 | ✅ **to-spec** — elapsed→bar→total order matches kit/JetStream. Gap 20px vs kit 12 (ratified 10-ft breathing room). Margin-based rhythm (no `gap`), Chrome53-safe. |
-  | **seek track** | `h4`, radius 2 (`27002`); Progress-bar kit `719:6043` = white@20% | `.player-seek-track` **height 12px**, `rgba(255,255,255,.22)` (white@22%), radius 6 | ❌ **DEVIATION TO FIX** — track is **12px** (kit/Progress-bar token `--progress-track-h` = **4**) and uses **white@22%** where the consolidated Progress bar ratified the **dark scrim `--progress-track-color rgba(0,0,0,.55)`** for legibility over art. **Proposed:** align to Progress-bar tokens — `height: var(--progress-track-h)` (4, or a slightly taller seek-specific `--player-seek-track-h` ~6 if 4 reads thin under the larger thumb), `background: var(--progress-track-color)`, `border-radius: var(--progress-radius)`. Keeps the seek bar a *richer* Progress-bar variant (track+played+handle) rather than a divergent control. |
-  | **seek played fill** | `h4` white (`27008`); Progress-bar `--accent` blue ratified | `.player-seek-played` **`#fff`** solid; `--scrubbing` also `#fff` | ❌ **DEVIATION TO FIX** — played fill is literal **white**; the consolidated Progress bar ratified **blue `--accent` (`#A8C7FA`)** as the app-wide seek/progress fill. **Proposed:** `background: var(--accent)` (or `--progress-fill-color`) to match every other progress surface. (JetStream itself uses `primary` blue for the played line — this also matches JetStream.) |
+  | **seek track** | `h4`, radius 2 (`27002`); Progress-bar kit `719:6043` = white@20% | `.player-seek-track` height `--player-seek-track-h` **6px**, `var(--progress-track-color)` (dark scrim), radius `var(--progress-radius)` 2 | ✅ **RESOLVED** (`d9db401`) — aligned to the Progress-bar tokens; 6px (new seek-specific token) chosen over the 4px base so it doesn't read thin under the 28px thumb. Now a *richer* Progress-bar variant, not a divergent control. |
+  | **seek played fill** | `h4` white (`27008`); Progress-bar `--accent` blue ratified | `.player-seek-played` `var(--accent)`; `--scrubbing` also `var(--accent)`, radius `var(--progress-radius)` | ✅ **RESOLVED** (`d9db401`) — played fill is now blue `--accent`, matching every other progress surface + JetStream `primary`. Thumb stays white (white-on-blue scrub affordance). |
   | **seek handle/thumb** | none in kit wireframe; JetStream indicator is line-only | `.player-seek-thumb` **28×28** white circle, rests `scale(0.643)`, focus→`scale(1)` + `0 0 0 4px rgba(0,0,0,.35)` halo; `transition transform/box-shadow .12s` | ✅ **to-spec (ratified Plax richer control)** — kit/JetStream omit a thumb; a 10-ft scrub bar needs a grabbable handle. Transform-only focus cue (no blue ring) — Chrome53-safe. Keep, but the resting **white** thumb should stay white even after the fill goes blue (white-on-blue handle is the intended scrub affordance). |
   | **elapsed/total time** | `w48 h10` (`27001`/`27003`), flank track | `.player-time` **24px** / weight 500 / tabular-nums; `--elapsed` right-aligned min 7.5ch, `--total` `--text-secondary` left min 7.5ch | ⚠️ **minor** — 24px = `--font-body` literal; **proposed** `font-size: var(--font-body)` for token alignment. Total in `--text-secondary` (de-emphasized) is a sensible Plax refinement over kit's equal-weight blocks. tabular-nums = good. |
   | **transport cluster** | (Plax — kit/JetStream have no dedicated row) | `.player-controls-row` flex column (rhythm `--space-3`), `.player-transport` centered flex row, items `margin-left --space-3` (12px = JetStream `spacedBy(12.dp)` ✅); 6 `.player-control-pill--icon` (`--player-icon-btn` 80px) order prev·-10·play/pause·+30·next·stop | ✅ **to-spec** — 12px inter-button spacing matches JetStream exactly; one centered sequential focus zone (LEFT/RIGHT walks the chain). Margin-based, no `gap`. Dedicated row is the ratified 10-ft enrichment. |
@@ -429,10 +481,10 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - **Chrome53/webOS4 safe:** all rhythm is margin-based (`> * + * { margin-* }`), **no `gap`**; **no `:focus-within`** (modal/active state driven by JS classes + `--track-modal`/`--skip-intro-active` modifiers); show/hide + thumb + countdown animate **transform/opacity only** (no width/height/layout, no big-blur shadow); focus motion under `html.caps-motion` (webOS 4+ incl. B8), hard focus cue (inversion / thumb-scale) always on as the primary signal.
   - **Richer than kit (kept):** dedicated transport row; grabbable seek thumb; up-next/status/retry/subtitle-delay aux slots — all Plax 10-ft enrichments with no kit slot.
 
-- **Fix-list (to reconcile — CSS-only, no JS):**
-  1. ❌ `.player-seek-track` **height 12 → `--progress-track-h` (4)** (or a small `--player-seek-track-h` ~6) and `background rgba(255,255,255,.22) → var(--progress-track-color)` — align with the consolidated Progress bar.
-  2. ❌ `.player-seek-played` **`#fff` → `var(--accent)`** (`--progress-fill-color`) — app-wide blue seek fill (also matches JetStream `primary`). Keep the thumb white.
-  3. ⚠️ Tokenize literals: subtitle 20 → `--font-meta`; time 24 → `--font-body` (alignment only, no visual change).
+- **Fix-list — ✅ ALL APPLIED 2026-06-22 (`d9db401`):**
+  1. ✅ `.player-seek-track` height 12 → `--player-seek-track-h` (6px); `rgba(255,255,255,.22)` → `var(--progress-track-color)`; radius → `var(--progress-radius)`.
+  2. ✅ `.player-seek-played` `#fff` → `var(--accent)` (incl. `--scrubbing`); thumb kept white.
+  3. ✅ Tokenized: subtitle 20 → `--font-meta`; time 24 → `--font-body`.
 
 ### Modal drawer (canonical — pulled from kit 2026-06-20, resolved 2026-06-22)
 
@@ -442,7 +494,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 > Migration intent: kill the bespoke per-screen modals (`detail-modal`/`gt-modal`
 > picker, `player-track-modal-sheet`, `player-media-info`, resume-choice).
 
-- **Status:** 🚧 in progress · 2026-06-22 — **Action-dialog form is ✅ resolved** (kit `Bottom`, `openActionDialog`, resume-choice migrated). **Side-panel form is partially done:** the player track-selector + media-info sheets are styled to the kit side panel and are kit-correct, but the **detail-screen/watchlist `openModal()` vertical picker is NOT migrated** and is still off-kit. Status stays 🚧 until the picker is reconciled (fix-list below). One Chrome53 lint nit also recorded.
+- **Status:** 🚧 nearly complete · 2026-06-22 — **Action-dialog form ✅** (kit `Bottom`, `openActionDialog`, resume-choice). **Side-panel form ✅ migrated** (commit `6e553b2`/`9325c68`): a shared `openSidePanel()` factory (`.gt-side-panel*`, reusing the kit `.player-menu-option` rows) now powers the detail Subtitles/Quality/Episode + watchlist pickers; the bespoke `openModal()` + `.gt-modal-option*` are **deleted**, and the Chrome53 no-op `gap` on `.player-menu-option` removed. **Only remaining 🚧:** `watchlistBookmark.js` is a *multi-select* picker still on `.detail-modal` — it needs a checkbox side-panel variant before this flips to ✅. (Player track-selector + media-info kept their well-tested static markup; they share the row anatomy.)
 
 - **Android TV guideline:** [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer) (Modal variant — overlays content, scrim required for readability, active indicator shows current destination) + Foundations (transient overlays). The kit side panel is the modal-drawer overlay form, not the standard push-aside rail.
 - **Reference (JetStream):** JetStream's video player (`videoPlayer/components/*`) has **no audio/subtitle/quality selection overlay at all** — only transport composables (`NextButton`/`PreviousButton`/`RepeatButton`/`VideoPlayerSeeker`/`VideoPlayerOverlay`). Its only overlay primitive is `tvmaterial/Dialog.kt` → `StandardDialog` / `FullScreenDialog` / base `Dialog` (scrim + `RoundedCornerShape` + `widthIn` container; icon → title → text → `DialogFlowRow` of buttons), used for profile confirms (`AccountsSectionDeleteDialog`). That maps 1:1 to our **action-dialog** form and confirms the **side-panel** form is kit-derived, not JetStream-derived.
@@ -518,16 +570,13 @@ It is a *passive prompt shown over still-playing video* during credits (`.player
 - **Type up-scaled for 10-ft:** header 22→`--font-body` 24; row label 16→`--font-body` 24; dialog heading 28→`--font-row-label` 30; dialog desc 16→`--font-body` 24.
 - **Rows / actions reuse shipped components:** side-panel rows = the ✅ Player-track-selector row (kit List-Item-correct); dialog actions = `.btn` / `.btn-primary` / `.btn--sm`.
 
-#### Deviations from kit — remaining fix-list (why status is still 🚧)
-1. **Migrate `openModal()` pickers to the side panel form (PRIMARY blocker).** `detailScreen.js` Subtitles (l.457) / Quality (l.425) / Episode (l.803) and `watchlistScreen.js` (l.83) still call the bespoke `openModal()` vertical picker, which is off-kit:
-   - row `.detail-modal-option`: `min-height 50` (kit/side-panel **64**), `radius 0` + `border-left 3px` accent bar (kit **radius 8, no bar**), padding `21/24` (kit **12/16**);
-   - **Selected** = blue-soft fill `rgba(168,199,250,.16)` + `--accent` text + left bar + **bare `✓` glyph** — NOT the kit light-fill `#E3E3E3` + dark text + **24px radio `control`** that the player side panel already implements;
-   - footer uses `.detail-modal-cancel` (off-spec: `min-height 38`, no radius, muted color) — the very treatment the Button entry says was deleted in favour of `.btn .btn-outline .btn--sm`.
-   **Fix:** route these callers through the kit side panel (reuse `.player-menu-option` row anatomy + `.btn--sm` cancel), then delete `.detail-modal*` / `.gt-modal*` CSS and `openModal()`. This is the "kills the bespoke per-screen modals" goal that is not yet met.
-2. **Generalize the player side panels into a shared `openSidePanel()` factory.** Track-selector + media-info are currently hand-rolled in `playerScreen.js` (kit-styled but duplicated markup). Once the picker (1) needs a side panel, extract one `openSidePanel({ header, rows, control, footer })` primitive in `controls.js` so the player sheets, detail pickers and watchlist share it — completing the "one overlay primitive" intent.
-3. **Chrome53 lint nit (cosmetic, not gating):** `.player-menu-option` (`app.css:4120`) declares `gap: var(--space-2)` — a flex `gap` that no-ops on Chromium 53. Harmless today (the row is `justify-content: space-between`, so label/control already split without it) and not on the `webos4-css-compat` critical-selector list, so it does not fail the gate. Drop it (or mark `/* chrome53-ok */` with rationale) when touching this rule.
+#### Fix-list — mostly applied 2026-06-22 (`6e553b2`/`9325c68`)
+1. ✅ **`openModal()` pickers migrated to the side panel.** `detailScreen.js` Subtitles/Quality/Episode + `watchlistScreen.js` now call `openSidePanel()`; the off-kit `.detail-modal-option` rows (min-height 50 / radius-0 + left bar / ✓ glyph) are gone, replaced by the kit `.player-menu-option` rows (64 / radius-8 / 12-16 / 24px radio) + a `.btn .btn-outline .btn--sm` cancel. `openModal()` + `.gt-modal-option*` CSS **deleted**.
+2. ✅ **Shared `openSidePanel({ header, rows, onSelect, footer })` factory** extracted in `controls.js` (`.gt-side-panel*`, reusing the shipped `.player-menu-option` anatomy). The player track-selector + media-info sheets kept their well-tested `attachFocusNav` markup (incremental path) but share the row styling — the "one overlay primitive" is now the path for all new option lists.
+3. ✅ **Chrome53 `gap` nit cleared** — removed the no-op `gap: var(--space-2)` on `.player-menu-option` (space-between handles the split).
+4. 🚧 **Remaining:** `watchlistBookmark.js` is a *multi-select* picker (toggle add/remove + New list + Done) still on `.detail-modal`. `openSidePanel` is single-select radio; this needs a **checkbox side-panel variant** before the entry flips to ✅. The `.detail-modal*` CSS is retained solely for this + `openTextInputModal`.
 
-When (1) + (2) land and (3) is cleared, flip to ✅.
+Flip to ✅ once the watchlistBookmark multi-select gets a checkbox side-panel variant.
 
 #### Platform deviations (ratified — no action)
 - Side panel: width 280→`--modal-sheet-max-w` 420; `h-full`→content-sized 320..100% w/ scrolling list; player sheet bottom-anchored above the trigger + 24px right float (button-launched, not full-height/centred); player-only borderless Cancel footer; no leading icon / no subtitle on track rows; blue `--accent` radio + two-tier current/focused.
@@ -693,7 +742,7 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
 
 ### Profile picker screen + Profile card ("Select User" / "Who's watching?")
 
-- **Status:** 🚧 diverges · 2026-06-22 — canonical spec captured; the as-built is *close* (circular-intent avatar, blue focus ring + avatar scale, name color shift, excluded from control inversion — all correct in intent) but carries **3 concrete bugs to fix**: (1) the avatar is rendered **square** (`--gt-radius-card` = `--radius-lg` 12) not **circular** despite the 10-foot convention + the kit's circular avatar; (2) the focus-scale references an **undefined token** `--focus-scale-med` (only `--gt-focus-scale-med` exists) so the focus grow silently no-ops; (3) the lock badge sits on a square corner. Everything else is to-spec. This entry is the **target**, not a blessing of the current CSS.
+- **Status:** ✅ to-spec · 2026-06-22 — canonical spec captured and the 3-bug fix-list **applied** (commit `97d7566`): (1) avatar now **circular** via new token `--profile-avatar-radius: 50%`; (2) focus-scale fixed `--focus-scale-med` (undefined, was a silent no-op) → `--gt-focus-scale-med` (1.05), transform-only + caps-motion-gated; (3) lock badge re-anchored to the round avatar's top-right (14%/14%). Shared verbatim by the Jellyfin user picker. Invariants preserved (`:not(.profile-card)` non-inversion; blue focus ring / white selected ring).
 
 - **Android TV guideline:**
   - [Cards](https://developer.android.com/design/ui/tv/guides/components/cards) — 1:1 square ratio is the documented ratio for "cast/crew, logos" (people/identity); selectable tiles get a focus state + adequate padding so the focus grow never overlaps neighbours.
@@ -743,16 +792,16 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
   |---|---|---|---|---|
   | tile (`.profile-card`) | container | flex column, transparent, no own border | `flex column`, transparent, `border-radius:0`, `padding:0` | ✅ to-spec (avatar carries the ring, not the tile) |
   | tile | width / column | 4-card = 196dp; pitch from `--profile-picker-cols` | `--profile-card-min` **160px**, `margin 12px` (24px gutter), `flex:0 0 160` | ✅ ratified (160 + 24 gutter, max 4 cols = 712px) |
-  | avatar (`.profile-card-avatar`) | **shape** | **CIRCLE** (`rounded-40` on 32px) | **square** `border-radius: var(--gt-radius-card)` = **12px** | 🚧 **FIX → circular** (`border-radius:50%`; add `--profile-avatar-radius:50%`). 1:1 round is the 10-foot identity convention + matches the kit avatar. |
+  | avatar (`.profile-card-avatar`) | **shape** | **CIRCLE** (`rounded-40` on 32px) | **circular** `border-radius: var(--profile-avatar-radius)` (50%) | ✅ **RESOLVED** (`97d7566`) — circular via new token; matches kit `Account Switch` avatar + JetStream `CircleShape`. |
   | avatar | size | 32→40 on focus (row context) | `width:100%` of 160 tile, `height:--profile-card-min` (160px square) | ✅ ratified (up-scaled to a 10-foot 160px tile; keep 1:1) |
   | avatar | rest fill / border | `primary-container #0842A0`, 1px `outline #8E918F` | `--bg-elevated #1B1B1B`, `--focus-w 3px transparent` (ring target) | ✅ ratified (dark elevated surface + transparent ring slot; app does not tint identity tiles blue at rest — neutral surface reads better behind photos/initials) |
   | avatar | initials | (kit shows photo) | 44px / weight 700, `--text-primary` | ✅ ratified (10-foot initials fallback) |
   | avatar | **focus ring** | **2px `primary #A8C7FA`** | `border-color: var(--accent)` + `--focus-shadow` (blue glow + dark halo) | ✅ to-spec (blue accent ring = the always-on primary cue) |
-  | avatar | **focus scale** | 32→40 ≈ **1.25×** (kit row); app cards 1.03–1.06 | `transform: scale(var(--focus-scale-med))` under `html.caps-motion` | 🚧 **FIX: `--focus-scale-med` is UNDEFINED** (only `--gt-focus-scale-med:1.05` exists) → the rule is invalid and the grow **silently no-ops**. Point it at `--gt-focus-scale-med` (1.05) — transform-only, caps-motion-gated, webOS 4+. |
+  | avatar | **focus scale** | 32→40 ≈ **1.25×** (kit row); app cards 1.03–1.06 | `transform: scale(var(--gt-focus-scale-med))` (1.05) under `html.caps-motion` | ✅ **RESOLVED** (`97d7566`) — was `--focus-scale-med` (undefined → silent no-op); now `--gt-focus-scale-med`, transform-only, caps-motion-gated, webOS 4+. |
   | name (`.profile-card-name`) | type | `title/medium` 16/24 Medium +0.15 on-surface | `--font-body` **24px**, `--gt-weight-label` 500, `--gt-ls-label`, `--text-secondary #C4C7C5`, single-line ellipsis | ✅ ratified (kit 16 → 24 for 10-foot; secondary at rest is intentional — it brightens on focus) |
   | name | gap to avatar | (kit row gap 12) | `margin-top: var(--space-3)` (12px) | ✅ to-spec |
   | name | **focus color** | (row inverts wholesale) | `:focus` → `--accent` blue; `--selected` → `--text-primary` white | ✅ ratified — see "selected vs focused" below |
-  | lock (`.profile-card-lock`) | — | (no kit lock in `557:3895`) | absolute top/right `--space-3`, 18px, opacity .8, 🔒 | ✅ ratified Plax addition; **re-anchor to the circular avatar's top-right** once the avatar is round (currently positioned against the square corner) |
+  | lock (`.profile-card-lock`) | — | (no kit lock in `557:3895`) | absolute **top/right 14%**, 18px, opacity .8, 🔒 | ✅ **RESOLVED** (`97d7566`) — re-anchored to 14%/14% so it sits on the round avatar's top-right edge, inside bounds, clear of the focus ring. |
   | **selected** (`.profile-card--selected`) | border / label | kit row Focussed = light pill `#e3e3e3`+`#303030`; JetStream `UserAvatar` selected = `primary` border | white ring `0 0 0 3px --text-primary` + white name | ✅ ratified — **distinct from focus**: focus = blue (`--accent`), selected = white (`--text-primary`), declared after focus so it wins when both. Marks the chosen profile during PIN entry / no-PIN bootstrap. |
 
 - **PIN pad (`.pin-pad-btn`) → kit Button `169:1649` (sub-component):**
@@ -769,10 +818,10 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
   | display readout | — | `.pin-display` 36px, `letter-spacing .35em`, tabular-nums | ✅ ratified |
   | error | — | `.pin-error` `--danger`; `pin-shake` translateX keyframe on display | ✅ ratified (transform-only animation, Chrome53-safe) |
 
-- **Deviations from kit — fix-list (🚧):**
-  1. **Avatar must be circular.** `.profile-card-avatar { border-radius: var(--gt-radius-card) }` (12px square) → `border-radius: 50%` (propose token `--profile-avatar-radius: 50%`). Round 1:1 is the ratified 10-foot identity shape and matches the kit `Account Switch` avatar + JetStream `UserAvatar` (`CircleShape`).
-  2. **Fix the undefined focus-scale token.** `.profile-card:focus .profile-card-avatar { transform: scale(var(--focus-scale-med)) }` references a token that does not exist → swap to `var(--gt-focus-scale-med)` (1.05). Until fixed the focus grow does nothing (only the ring shows); ring-only is still acceptable, so this is a polish bug, not a breakage.
-  3. **Re-anchor the lock** to the round avatar's top-right inset once the avatar is circular (it currently hugs a square corner that will disappear).
+- **Deviations from kit — fix-list ✅ ALL APPLIED 2026-06-22 (`97d7566`):**
+  1. ✅ **Avatar circular** — `.profile-card-avatar border-radius` → `var(--profile-avatar-radius)` (new `:root` token = 50%). Matches kit `Account Switch` avatar + JetStream `CircleShape`.
+  2. ✅ **Focus-scale token fixed** — `var(--focus-scale-med)` (undefined → silent no-op) → `var(--gt-focus-scale-med)` (1.05); transform-only, caps-motion-gated.
+  3. ✅ **Lock re-anchored** — `top/right` `--space-3` (square corner) → `14%/14%` so it sits on the round avatar's edge.
 
 - **Platform deviations (ratified — keep):**
   - **Circular 1:1 avatars**, not the kit Card's 2:3 — people/identity tiles are round by 10-foot convention (kit's own `Account Switch` avatar is circular; cards elsewhere stay 2:3).
@@ -851,15 +900,18 @@ operations while uncommitted (2026-06-19 reduced to one entry; reconciled back
 2026-06-20 from four divergent worktrees). Commit registry + `AGENTS.md` + `.claude/`
 changes so they survive checkouts/resets.
 
-### Open reconciliations (2026-06-22 anatomy pass — Player overlay / Profile picker / Modal drawer)
+### Open reconciliations (2026-06-22 anatomy pass + applied fixes — Player overlay / Profile picker / Modal drawer / Button)
 
-Three previously-unspecced/summary components had their anatomy pulled from the kit + JetStream and reconciled to platform. Standing 🚧 fix-lists now **open** (all CSS-only unless noted):
+Anatomy pulled from the kit + JetStream, reconciled to platform, and the fixes **applied** (5 parallel worktree agents, merged in dependency order button→player→profile→modal). Full suite 599/600 (the 1 failure is the pre-existing `collectHubPrefetchPosterUrls` width=180/210 test, unrelated); webOS4 CSS gates green; build compiles.
 
-- 🚧 **Player overlay** (was 📝 summary) — anatomy complete; **2 deviations to fix:** (1) `.player-seek-track` 12px/white@22% → Progress-bar tokens `--progress-track-h` (4) / `--progress-track-color` (dark scrim); (2) `.player-seek-played` literal `#fff` → blue `--accent` (`--progress-fill-color`), matching every other progress surface + JetStream `primary`. Keep the white thumb. Minor: tokenize subtitle 20→`--font-meta`, time 24→`--font-body`.
-- 🚧 **Profile picker / Profile card** (was absent) — anatomy complete; **3 bugs to fix:** (1) avatar is **square** (`--gt-radius-card` 12) → **circular** `border-radius:50%` (propose `--profile-avatar-radius`); (2) focus-scale references **undefined** `--focus-scale-med` → `--gt-focus-scale-med` (focus grow silently no-ops today); (3) re-anchor the lock badge to the round avatar's corner. Reused verbatim by the Jellyfin user picker, so the fix lands on both.
-- 🚧 **Modal drawer** (still 🚧, now fully specced both forms) — **Action dialog form = ✅ resolved**; **side-panel migration incomplete:** the bespoke `openModal()` vertical picker (detail Subtitles/Quality/Episode + watchlist) is still off-kit (row 50/radius-0/✓-glyph vs kit 64/radius-8/24px-radio + off-spec `.detail-modal-cancel`). **Fix-list:** (1) route those callers through the kit side panel + delete `.detail-modal*`/`.gt-modal*`/`openModal()`; (2) extract a shared `openSidePanel()` factory; (3) drop the no-op `gap` on `.player-menu-option`. Flip to ✅ when (1)+(2) land.
+- ✅ **Player overlay** (was 📝 summary) → **✅ to-spec** (`d9db401`): seek track → `--player-seek-track-h` 6px + `--progress-track-color` dark scrim + `--progress-radius`; played fill → blue `--accent`; subtitle/time tokenized; thumb kept white.
+- ✅ **Profile picker / Profile card** (was absent) → **✅ to-spec** (`97d7566`): circular avatar via new `--profile-avatar-radius`; fixed the undefined `--focus-scale-med` → `--gt-focus-scale-med` (focus grow was a silent no-op); lock re-anchored to 14%/14%. Lands on the Jellyfin user picker too (shared CSS).
+- ✅ **Button family** (gold-standard) → **re-pulled + consolidated** (`ab51cf7`): `.btn` is now the single source of truth; added `.btn--icon`/`.btn--lg` (kit Icon button `911:6945`) + an Icon button sub-entry; deleted the `.detail-modal-cancel` + `.detail-secondary-actions .btn` bespoke overrides; reconciled `.detail-watchlist-btn` focus to the shared inversion; recorded a per-variant×size×state model + full app-class map.
+- 🚧 **Modal drawer** (both forms specced) → **side-panel migration done** (`6e553b2`/`9325c68`): shared `openSidePanel()` factory; detail Subtitles/Quality/Episode + watchlist pickers migrated; `openModal()` + `.gt-modal-option*` deleted; `.player-menu-option` `gap` nit cleared. **Remaining 🚧:** `watchlistBookmark.js` multi-select needs a checkbox side-panel variant.
 
-> Source specs (scratch, mergeable detail) were captured under `docs/design-system/specs/` then folded into the entries above. The entries here are now authoritative.
+**Button-audit follow-ups not yet actioned** (from the read-only audit; lower priority): `.player-media-info-btn` (only control with `:hover` + accent-tint focus — bring into the inversion group); `.gt-chip` vs the reconciled Chip family (two competing chip defs); ratify the text-link family (`.watchlist-row-link`/`.detail-link`/`.detail-season-link`) + `.provider-card` Card-family entry; player pills (`.player-control-pill`/`.player-stream-pill`) documented-but-duplicate `.btn`.
+
+> Scratch specs under `docs/design-system/specs/` were folded into the entries above (then removed); the entries here are authoritative.
 
 ### Resolved (from the 2026-06-20 merge)
 
