@@ -202,7 +202,7 @@ function settingsScreen(root, params, navigate) {
     '<p class="status-msg settings-status" id="settings-status"></p>' +
     '<h2 class="settings-section-title">Account</h2>' +
     '<div id="account-section" class="settings-info-block"></div>' +
-    '<h2 class="settings-section-title">Plex Home</h2>' +
+    '<h2 class="settings-section-title" id="profiles-section-title">Profiles</h2>' +
     '<div id="plex-home-section"></div>' +
     '<h2 class="settings-section-title settings-watchlists-title hidden" id="watchlists-section-title">Watchlists</h2>' +
     '<div id="watchlists-section" class="hidden"></div>' +
@@ -288,34 +288,42 @@ function settingsScreen(root, params, navigate) {
     currentProfileEl.textContent = activeUser && (activeUser.title || activeUser.username) || '—';
   }
 
+  var isJellyfin = state.provider === 'jellyfin';
+
   document.getElementById('btn-switch-profile').addEventListener('click', function () {
-    navigate('profile-picker', { _from: 'settings' });
+    if (isJellyfin) {
+      navigate('jellyfin-users', { _from: 'settings' });
+    } else {
+      navigate('profile-picker', { _from: 'settings' });
+    }
   });
 
-  var ownerToken = getOwnerAuthToken() || state.ownerAuthToken || state.authToken;
-  fetchHomeUsers(ownerToken, state.clientId).then(function (users) {
-    if (!users.length) {
+  if (!isJellyfin) {
+    var ownerToken = getOwnerAuthToken() || state.ownerAuthToken || state.authToken;
+    fetchHomeUsers(ownerToken, state.clientId).then(function (users) {
+      if (!users.length) {
+        document.getElementById('home-users-list').innerHTML =
+          '<p class="settings-muted">Plex Home not available on this account.</p>';
+        return;
+      }
+      var list = document.getElementById('home-users-list');
+      list.innerHTML = '<p class="settings-muted">Home profiles</p>';
+      users.forEach(function (u) {
+        var row = document.createElement('div');
+        row.className = 'settings-home-user-row';
+        var active = activeUser && activeUser.id === u.id;
+        row.textContent = (u.title || u.username) +
+          (u.admin ? ' (Admin)' : '') +
+          (u.restricted ? ' · Restricted' : '') +
+          (u.hasPin ? ' · PIN' : '') +
+          (active ? ' · Active' : '');
+        list.appendChild(row);
+      });
+    }).catch(function () {
       document.getElementById('home-users-list').innerHTML =
-        '<p class="settings-muted">Plex Home not available on this account.</p>';
-      return;
-    }
-    var list = document.getElementById('home-users-list');
-    list.innerHTML = '<p class="settings-muted">Home profiles</p>';
-    users.forEach(function (u) {
-      var row = document.createElement('div');
-      row.className = 'settings-home-user-row';
-      var active = activeUser && activeUser.id === u.id;
-      row.textContent = (u.title || u.username) +
-        (u.admin ? ' (Admin)' : '') +
-        (u.restricted ? ' · Restricted' : '') +
-        (u.hasPin ? ' · PIN' : '') +
-        (active ? ' · Active' : '');
-      list.appendChild(row);
+        '<p class="settings-muted">Could not load Plex Home profiles.</p>';
     });
-  }).catch(function () {
-    document.getElementById('home-users-list').innerHTML =
-      '<p class="settings-muted">Could not load Plex Home profiles.</p>';
-  });
+  }
 
   var aboutSection = document.getElementById('about-section');
   aboutSection.innerHTML =
