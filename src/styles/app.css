@@ -3062,22 +3062,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   line-height: 1;
 }
 
-.detail-modal-list--info > * + * {
-  margin-top: var(--space-3);
-}
-
-.detail-network-info-line {
-  margin: 0;
-  font-size: var(--font-meta);
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-
-.detail-network-info-line::before {
-  content: '• ';
-  color: var(--accent, #6eb5ff);
-}
-
 .detail-modal {
   position: fixed;
   top: 0;
@@ -3180,77 +3164,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: rgba(13, 17, 26, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-}
-
-.detail-modal-title {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 14px 24px 12px;
-  background: rgba(6, 8, 13, 0.98);
-  font-size: var(--font-small);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.detail-modal-list {
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1;
-  padding: 6px 0;
-}
-
-.detail-modal-list--episodes {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* Room for the focus grow (scale + 7px ring) so episode chips aren't
-     clipped top/bottom by overflow-y: hidden under html.caps-motion. */
-  padding: var(--space-5) var(--space-4);
-}
-
-.detail-modal-list--episodes > * + * {
-  margin-left: var(--space-3);
-}
-
-.detail-modal-option {
-  justify-content: flex-start;
-  text-align: left;
-  min-height: 50px;
-  border-radius: 0;
-  border: none;
-  border-left: 3px solid transparent;
-  padding-left: 21px;
-  padding-right: 24px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: var(--font-body);
-}
-
-/* Selected = blue container fill + accent (checkmark added in markup). */
-.detail-modal-option--active {
-  border-left-color: var(--accent);
-  color: var(--accent);
-  background: rgba(168, 199, 250, 0.16);
-}
-
-/* Focused = Google light-fill inversion (overrides selected when both). */
-.detail-modal-option:focus {
-  outline: none;
-  border-left-color: transparent;
-  background: var(--focus-fill);
-  color: var(--focus-on-fill);
-}
-
-.detail-modal-empty {
-  margin: 0;
-  padding: var(--space-4) 24px;
-  font-size: var(--font-meta);
-  color: var(--text-secondary);
 }
 
 .detail-modal-footer {
@@ -4045,6 +3958,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   padding: var(--space-3) 0 0;
 }
 
+/* Side-panel footer: horizontal action row (e.g. New list + Done). Margin
+   rhythm between buttons — flex `gap` no-ops on Chromium 53. */
+.gt-side-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.gt-side-panel-footer .btn + .btn {
+  margin-left: var(--space-3);
+}
+
 .player-menu-empty {
   margin: 0;
   padding: var(--space-4) 24px;
@@ -4164,6 +4089,40 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   transition: transform 120ms ease;
 }
 
+/* Multi-select control: 24px checkbox (kit Controls 591:4649, checkbox variant).
+   Square (radius 6) instead of round; checked reveals a tick drawn from the
+   ::after box via transform/opacity only (no layout) — Chrome53-safe. */
+.player-menu-option-check--checkbox {
+  border-radius: 6px;
+}
+
+.player-menu-option-check--checkbox::after {
+  /* a tick: short L rotated 45°, scaled in when checked */
+  width: 7px;
+  height: 12px;
+  border: solid var(--accent);
+  border-width: 0 3px 3px 0;
+  border-radius: 0;
+  background: transparent;
+  /* nudge up-left so the rotated tick sits centered in the box */
+  margin-top: -2px;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0);
+}
+
+.player-menu-option--active .player-menu-option-check--checkbox::after {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1);
+}
+
+/* Checked checkbox: fill the box accent + white tick (kit Selected control). */
+.player-menu-option--active .player-menu-option-check--checkbox {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.player-menu-option--active .player-menu-option-check--checkbox::after {
+  border-color: var(--bg-base, #131314);
+}
+
 /* Selected (not focused) = soft translucent-light fill + filled accent radio, so
    it reads as "current" while still distinct from the focused item below. */
 .player-menu-option--active {
@@ -4196,6 +4155,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .player-menu-option--active:focus .player-menu-option-check::after {
   background: var(--focus-on-fill);
+}
+
+/* Focused + checked checkbox: dark filled box + light tick, so it stays legible
+   against the light-fill focus row (overrides the accent-fill resting style). */
+.player-menu-option--active:focus .player-menu-option-check--checkbox {
+  background: var(--focus-on-fill);
+  border-color: var(--focus-on-fill);
+}
+
+.player-menu-option--active:focus .player-menu-option-check--checkbox::after {
+  background: transparent;
+  border-color: var(--focus-fill);
 }
 
 .player-hint {
@@ -5355,28 +5326,6 @@ video.native-player.subtitle-no-bg ::cue {
 }
 .gt-list-item:focus .gt-list-item__trailing,
 .gt-list-item:focus .gt-list-item__sublabel { color: var(--focus-on-fill); }
-
-/* Picker modal: selected = light pill + trailing checkmark */
-.gt-modal-option {
-  display: flex;
-  align-items: center;
-}
-.gt-modal-option__label { flex: 1; min-width: 0; }
-.gt-modal-option__detail {
-  margin-left: var(--space-4);
-  color: var(--gt-text-muted);
-  font-size: var(--gt-card-sub);
-}
-.gt-modal-option__check {
-  margin-left: var(--space-4);
-  flex-shrink: 0;
-  color: var(--accent);
-  font-weight: 700;
-}
-.gt-modal-option--selected {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
 
 /* List items keep the tiny 1.025x lift (text blur imperceptible at that scale).
    Chips/tabs are text-bearing → no scale (fuzz); ring + background lift instead. */

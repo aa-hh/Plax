@@ -13,7 +13,7 @@ import {
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
-import { createTabs, openModal } from '../components/controls.js';
+import { createTabs, openSidePanel } from '../components/controls.js';
 import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
@@ -422,7 +422,7 @@ function detailScreen(root, params, navigate) {
     btn._plaxQualityWired = true;
     updateQualityBtnLabel();
     btn.addEventListener('click', function () {
-      openModal({
+      openSidePanel({
         title: 'Quality',
         selectedId: getDetailQuality(),
         options: listProfiles().map(function (p) {
@@ -454,7 +454,7 @@ function detailScreen(root, params, navigate) {
     btn.disabled = !subList.length;
     refreshLabel();
     btn.addEventListener('click', function () {
-      openModal({
+      openSidePanel({
         title: 'Subtitles',
         options: subOptions.map(function (o) {
           return { id: o.id, label: o.label, selected: isActiveOption(o.id, selectedSubtitle) };
@@ -800,7 +800,7 @@ function detailScreen(root, params, navigate) {
     if (!seasonKey) return;
     ensureSeasonEpisodesLoaded(seasonKey).then(function (episodes) {
       if (destroyed) return;
-      openModal({
+      openSidePanel({
         title: 'Episodes · ' + seasonLabel(item),
         selectedId: String(item.ratingKey),
         options: episodes.map(function (ep) {
