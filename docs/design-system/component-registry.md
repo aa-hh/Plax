@@ -222,7 +222,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ### Button  ⭐ gold-standard reference entry
 
-- **Status:** ✅ · 2026-06-20 — fully reconciled to the kit Button (`169:1649`): rest fill adopts the kit `#444746 @80%`; `.btn-outline:focus` now inverts correctly (light fill + dark label). Earlier fix-list cleared.
+- **Status:** ✅ · 2026-06-22 — re-pulled + optimized: the canonical `.btn` is now the **single source of truth for the whole button family**. Every button-family class either composes `.btn` (+ a variant/size modifier) or is a ratified distinct component documented below. Killed the last bespoke per-instance overrides (`.detail-modal-cancel`, `.detail-secondary-actions .btn`), unified `.btn-outline` border on the kit outline token, reconciled `.detail-watchlist-btn` focus to the shared inversion, and added the `.btn--icon`/`.btn--lg` size modifiers from the kit Icon button (`911:6945`). (Prior 2026-06-20: rest fill `#444746 @80%`; `.btn-outline:focus` inversion fix.)
 - **Android TV guideline:** [Buttons](https://developer.android.com/design/ui/tv/guides/components/buttons) — incl. the [Button container](https://developer.android.com/design/ui/tv/guides/components/buttons#button-container) section ("solid color containers for filled buttons; container width from content with consistent padding; text/icon = fully rounded")
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `169:1649` (canonical Button)
 - **Code:** `.btn` / `.btn-primary` / `.btn-outline` in `src/styles/app.css`
@@ -253,6 +253,58 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - **Rest fill** adopted kit canonical `#444746 @80%` (`rgba(68,71,70,.8)`, surface-variant, node `169:1649`), replacing the off-spec `#303030` (which had been pulled from an ImageButton node). The 80% alpha composites over the darkest settings-card surfaces (`#131314`–`#282A2C`) lighter than `#303030` did, so card legibility improved rather than regressed — the original reason to keep `#303030` no longer holds.
   - **`.btn-outline:focus` fixed** — removed the `color:--gt-text` override that fought the shared `.btn:focus` inversion (caused light-on-light). Outline buttons now invert like the filled button (light `--focus-fill` fill + dark `--focus-on-fill` label); the rule only sets `border-color:--focus-fill` to match the inverted surface. Verified on the two focusable call sites (`.detail-modal-cancel`). Focusable outline buttons are now safe to use.
 - **Platform deviations (ratified):** blue `--accent` focus accents; type up-scaled to 22px for 10-foot; kit 1.1× focus scale runs under caps-motion (webOS 4+).
+- **Canonical state model (single source of truth)** — every variant × size × state, as-built in `app.css`:
+
+  | | Rest | Focused (= Pressed/Selected cue) | Disabled |
+  |---|---|---|---|
+  | **Filled** (`.btn`) | fill `--button-container` (#444746 @80%), label `--gt-text` | **invert**: bg `--focus-fill` #E3E3E3 + label `--focus-on-fill` #303030, border transparent, +1.1× scale under caps-motion | `opacity .4`, `pointer-events:none` |
+  | **Primary** (`.btn .btn-primary`) | fill `--gt-primary` (blue), label `--gt-on-primary`, weight 600 | same inversion | same |
+  | **Outline** (`.btn .btn-outline`) | transparent + 1px `#8E918F @35%` (kit outline token), label `--gt-text-2` | same inversion + `border-color:--focus-fill` | same |
+  | **Icon** (`.btn .btn--icon`) | circular footprint (`--target-min`), fill/outline per Filled/Outline above | same inversion | same |
+
+  - **Sizes (pure footprint modifiers, keep pill + fill + inversion):** base/M = `--target-min` 52, py/px `--space-5/--space-6`, label `--font-meta` 22. `.btn--sm` (kit S) = `--space-9` 40, py/px `--space-2/--space-4`, label `--font-small`. `.btn--lg` (kit L) = `--player-icon-btn-lg` 88, py/px `--space-6/--space-7`, label `--font-row-label`. Icon footprints: M `--target-min`, S `--space-9`, L `--player-icon-btn-lg`, all circular.
+- **App class map (every button-family class → its resolution):**
+
+  | Class | Resolution |
+  |---|---|
+  | `.btn` / `.btn-primary` / `.btn-outline` / `.btn--sm` | **canonical** (vocabulary preserved — referenced widely) |
+  | `.btn--icon` / `.btn--lg` | **new** canonical modifiers (kit Icon button `911:6945` S/M/L) |
+  | `.btn-icon` | legacy alias of `.btn--icon` (kept; `createButton({variant:'icon'})`) |
+  | `.btn-wide` | canonical wide variant (`--gt-radius-wide` 12) |
+  | `.btn-icon-glyph` / `.btn-label` | canonical inner slots (glyph box + label span) |
+  | `.detail-modal-cancel` | **bespoke override deleted** → now a focus-system marker only; composes `.btn .btn-outline .btn--sm` at every call site |
+  | `.detail-secondary-actions .btn` (Mark watched/unwatched) | **contextual override deleted** → composes `.btn .btn-outline .btn--sm` |
+  | `.library-scan-btn` | composes the canonical Outline values inline (kit Outline pill + inversion focus); ratified distinct (named + tested) — now identical to `.btn-outline` |
+  | `.player-skip-intro-prompt` | canonical Filled (`--button-container` + `gt-radius-button` + shared `.btn:focus` inversion); auto-focused = selected |
+  | `.login-field__btn` / `.login-switch-provider` | compose `.btn`; `login-field__btn` ratified as the Auth-field-shaped input launcher (Login/Auth field entry); `login-switch-provider` = plain `.btn` |
+  | `.player-control-pill` / `.player-stream-pill` (+`--icon`/`--play`/`--danger`/`--on`) | **ratified distinct** — transient transport controls (see reason below) |
+  | `.detail-watchlist-btn` (+`--active`) | **ratified distinct** icon toggle — square `--radius-md` footprint + accent-soft active fill; **focus reconciled** to the shared inversion (bespoke accent ring removed) |
+  | `.watchlist-row-link` | **ratified distinct** — a borderless inline text link (not a container button); focus = accent text, no inversion |
+  | `.pin-pad-btn` | **ratified distinct** — fixed-grid PIN keypad cell (84×64); inherits the shared `.btn:focus` inversion via the focus group |
+  | `.provider-card` | **ratified distinct** — a selection *card*, not a button (Provider-picker entry) |
+- **Deliberately distinct (with reason):**
+  - **Player pills** (`.player-control-pill` / `.player-stream-pill`) — transient auto-hiding transport controls over live video: dark-translucent rest (must read over any frame), circular icon variants, active-marks, `--play`/`--danger` semantics, no scale (never clip in tight rows). They already share the kit focus-inversion; their footprint/rest are video-overlay-specific.
+  - **`.detail-watchlist-btn`** — a *toggle* (bookmarked on/off) with an accent-soft filled active state; square `--radius-md` footprint matches the adjacent detail icon buttons. Shares the kit inversion focus.
+  - **`.watchlist-row-link`** — an inline text link inside a list row, not a pill container.
+  - **`.pin-pad-btn`** — a fixed-geometry keypad cell; size is dictated by the keypad grid, not content.
+
+### Icon button  ⭐ sub-entry of Button (kit node `911:6945`)
+
+- **Status:** ✅ · 2026-06-22 — pulled fresh; mapped onto the `.btn--icon` modifier.
+- **Android TV guideline:** [Buttons](https://developer.android.com/design/ui/tv/guides/components/buttons) (Icon button — compact, single glyph, fully rounded; sizes S/M/L; "don't use two icons", "don't center icon+text together").
+- **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `911:6945` (axes Type=Filled|Outline, Size=S|M|L, State=Default|Focused|Pressed, Enabled).
+- **Anatomy:** `container` (square, fully-rounded) + `background-layer` (fill/outline + focus halo) + single `icon` (centered, vertically + horizontally). No label slot.
+- **Per-state kit values** (node `911:6945`):
+
+  | | Default | Focused | Pressed | Disabled |
+  |---|---|---|---|---|
+  | S | p6 / r14 / icon16 | p5.2 / r24.2 / icon17.6 + halo 30.8 | p6 / r14 | icon @40% |
+  | M | p10 / r20 / icon20 | p9 / r24.2 / icon22 + halo 44 | p10 / r20 | icon @40% |
+  | L | p14 / r28 / icon28 | p12.6 / r30.8 / icon30.8 + halo 61.6 | p14 / r28 | icon @40% |
+
+  Fill/label colors inherit the Button table (Filled = surface-variant fill → invert on focus; Outline = `#8E918F` border → invert). Focus = invert + ~1.1× scale + circular halo.
+- **App reconciliation (as-built):** `.btn--icon` = circular footprint (`border-radius:50%`, square `--target-min` 52 = M). `.btn--icon.btn--sm` = `--space-9` 40 (kit S up-scaled), `.btn--icon.btn--lg` = `--player-icon-btn-lg` 88 (kit L). Fill/outline + focus inversion + caps-motion scale all inherited from `.btn`. Compose `.btn .btn--icon` (filled) or `.btn .btn-outline .btn--icon`. Glyph via `.btn-icon-glyph` (or `--play .player-control-icon` in the player).
+- **Platform deviations (ratified):** footprints up-scaled to the 10-ft target floor (`--target-min`/`--player-icon-btn-lg`) rather than literal kit px; halo expressed as the caps-motion scale + the shared inversion, not a separate ring layer; blue accents.
 
 ### Chip  ✅ reconciled 2026-06-20
 
@@ -616,4 +668,5 @@ changes so they survive checkouts/resets.
 - ✅ ~~**Progress bar** (3 impls, height/colour)~~ — resolved 2026-06-20: consolidated to one token-driven base (`.progress-track`/`.progress-fill` + `--progress-*` tokens); height ratified to 4 (kit 3), blue `--accent` fill + dark scrim track ratified as the app's progress theme.
 - ✅ ~~**Tabs (season selector)** (text links / underline variant vs kit pill)~~ — resolved 2026-06-20: adopted the kit pill Tabs (`createTabs` pill, filled blue Selected mirroring the Library filter chip, shared-inversion focus); underline variant + indicator removed. 10-ft up-scale (label `--gt-body`, `radius 24`, `52`/`12-16`) ratified.
 - ✅ ~~**Search input** (inline Text field — off-spec bg/padding/radius/type)~~ — resolved 2026-06-20: reconciled to the base **Text field** spec, mirroring `.tv-text-input` (bg `#303030`, radius 8, padding 14×18, 1px `#8E918F` rest / 2px `#A8C7FA` `:focus`, input 24px/500 `#E3E3E3`, caret `#A8C7FA`).
-- Standing 🚧 fix-lists: none open. (Search input, Tabs, Nav item, Player track-selector sheet, Progress bar ✅ reconciled 2026-06-20.)
+- ✅ **Button family consolidation** (2026-06-22): re-pulled the kit Button (`169:1649`) + Icon button (`911:6945`); made `.btn` the single source of truth. Deleted the last bespoke overrides (`.detail-modal-cancel` block, `.detail-secondary-actions .btn` contextual override) so those call sites compose `.btn .btn-outline .btn--sm`; unified `.btn-outline` border on the kit outline token (`#8E918F @35%`); reconciled `.detail-watchlist-btn` focus to the shared inversion; added `.btn--icon`/`.btn--lg` size modifiers. Class vocabulary `.btn`/`.btn-primary`/`.btn-outline`/`.btn--sm` preserved. Ratified distinct: player pills, `.detail-watchlist-btn`, `.watchlist-row-link`, `.pin-pad-btn`, `.provider-card`.
+- Standing 🚧 fix-lists: none open. (Search input, Tabs, Nav item, Player track-selector sheet, Progress bar ✅ reconciled 2026-06-20; Button family ✅ 2026-06-22.)
