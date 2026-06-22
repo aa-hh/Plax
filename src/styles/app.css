@@ -22,6 +22,10 @@
   --progress-track-color: rgba(0, 0, 0, 0.55);
   --progress-fill-color: var(--accent);
   --progress-radius: 2px;
+  /* Player seek track is taller than the 4px badge bar: the 28px scrub thumb
+     makes a 4px track read thin, so the player uses a dedicated 6px height
+     while still sharing the progress track/fill colors + radius. */
+  --player-seek-track-h: 6px;
   --brand: #e50914;
   --brand-soft: rgba(229, 9, 20, 0.14);
   --border: #444746;             /* outline-variant */
@@ -3484,7 +3488,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-now-playing-subtitle {
-  font-size: 20px;
+  font-size: var(--font-meta);
   line-height: 1.25;
   margin: 0;
   color: var(--text-secondary);
@@ -3651,16 +3655,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-seek-bar--scrubbing .player-seek-played {
-  background: #fff;
+  background: var(--accent);
 }
 
 .player-seek-track {
   position: relative;
   display: block;
   width: 100%;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 6px;
+  /* Shares the Progress-bar track tokens (dark scrim + 2px radius); height is
+     the seek-specific 6px so the track doesn't read thin under the 28px thumb. */
+  height: var(--player-seek-track-h);
+  background: var(--progress-track-color);
+  border-radius: var(--progress-radius);
   overflow: visible;
 }
 
@@ -3670,9 +3676,10 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   top: 0;
   bottom: 0;
   width: 0;
-  /* Player spec: solid-white fill on the translucent-white track. */
-  background: #fff;
-  border-radius: 5px;
+  /* Player spec: blue --accent fill (= --progress-fill-color), matching every
+     other progress/seek surface; the white thumb provides the scrub contrast. */
+  background: var(--accent);
+  border-radius: var(--progress-radius);
 }
 
 .player-seek-thumb {
@@ -4067,7 +4074,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .player-time {
-  font-size: 24px;
+  font-size: var(--font-body);
   font-weight: 500;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;

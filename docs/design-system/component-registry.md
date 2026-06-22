@@ -356,11 +356,26 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ### Player overlay
 
-- **Status:** 📝 summary only — layout/behaviour captured, **anatomy not yet pulled from kit** (menu rows = Player track-selector)
+- **Status:** 🚧 anatomy-complete · seek bar ✅ reconciled to Progress-bar tokens 2026-06-22 (layout/behaviour captured; menu rows = Player track-selector ✅)
 - **Android TV guideline:** Foundations (transient transport controls)
 - **Figma source:** `8842:27004` (Player UI)
 - **Code:** `src/ui/screens/playerScreen.js`; overlay classes in `src/styles/app.css`
 - **Resolved spec:** bottom-anchored gradient; rows = title/next-up → seek (`elapsed → bar → total`) → actions; auto-hide 3s; layered Back dismissal.
+- **Seek bar — per-element (as-built 2026-06-22, reconciled to the Progress-bar entry):**
+
+  | Element | Property | Before | After (as-built) |
+  |---|---|---|---|
+  | `.player-seek-track` | height | `12px` | `var(--player-seek-track-h)` = **6px** (new `:root` token) |
+  | `.player-seek-track` | background | `rgba(255,255,255,.22)` | `var(--progress-track-color)` = `rgba(0,0,0,0.55)` |
+  | `.player-seek-track` | radius | `6px` | `var(--progress-radius)` = `2px` |
+  | `.player-seek-played` (rest) | background | `#fff` | `var(--accent)` = `#A8C7FA` (= `--progress-fill-color`) |
+  | `.player-seek-played` (rest) | radius | `5px` | `var(--progress-radius)` = `2px` |
+  | `.player-seek-bar--scrubbing .player-seek-played` | background | `#fff` | `var(--accent)` (no brighter-accent token exists; `--accent-soft` is a translucent tint, not a brighter solid) |
+  | `.player-seek-thumb` | background | `#fff` | **`#fff` (unchanged — white-on-blue is the intended scrub affordance)** |
+
+  - **New token:** `--player-seek-track-h: 6px` in `:root` — the player track sits under a 28px scrub thumb, where the 4px badge-bar height (`--progress-track-h`) reads thin; 6px is the ratified player-only height. Colors + radius are shared with the Progress-bar tokens.
+  - **Type alignment (no visual change intended):** `.player-time` `24px → var(--font-body)` (token = 24px, exact match). `.player-now-playing-subtitle` `20px → var(--font-meta)` (token = **22px**; no 20px token exists, `--font-meta` is the closest semantic meta-text token — +2px, ratified).
+  - **Platform:** Chrome53-safe — only color/height/radius token swaps; thumb focus cue stays transform-only; JS still sets `.player-seek-played` width inline (`style.width`), contract unchanged.
 - **Skip Intro / Skip Credits prompt (`.player-skip-intro-prompt`) → kit Button (Filled, node `169:1649`):** bottom-center pill; reconciled 2026-06-20 from the old dark-pill-with-accent-border + `--accent` halo to the canonical filled Button — solid `--button-container` fill, pill `--gt-radius-button`, label `--font-meta`/`--gt-weight-label`, no border. **Selected state = light-pill inversion** (`--focus-fill`/`--focus-on-fill`) via the shared `.btn:focus` group rule (the prompt is auto-focused when shown, so it renders inverted = "selected/filled"); the "OK" hint flips to dark-on-light on focus. Credits-countdown fill overlay preserved. **Data dependency:** markers only exist when `getMetadata` requests `includeMarkers=1`/`includeChapters=1` (`src/plex/library.js`) AND the Plex server generated them — without the param the prompt never appears.
 - **Platform deviations (ratified):** show/hide is class toggle, not animated.
 
