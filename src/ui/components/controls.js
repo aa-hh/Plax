@@ -160,73 +160,88 @@ function isModalBack(e) {
 }
 
 /**
- * Vertical-list picker modal (generalizes resumeChoice / detail option modals).
- * Selected option shows a light pill + trailing checkmark. Self-contained D-pad
- * (UP/DOWN through options + cancel, Back/Enter). Lives in document.body so it
- * handles its own keys (attachFocusNav never sees it).
+ * Side-panel option picker (kit Modal drawer, Direction=Right — node 4498:31402).
+ * The ONE overlay primitive for transient single-select option lists (subtitle /
+ * quality / episode / confirm-as-list). Renders the kit side-panel anatomy:
+ * surface-container floating panel on the right edge (scrim @60%, radius 16,
+ * --space-5 padding, dark/3 shadow), a borderless List/Header title, then kit
+ * List-Item rows (min-height 64, radius 8, padding 12/16, 24px radio `control`,
+ * single-line label, light-fill :focus inversion, soft --active current state).
  *
- * opts: { title, options:[{id,label,detail,selected}], selectedId, onPick(id),
- *         onCancel, cancelLabel }
+ * This shares the exact row anatomy that the player track-selector sheet already
+ * ships (`.player-menu-option`); the panel chrome lives under the `.gt-side-panel*`
+ * namespace. Self-contained D-pad (UP/DOWN through rows + cancel, Back/Enter,
+ * LEFT/RIGHT trapped). Lives in document.body so attachFocusNav never sees it.
+ *
+ * opts: { header (or title), rows (or options):[{id,label,detail,selected}],
+ *         selectedId, onSelect (or onPick)(id,row), onCancel, footer:boolean,
+ *         cancelLabel }
  * Returns a teardown function.
  */
-function openModal(opts) {
+function openSidePanel(opts) {
   opts = opts || {};
-  var options = opts.options || [];
+  var rows = opts.rows || opts.options || [];
+  var onSelect = opts.onSelect || opts.onPick;
+  var headerText = opts.header != null ? opts.header : opts.title;
+  var showFooter = opts.footer !== false;
   var returnFocus = document.activeElement;
 
-  var overlay = el('div', 'detail-modal gt-modal');
+  var overlay = el('div', 'gt-side-panel');
   overlay.setAttribute('role', 'presentation');
-  var sheet = el('div', 'detail-modal-sheet gt-modal-sheet');
+  var sheet = el('div', 'gt-side-panel-sheet');
   sheet.setAttribute('role', 'dialog');
   sheet.setAttribute('aria-modal', 'true');
 
-  if (opts.title) {
-    var title = el('p', 'detail-modal-title');
-    title.textContent = String(opts.title);
-    sheet.appendChild(title);
+  if (headerText != null) {
+    var header = el('div', 'gt-side-panel-header');
+    var title = el('p', 'gt-side-panel-title');
+    title.textContent = String(headerText);
+    header.appendChild(title);
+    sheet.appendChild(header);
   }
 
-  var list = el('div', 'detail-modal-list gt-modal-list');
-  options.forEach(function (o) {
+  var list = el('div', 'gt-side-panel-list');
+  list.setAttribute('role', 'radiogroup');
+  rows.forEach(function (o) {
     var selected = (opts.selectedId != null && o.id === opts.selectedId) || !!o.selected;
-    var btn = el('button', 'detail-modal-option gt-modal-option' +
-      (selected ? ' detail-modal-option--active gt-modal-option--selected' : ''));
+    var btn = el('button', 'player-menu-option gt-side-panel-option' +
+      (selected ? ' player-menu-option--active' : ''));
     btn.type = 'button';
     btn.tabIndex = 0;
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', selected ? 'true' : 'false');
     btn.setAttribute('data-option-id', String(o.id));
 
-    var label = el('span', 'gt-modal-option__label');
+    var label = el('span', 'player-menu-option-label');
     label.textContent = o.label != null ? String(o.label) : String(o.id);
     btn.appendChild(label);
-    if (o.detail) {
-      var det = el('span', 'gt-modal-option__detail');
-      det.textContent = String(o.detail);
-      btn.appendChild(det);
-    }
-    if (selected) {
-      var check = el('span', 'gt-modal-option__check');
-      check.textContent = '✓';
-      btn.appendChild(check);
-    }
+
+    // Trailing 24px radio control (kit List-Item `control`); dot filled on --active.
+    var check = el('span', 'player-menu-option-check');
+    btn.appendChild(check);
+
     btn.addEventListener('click', function () {
       teardown();
-      if (typeof opts.onPick === 'function') opts.onPick(o.id, o);
+      if (typeof onSelect === 'function') onSelect(o.id, o);
     });
     list.appendChild(btn);
   });
   sheet.appendChild(list);
 
-  var footer = el('div', 'detail-modal-footer');
-  var cancel = el('button', 'btn detail-modal-cancel');
-  cancel.type = 'button';
-  cancel.tabIndex = 0;
-  cancel.textContent = opts.cancelLabel || 'Cancel';
-  cancel.addEventListener('click', function () {
-    teardown();
-    if (typeof opts.onCancel === 'function') opts.onCancel();
-  });
-  footer.appendChild(cancel);
-  sheet.appendChild(footer);
+  var cancel = null;
+  if (showFooter) {
+    var footer = el('div', 'gt-side-panel-footer');
+    cancel = el('button', 'btn btn-outline btn--sm');
+    cancel.type = 'button';
+    cancel.tabIndex = 0;
+    cancel.textContent = opts.cancelLabel || 'Cancel';
+    cancel.addEventListener('click', function () {
+      teardown();
+      if (typeof opts.onCancel === 'function') opts.onCancel();
+    });
+    footer.appendChild(cancel);
+    sheet.appendChild(footer);
+  }
   overlay.appendChild(sheet);
 
   function teardown() {
@@ -263,7 +278,7 @@ function openModal(opts) {
 
   document.body.appendChild(overlay);
   document.addEventListener('keydown', onKeyDown, true);
-  var selectedEl = list.querySelector('.gt-modal-option--selected');
+  var selectedEl = list.querySelector('.player-menu-option--active');
   if (selectedEl) selectedEl.focus();
   else focusFirst(sheet);
 
@@ -409,7 +424,7 @@ function openTextInputModal(opts) {
   confirmBtn.type = 'button';
   confirmBtn.tabIndex = 0;
   confirmBtn.textContent = opts.confirmLabel || 'Confirm';
-  var cancelBtn = el('button', 'btn btn-outline detail-modal-cancel');
+  var cancelBtn = el('button', 'btn btn-outline');
   cancelBtn.type = 'button';
   cancelBtn.tabIndex = 0;
   cancelBtn.textContent = opts.cancelLabel || 'Cancel';
@@ -518,7 +533,7 @@ export {
   createChip,
   createTabs,
   createListItem,
-  openModal,
+  openSidePanel,
   openActionDialog,
   openTextInputModal
 };
