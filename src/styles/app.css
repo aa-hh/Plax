@@ -1300,32 +1300,10 @@ html.caps-motion .detail-watchlist-btn:focus {
 /* Secondary action = TV Design Kit Button (Outline), reconciled: fully-rounded
    pill container (kit "text/icon buttons fully rounded"), 1px outline, focus =
    the kit light-fill INVERSION (not the broken .btn-outline ring). */
-.library-scan-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--target-min);
-  padding: var(--space-2) var(--space-6);
-  border-radius: var(--gt-radius-button);
-  background: transparent;
-  border: 1px solid rgba(142, 145, 143, 0.35);
-  color: var(--text-secondary);
-  font-size: var(--font-small);
-  font-weight: var(--gt-weight-medium);
-  letter-spacing: var(--gt-ls-label);
-  cursor: pointer;
-}
-
-.library-scan-btn:focus {
-  outline: none;
-  background: var(--focus-fill);
-  border-color: var(--focus-fill);
-  color: var(--focus-on-fill);
-}
-
-.library-scan-btn:disabled {
-  opacity: 0.6;
-}
+/* Scan library button — composes the canonical outline Button (.btn .btn-outline
+   .btn--sm, registry ⭐ / Library-grid entry). All fill/outline/size/focus-inversion
+   come from the composed classes; nothing bespoke remains (was a redundant
+   hand-roll of the same kit values). */
 
 .library-grid-host {
   flex: 1 1 0;
@@ -3328,27 +3306,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   visibility: hidden;
 }
 
+/* Skip Intro / Skip Credits prompt — composes the canonical filled Button
+   (.btn, registry ⭐ node 169:1649): solid container, pill radius, label, and the
+   shared .btn:focus light-pill INVERSION (= "selected" since the prompt is auto-
+   focused when shown) all come from .btn. Only the bottom-center overlay
+   positioning + the credits-countdown fill overlay remain bespoke. (Was a literal
+   re-declaration of .btn's rest look instead of composing it.) */
 .player-skip-intro-prompt {
   position: absolute;
   left: 50%;
   bottom: 96px;
   transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* Canonical filled Button (registry ⭐ node 169:1649): solid container, pill
-     radius, no outline/halo. Selected (auto-focused) state inverts to the light
-     pill via the shared .btn:focus rule below. */
-  padding: var(--space-5) var(--space-6);
   margin: 0;
-  border: 0;
-  border-radius: var(--gt-radius-button);
-  background: var(--button-container);
-  color: var(--gt-text);
-  font-size: var(--font-meta);
-  font-weight: var(--gt-weight-label);
-  letter-spacing: var(--gt-ls-label);
-  cursor: pointer;
   z-index: 2;
   overflow: hidden;
 }
@@ -4213,30 +4182,25 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 /* ── Media info button (top-right of player overlay) ── */
+/* Circular ⓘ overlay button — composes the canonical filled Button (.btn .btn-icon,
+   registry ⭐ node 169:1649); the solid --button-container reads over live video.
+   Only the player-overlay positioning, the circular radius, and the fixed 52px
+   square remain bespoke; fill/label-color, focus INVERSION (shared .btn:focus
+   light-pill), and caps-motion scale all come from the composed classes. No :hover
+   (D-pad TV — pointer-hover is the global body.cursor-visible affordance, not a
+   per-control rule) and no accent-tint focus override (was the off-spec blue-bg/
+   border focus; now the shared inversion). */
 .player-media-info-btn {
   position: fixed;
   top: 28px;
   right: 28px;
   z-index: calc(var(--z-player-overlay) + 2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 52px;
   height: 52px;
+  min-width: 52px;
+  min-height: 52px;
   padding: 0;
-  background: rgba(13, 17, 26, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 50%;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.player-media-info-btn:hover,
-.player-media-info-btn:focus {
-  background: rgba(168, 199, 250, 0.14);
-  border-color: var(--accent);
-  color: var(--accent);
-  outline: none;
 }
 .player-media-info-btn[hidden] { display: none !important; }
 .player-media-info-btn-icon { width: 26px; height: 26px; flex-shrink: 0; }

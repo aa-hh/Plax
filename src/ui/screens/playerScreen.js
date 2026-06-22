@@ -216,7 +216,7 @@ function playerScreen(root, params, navigate) {
   var overlay = document.createElement('div');
   overlay.className = 'player-overlay';
   overlay.innerHTML =
-    '<button type="button" class="player-media-info-btn" id="btn-media-info" tabindex="0" aria-haspopup="dialog" aria-label="Media info" hidden>' +
+    '<button type="button" class="btn btn-icon player-media-info-btn" id="btn-media-info" tabindex="0" aria-haspopup="dialog" aria-label="Media info" hidden>' +
     ICON_MEDIA_INFO +
     '</button>' +
     '<div class="player-media-info-modal" id="player-media-info-modal" hidden role="dialog" aria-modal="true" aria-labelledby="player-media-info-title">' +
@@ -233,7 +233,7 @@ function playerScreen(root, params, navigate) {
     '<span class="player-subtitle-delay-value" id="player-sub-delay-value">0 ms</span>' +
     '<button type="button" class="btn player-subtitle-delay-btn" id="btn-sub-delay-plus" tabindex="0" aria-label="Subtitle later">+</button>' +
     '</div>' +
-    '<button type="button" class="player-skip-intro-prompt" id="btn-skip-intro-prompt" hidden tabindex="0" aria-label="Skip intro. Press OK to confirm.">' +
+    '<button type="button" class="btn player-skip-intro-prompt" id="btn-skip-intro-prompt" hidden tabindex="0" aria-label="Skip intro. Press OK to confirm.">' +
     ICON_SKIP_INTRO +
     '<span class="player-skip-intro-prompt-text">Skip Intro</span>' +
     '<span class="player-skip-intro-prompt-hint">OK</span>' +

@@ -222,7 +222,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ### Button  ⭐ gold-standard reference entry
 
-- **Status:** ✅ · 2026-06-20 — fully reconciled to the kit Button (`169:1649`): rest fill adopts the kit `#444746 @80%`; `.btn-outline:focus` now inverts correctly (light fill + dark label). Earlier fix-list cleared.
+- **Status:** ✅ · 2026-06-22 — fully reconciled to the kit Button (`169:1649`): rest fill adopts the kit `#444746 @80%`; `.btn-outline:focus` inverts correctly. **2026-06-22 pass:** hover/motion-cursor + scale states documented; `.player-media-info-btn` (was the worst offender), `.library-scan-btn`, `.player-skip-intro-prompt` reconciled to compose `.btn`; text-link family + `.provider-card` ratified distinct; `.gt-chip` flagged for the Chip family. Earlier fix-list cleared.
 - **Android TV guideline:** [Buttons](https://developer.android.com/design/ui/tv/guides/components/buttons) — incl. the [Button container](https://developer.android.com/design/ui/tv/guides/components/buttons#button-container) section ("solid color containers for filled buttons; container width from content with consistent padding; text/icon = fully rounded")
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / node `169:1649` (canonical Button)
 - **Code:** `.btn` / `.btn-primary` / `.btn-outline` in `src/styles/app.css`
@@ -243,16 +243,44 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   | focus ring | — | fill extends `-2/-3.2px` beyond box | — | — |
 
   Kit focus = **invert (light fill + dark text) + ~1.1× scale**.
+
+- **State model — Hover / motion-cursor & SCALE (recorded 2026-06-22):** the kit + Android-TV [Buttons](https://developer.android.com/design/ui/tv/guides/components/buttons) / [Foundations](https://developer.android.com/design/ui/tv/guides/styles) are **D-pad-first**; the pointer (webOS magic-remote **motion cursor**, `body.cursor-visible`) is a *secondary* input and does NOT get its own paint state. There is exactly ONE documented hover rule for the whole button family:
+
+  | State | Treatment | Scale | Engine |
+  |---|---|---|---|
+  | Default | `--button-container` fill (filled) / 1px outline (outline) | 1.0 | all |
+  | **Hover / motion-cursor** (`body.cursor-visible` + pointer over) | **`cursor:pointer` ONLY — no paint change.** Focus inversion remains the single visual cue; no competing pre-focus affordance on a 10-ft UI. | 1.0 (cursor-hover never scales) | all |
+  | Focused (D-pad) | light-pill **inversion** (`--focus-fill`/`--focus-on-fill`) + hard ring | see below | all |
+  | Pressed | inverted (same as focus) | 1.0 | all |
+  | Disabled | `opacity .4`, `pointer-events:none` | 1.0 | all |
+
+  - **Scale values (explicit):** the kit ~1.1× focus grow is `--focus-scale: 1.06` (the medium-control value `--gt-focus-scale-med 1.05`/kit 1.1 family), applied **transform-only** under `html.caps-motion` (webOS 4+, incl. B8). **Text `.btn`/`.btn-primary`/`.btn-outline` deliberately do NOT scale** — Chromium 53 rasterises the layer at rest size and GPU-stretches text on `scale(>1)` → blurry label; their `html.caps-motion` rule transitions `background` only. Scale applies to **icon-only / non-text controls** (`.btn-icon`, cards, chips) where there's no text to blur. Cursor-hover NEVER triggers scale (only `:focus` does).
+  - **The bug this closes:** a stray literal `.player-media-info-btn:hover` painted an accent-tinted bg/border on pointer-hover — a second, off-language hover state. Deleted; the control now composes `.btn .btn-icon` and inherits the single rule above.
 - **App reconciliation (as-built 2026-06-20):**
   - `.btn` = filled. Rest fill **`--button-container rgba(68,71,70,.8)` (kit `#444746 @80%`, node `169:1649`)**, pill radius `--gt-radius-button 999`, label scaled to `--font-meta 22` for 10-foot.
   - **Padding `--space-5`/`--space-6` (20/24px)** → height ≈ 71px. Scaled from the kit container proportion (py10–12/px16 vs a 14px label) to our 22px label so the solid container has real internal padding (was 12/28px → 52px, a tight pill).
-  - **Focus = light-pill inversion** (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`) — the primary cue; a paint change, so it is instant on every engine (not animated). The kit's 1.1× scale runs under `html.caps-motion` (now webOS 4+, incl. B8).
+  - **Focus = light-pill inversion** (`background:--focus-fill #E3E3E3` + `color:--focus-on-fill #303030`) — the primary cue; a paint change, so it is instant on every engine (not animated). **Text `.btn` does NOT take the kit 1.1× scale** (Chromium 53 blurs GPU-stretched text — its `html.caps-motion` rule transitions `background` only); the scale (`--focus-scale 1.06`) applies to icon-only/non-text controls. See the Hover/scale state-model block above.
   - `.btn-primary` = always-blue filled (one primary per screen); still inverts on focus.
   - **`.btn--sm` = size variant** (kit Size=S): pure size modifier — `min-height --space-9` (40px), `padding --space-2/--space-4` (8/16), `font-size --font-small`; keeps the pill radius, fill/outline, and focus-inversion of the base. Compose `.btn .btn-outline .btn--sm` for compact controls (modal Cancel/Close). **Replaced** the bespoke `.btn-player-modal-cancel` (off-spec `radius:6 / min-height:38 / muted color`), which is deleted.
 - **Resolved (2026-06-20):**
   - **Rest fill** adopted kit canonical `#444746 @80%` (`rgba(68,71,70,.8)`, surface-variant, node `169:1649`), replacing the off-spec `#303030` (which had been pulled from an ImageButton node). The 80% alpha composites over the darkest settings-card surfaces (`#131314`–`#282A2C`) lighter than `#303030` did, so card legibility improved rather than regressed — the original reason to keep `#303030` no longer holds.
   - **`.btn-outline:focus` fixed** — removed the `color:--gt-text` override that fought the shared `.btn:focus` inversion (caused light-on-light). Outline buttons now invert like the filled button (light `--focus-fill` fill + dark `--focus-on-fill` label); the rule only sets `border-color:--focus-fill` to match the inverted surface. Verified on the two focusable call sites (`.detail-modal-cancel`). Focusable outline buttons are now safe to use.
-- **Platform deviations (ratified):** blue `--accent` focus accents; type up-scaled to 22px for 10-foot; kit 1.1× focus scale runs under caps-motion (webOS 4+).
+- **App class map — controls that compose `.btn` (as-built):**
+  - `.btn` / `.btn-primary` / `.btn-outline` — canonical filled / always-blue / outline.
+  - `.btn--sm` — size variant (kit Size=S). `.btn-icon` — icon-only square (`min-width --target-min`, `padding --space-3`); `.btn-icon-glyph` + `.btn-label` slots via `controls.js`. `.btn-wide` — wide radius.
+  - **`.player-media-info-btn` → `.btn .btn-icon`** (reconciled 2026-06-22): the circular ⓘ player-overlay button. Was the worst offender — bespoke dark-translucent pill with a `:hover` rule, a CSS `transition`, and an **accent-tint focus** (blue bg/border, NOT the canonical inversion). Now composes the filled icon Button; only fixed-overlay positioning + `border-radius:50%` + the 52px square remain bespoke. `:hover` rule **deleted**; accent-tint focus override **removed** (uses shared `.btn:focus` inversion). Glyph (`fill=currentColor`) inverts to dark-on-light on focus. JS/behaviour unchanged.
+  - **`.library-scan-btn` → `.btn .btn-outline .btn--sm`** (reconciled 2026-06-22): the Library-toolbar Scan button (Library-grid entry ratified it as kit Outline). Was a redundant hand-roll of the same outline kit values; all bespoke paint/size/focus deleted, only the layout context remains.
+  - **`.player-skip-intro-prompt` → `.btn`** (reconciled 2026-06-22): the bottom-center Skip Intro/Credits prompt. The audit confirmed it **literally re-declared `.btn`'s rest look** (same padding/radius/fill/color/font/weight/ls) instead of composing it; now composes `.btn`, keeping only the absolute bottom-center positioning + the credits-countdown fill overlay + the `> * + *` icon/label/hint gap. Focus inversion (= "selected", auto-focused) already came from the shared `.btn:focus` group.
+- **Icon button (sub-entry, node `911:6945`):** square icon-only Button. App = `.btn .btn-icon` (compose; e.g. `.player-media-info-btn`). Same fill/focus-inversion as the filled Button; `.btn-icon` only sets the square min-width + symmetric padding. Icon-only controls **may** take the caps-motion scale (no text to blur), unlike text `.btn`.
+- **Deliberately distinct (ratified — NOT `.btn`, by design):**
+  - `.detail-watchlist-btn` (+`--active`/`[aria-pressed]`) — bookmark **toggle**: square `--radius-md` (not pill), accent-soft active fill; a stateful toggle, not a CTA. (Note: carries a bespoke `:focus` border/ring rule at `app.css` ~2735 that overrides the shared inversion for the toggle's active state — left as-is per its toggle semantics.)
+  - `.player-control-pill` / `.player-stream-pill` (+`--icon`/`--play`/`--danger`/`--on`) — **transient auto-hiding** transport controls over live video; dark-translucent rest, elevation-shadow focus; already share the `.btn:focus` inversion. Video-overlay controls, intentionally their own surface family.
+  - **Text-link family — `.watchlist-row-link`, `.detail-link`, `.detail-season-link`** (ratified 2026-06-22): inline **text links** (transparent bg, `--accent` color, ring/inversion focus via the shared group). A link affordance, not a button container — correctly NOT `.btn`. Treat as the app's "text button / link" tier.
+  - **`.provider-card`** (ratified 2026-06-22) — a **selection card** (media + logo + description, 420px), not a button; uses the card focus family. Same class of thing as `.profile-card`.
+  - `.profile-card`, `.pin-pad-btn` — already compliant/ratified (card + fixed PIN-grid cell); confirmed, no change.
+  - `.detail-genre-pill` — **non-interactive display span** (no focus, no tabindex); a label chip, not a control.
+  - `.login-field__btn` — a **text-field-shaped input launcher** (looks like the outlined Text field, opens `openTextInputModal`); a field-trigger, not a CTA. `.login-switch-provider` — plain CTA; could compose `.btn` later but is a low-traffic provider-switch link, left as-is (flag, not fixed).
+  - **`.gt-chip` (+`--active`) — Chip concern, NOT a button.** A chip-factory class competing with the reconciled Chip family (`.detail-setting-chip`/`.library-filter-chip`/`.user-chip`). **Flagged** to reconcile into the Chip family (8px rounded-rect, `8/16`, 1px `#8E918F` outline, shared inversion focus) — not fixed in this button pass.
 
 ### Chip  ✅ reconciled 2026-06-20
 
