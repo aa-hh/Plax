@@ -3317,7 +3317,16 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .gt-side-panel-footer {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   padding: var(--space-3) 0 0;
+}
+
+/* Multi-select footer carries two actions (e.g. New list + Done) — margin gap,
+   never flex `gap` (Chromium 53 no-op). */
+.gt-side-panel-footer .btn + .btn {
+  margin-left: var(--space-3);
 }
 
 /* Exit-confirm modal removed — Google TV prohibits gating back-to-exit behind a
@@ -4241,6 +4250,51 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .player-menu-option--active:focus .player-menu-option-check::after {
   background: var(--focus-on-fill);
+}
+
+/* Multi-select control: 24px checkbox (kit Controls 591:4649, checkbox variant).
+   Square (radius 6) instead of round; checked reveals a tick drawn from the
+   ::after box via transform/opacity only (no layout) — Chrome53-safe. Composes
+   the base .player-menu-option-check, overriding shape + the revealed glyph. */
+.player-menu-option-check--checkbox {
+  border-radius: 6px;
+}
+
+.player-menu-option-check--checkbox::after {
+  width: 7px;
+  height: 12px;
+  border: solid var(--accent);
+  border-width: 0 3px 3px 0;
+  border-radius: 0;
+  background: transparent;
+  margin-top: -2px;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0);
+}
+
+.player-menu-option--active .player-menu-option-check--checkbox::after {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1);
+}
+
+/* Checked checkbox: fill the box accent + dark tick (kit Selected control). */
+.player-menu-option--active .player-menu-option-check--checkbox {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.player-menu-option--active .player-menu-option-check--checkbox::after {
+  border-color: var(--bg-base, #131314);
+}
+
+/* Focused + checked checkbox: dark filled box + light tick, so it stays legible
+   against the light-fill focus row (overrides the accent-fill resting style). */
+.player-menu-option--active:focus .player-menu-option-check--checkbox {
+  background: var(--focus-on-fill);
+  border-color: var(--focus-on-fill);
+}
+
+.player-menu-option--active:focus .player-menu-option-check--checkbox::after {
+  background: transparent;
+  border-color: var(--focus-fill);
 }
 
 .player-hint {

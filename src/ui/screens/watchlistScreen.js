@@ -10,7 +10,7 @@ import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resol
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
-import { openSidePanel, openTextInputModal } from '../components/controls.js';
+import { openActionDialog, openTextInputModal } from '../components/controls.js';
 import { primeVisiblePosters } from '../posterImages.js';
 
 function watchlistScreen(root, params, navigate) {
@@ -80,19 +80,21 @@ function watchlistScreen(root, params, navigate) {
   });
 
   document.getElementById('btn-delete-watchlist').addEventListener('click', function () {
-    openSidePanel({
-      header: 'Delete "' + wl.name + '"?',
-      rows: [
-        { id: 'delete', label: 'Delete' },
+    openActionDialog({
+      title: 'Delete "' + wl.name + '"?',
+      message: 'This removes the list and its contents.',
+      actions: [
+        {
+          id: 'delete',
+          label: 'Delete',
+          primary: true,
+          onSelect: function () {
+            deleteWatchlist(user, wl.id);
+            navigate('home', { hub: 'watchlist' });
+          }
+        },
         { id: 'cancel', label: 'Keep' }
-      ],
-      cancelLabel: 'Cancel',
-      onSelect: function (id) {
-        if (id === 'delete') {
-          deleteWatchlist(user, wl.id);
-          navigate('home', { hub: 'watchlist' });
-        }
-      }
+      ]
     });
   });
 

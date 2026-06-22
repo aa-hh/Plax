@@ -423,12 +423,12 @@ function detailScreen(root, params, navigate) {
     updateQualityBtnLabel();
     btn.addEventListener('click', function () {
       openSidePanel({
-        header: 'Quality',
+        title: 'Quality',
         selectedId: getDetailQuality(),
-        rows: listProfiles().map(function (p) {
+        options: listProfiles().map(function (p) {
           return { id: p.id, label: p.label };
         }),
-        onSelect: function (id) {
+        onPick: function (id) {
           selectedQuality = id;
           setPlaybackPrefs({ quality: id });
           updateQualityBtnLabel();
@@ -455,11 +455,11 @@ function detailScreen(root, params, navigate) {
     refreshLabel();
     btn.addEventListener('click', function () {
       openSidePanel({
-        header: 'Subtitles',
-        rows: subOptions.map(function (o) {
+        title: 'Subtitles',
+        options: subOptions.map(function (o) {
           return { id: o.id, label: o.label, selected: isActiveOption(o.id, selectedSubtitle) };
         }),
-        onSelect: function (id) {
+        onPick: function (id) {
           selectedSubtitle = id;
           refreshLabel();
         }
@@ -801,9 +801,9 @@ function detailScreen(root, params, navigate) {
     ensureSeasonEpisodesLoaded(seasonKey).then(function (episodes) {
       if (destroyed) return;
       openSidePanel({
-        header: 'Episodes · ' + seasonLabel(item),
+        title: 'Episodes · ' + seasonLabel(item),
         selectedId: String(item.ratingKey),
-        rows: episodes.map(function (ep) {
+        options: episodes.map(function (ep) {
           var code = episodeCode(ep);
           return {
             id: String(ep.ratingKey),
@@ -811,7 +811,7 @@ function detailScreen(root, params, navigate) {
             data: ep
           };
         }),
-        onSelect: function (id, opt) {
+        onPick: function (id, opt) {
           if (String(id) === String(item.ratingKey)) return;
           navigate('detail', buildEpisodeNavRoute(opt.data, seasonKey));
         }

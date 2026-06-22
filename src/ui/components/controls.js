@@ -160,89 +160,130 @@ function isModalBack(e) {
 }
 
 /**
- * Side-panel option picker (kit Modal drawer, Direction=Right — node 4498:31402).
- * The ONE overlay primitive for transient single-select option lists (subtitle /
- * quality / episode / confirm-as-list). Renders the kit side-panel anatomy:
- * surface-container floating panel on the right edge (scrim @60%, radius 16,
- * --space-5 padding, dark/3 shadow), a borderless List/Header title, then kit
- * List-Item rows (min-height 64, radius 8, padding 12/16, 24px radio `control`,
- * single-line label, light-fill :focus inversion, soft --active current state).
+ * Side panel (kit Modal drawer, Direction=Right — node 4498:31402). The one
+ * option/selection-list overlay. Reuses the kit-correct `.player-menu-option`
+ * rows (List Item 561:3969 anatomy) on the floating `.gt-side-panel` surface.
+ * Self-contained D-pad (UP/DOWN through rows + footer, Back/Enter), lives in
+ * document.body so it handles its own keys (attachFocusNav never sees it).
  *
- * This shares the exact row anatomy that the player track-selector sheet already
- * ships (`.player-menu-option`); the panel chrome lives under the `.gt-side-panel*`
- * namespace. Self-contained D-pad (UP/DOWN through rows + cancel, Back/Enter,
- * LEFT/RIGHT trapped). Lives in document.body so attachFocusNav never sees it.
+ * Two modes:
+ *   - single-select (default): rows are `role=radio`, picking fires onPick and
+ *     closes. Selected row = soft `--active` fill + filled accent radio.
+ *   - multiSelect: rows are `role=checkbox`, picking toggles `aria-checked` via
+ *     onToggle and stays open; a Done/footer action closes. Checked row = the
+ *     same `--active` fill + checked checkbox control.
  *
- * opts: { header (or title), rows (or options):[{id,label,detail,selected}],
- *         selectedId, onSelect (or onPick)(id,row), onCancel, footer:boolean,
- *         cancelLabel }
+ * opts (shared): { title, options:[{id,label,detail,selected,checked}],
+ *   onCancel, footerActions:[{id,label,className,onSelect,keepOpen}] }
+ * single-select extras: { selectedId, onPick(id,opt), cancelLabel }
+ * multi-select extras:  { multiSelect:true, onToggle(id,opt,nowChecked) }
+ *
  * Returns a teardown function.
  */
 function openSidePanel(opts) {
   opts = opts || {};
-  var rows = opts.rows || opts.options || [];
-  var onSelect = opts.onSelect || opts.onPick;
-  var headerText = opts.header != null ? opts.header : opts.title;
-  var showFooter = opts.footer !== false;
+  var options = opts.options || [];
+  var multi = !!opts.multiSelect;
   var returnFocus = document.activeElement;
 
-  var overlay = el('div', 'gt-side-panel');
+  var overlay = el('div', 'gt-side-panel player-track-modal');
   overlay.setAttribute('role', 'presentation');
-  var sheet = el('div', 'gt-side-panel-sheet');
+  var sheet = el('div', 'gt-side-panel-sheet player-track-modal-sheet');
   sheet.setAttribute('role', 'dialog');
   sheet.setAttribute('aria-modal', 'true');
 
-  if (headerText != null) {
-    var header = el('div', 'gt-side-panel-header');
-    var title = el('p', 'gt-side-panel-title');
-    title.textContent = String(headerText);
+  if (opts.title) {
+    var header = el('div', 'player-track-modal-header');
+    var title = el('p', 'player-track-modal-title');
+    title.textContent = String(opts.title);
     header.appendChild(title);
     sheet.appendChild(header);
   }
 
-  var list = el('div', 'gt-side-panel-list');
-  list.setAttribute('role', 'radiogroup');
-  rows.forEach(function (o) {
-    var selected = (opts.selectedId != null && o.id === opts.selectedId) || !!o.selected;
-    var btn = el('button', 'player-menu-option gt-side-panel-option' +
-      (selected ? ' player-menu-option--active' : ''));
+  var list = el('div', 'player-menu-list gt-side-panel-list');
+  list.setAttribute('role', multi ? 'group' : 'radiogroup');
+
+  // Tracks each row so multi-select can repaint a single row in place.
+  var rows = [];
+
+  function paintRow(row, on) {
+    if (multi) {
+      row.btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    } else {
+      row.btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    if (on) row.btn.classList.add('player-menu-option--active');
+    else row.btn.classList.remove('player-menu-option--active');
+  }
+
+  options.forEach(function (o) {
+    var on = multi
+      ? !!o.checked
+      : ((opts.selectedId != null && o.id === opts.selectedId) || !!o.selected);
+    var btn = el('button', 'player-menu-option' + (on ? ' player-menu-option--active' : ''));
     btn.type = 'button';
     btn.tabIndex = 0;
-    btn.setAttribute('role', 'radio');
-    btn.setAttribute('aria-checked', selected ? 'true' : 'false');
+    btn.setAttribute('role', multi ? 'checkbox' : 'radio');
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
     btn.setAttribute('data-option-id', String(o.id));
 
     var label = el('span', 'player-menu-option-label');
     label.textContent = o.label != null ? String(o.label) : String(o.id);
     btn.appendChild(label);
 
-    // Trailing 24px radio control (kit List-Item `control`); dot filled on --active.
-    var check = el('span', 'player-menu-option-check');
-    btn.appendChild(check);
+    // control: 24px radio (single) or checkbox (multi). Glyph revealed on
+    // checked via transform/opacity only (Chrome53-safe, no layout).
+    var control = el('span', 'player-menu-option-check' +
+      (multi ? ' player-menu-option-check--checkbox' : ''));
+    btn.appendChild(control);
+
+    var rowRec = { btn: btn, o: o };
+    rows.push(rowRec);
 
     btn.addEventListener('click', function () {
-      teardown();
-      if (typeof onSelect === 'function') onSelect(o.id, o);
+      if (multi) {
+        var now = btn.getAttribute('aria-checked') !== 'true';
+        paintRow(rowRec, now);
+        if (typeof opts.onToggle === 'function') opts.onToggle(o.id, o, now);
+      } else {
+        teardown();
+        if (typeof opts.onPick === 'function') opts.onPick(o.id, o);
+      }
     });
     list.appendChild(btn);
   });
   sheet.appendChild(list);
 
-  var cancel = null;
-  if (showFooter) {
-    var footer = el('div', 'gt-side-panel-footer');
-    cancel = el('button', 'btn btn-outline btn--sm');
-    cancel.type = 'button';
-    cancel.tabIndex = 0;
-    cancel.textContent = opts.cancelLabel || 'Cancel';
-    cancel.addEventListener('click', function () {
-      teardown();
-      if (typeof opts.onCancel === 'function') opts.onCancel();
-    });
-    footer.appendChild(cancel);
-    sheet.appendChild(footer);
+  // Footer actions. Single-select keeps a Cancel; multi-select supplies its own
+  // (e.g. New list + Done) via footerActions. keepOpen actions don't teardown.
+  var footer = el('div', 'player-track-modal-footer gt-side-panel-footer');
+  var footerActions = opts.footerActions;
+  if (!footerActions) {
+    footerActions = [{
+      id: 'cancel',
+      label: opts.cancelLabel || 'Cancel',
+      className: 'btn-outline btn--sm',
+      onSelect: function () { if (typeof opts.onCancel === 'function') opts.onCancel(); }
+    }];
   }
+  footerActions.forEach(function (a) {
+    var fbtn = el('button', 'btn' + (a.className ? ' ' + a.className : ''));
+    fbtn.type = 'button';
+    fbtn.tabIndex = 0;
+    if (a.id != null) fbtn.setAttribute('data-action-id', String(a.id));
+    fbtn.textContent = a.label != null ? String(a.label) : String(a.id);
+    fbtn.addEventListener('click', function () {
+      if (!a.keepOpen) teardown();
+      if (typeof a.onSelect === 'function') a.onSelect(a.id, a);
+    });
+    footer.appendChild(fbtn);
+  });
+  sheet.appendChild(footer);
   overlay.appendChild(sheet);
+
+  function focusables() {
+    return Array.prototype.slice.call(overlay.querySelectorAll('button'));
+  }
 
   function teardown() {
     document.removeEventListener('keydown', onKeyDown, true);
@@ -259,10 +300,10 @@ function openSidePanel(opts) {
       if (typeof opts.onCancel === 'function') opts.onCancel();
       return;
     }
-    if (key === 38 || key === 40) { // UP / DOWN
+    if (key === 38 || key === 40) { // UP / DOWN walk rows + footer
       e.preventDefault();
       e.stopPropagation();
-      var btns = Array.prototype.slice.call(overlay.querySelectorAll('button'));
+      var btns = focusables();
       var cur = btns.indexOf(document.activeElement);
       if (cur < 0) cur = 0;
       var next = cur + (key === 40 ? 1 : -1);
@@ -278,7 +319,7 @@ function openSidePanel(opts) {
 
   document.body.appendChild(overlay);
   document.addEventListener('keydown', onKeyDown, true);
-  var selectedEl = list.querySelector('.player-menu-option--active');
+  var selectedEl = !multi && list.querySelector('.player-menu-option--active');
   if (selectedEl) selectedEl.focus();
   else focusFirst(sheet);
 
