@@ -42,6 +42,25 @@ function shouldBlockIncompleteRestrictedSession(state) {
 }
 
 /**
+ * Build the saved-link payload for the active Plex account. Pure + exported so
+ * it can be unit-tested in isolation: it reads the validated `user` from STATE
+ * (set earlier in the bootstrap chain) rather than from a sibling closure — the
+ * regression guard for the `ReferenceError: user is not defined` that once shipped
+ * when this object was inlined and referenced an out-of-scope `user`.
+ */
+function buildPlexLinkPayload(state, clientId, ownerToken, activeServer) {
+  var plexUser = state && state.user;
+  return {
+    clientId: clientId,
+    authToken: ownerToken,
+    ownerAuthToken: ownerToken,
+    name: (plexUser && (plexUser.title || plexUser.username)) ||
+      (activeServer && activeServer.name) || 'Plex',
+    user: plexUser || null
+  };
+}
+
+/**
  * Plex.tv user validation, server discovery, library mapping, and home hub prefetch.
  * Used after profile selection — no dedicated bootstrap screen.
  */
@@ -93,15 +112,11 @@ function runAppBootstrap(options) {
     // Persist the Plex account as a saved link (survives sign-out / forget-server,
     // drives the cross-provider Switch server picker). Keyed by clientId — one
     // plex.tv account = one link. We store the ACCOUNT (owner) token so a later
-    // switch-back can re-list Home profiles + servers from plex.tv.
+    // switch-back can re-list Home profiles + servers from plex.tv. The validated
+    // user lives in state (set in the previous .then), so the payload is built
+    // from getState() — never from a sibling closure variable.
     var ownerToken = getState().ownerAuthToken || token;
-    upsertPlexLink({
-      clientId: clientId,
-      authToken: ownerToken,
-      ownerAuthToken: ownerToken,
-      name: (user && (user.title || user.username)) || activeServer.name || 'Plex',
-      user: user || null
-    });
+    upsertPlexLink(buildPlexLinkPayload(getState(), clientId, ownerToken, activeServer));
     // Default background is now a flat Material surface-dim (CSS); no ultrablur
     // image on <body> — the dithered gradient showed visible seams on the B8.
     console.info('[bootstrap] server selected', {
@@ -189,6 +204,7 @@ function runAppBootstrap(options) {
 export {
   runAppBootstrap,
   shouldBlockIncompleteRestrictedSession,
+  buildPlexLinkPayload,
   DEFAULT_HUB_PREFETCH,
   DEFAULT_POSTER_WARM
 };
