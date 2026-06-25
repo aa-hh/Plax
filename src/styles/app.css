@@ -385,7 +385,7 @@ body::after {
 }
 
 .btn:focus,
-.card:not(.media-card):not(.profile-card):focus,
+.card:not(.media-card):not(.profile-card):not(.provider-card):focus,
 .nav-item:focus,
 .library-item:focus,
 .row-item:not(.media-card):focus,
@@ -456,7 +456,7 @@ html.caps-motion .player-stream-pill {
   transition: box-shadow var(--focus-motion-dur) ease, background var(--focus-motion-dur) ease;
 }
 
-html.caps-motion .card:not(.media-card):not(.profile-card):focus,
+html.caps-motion .card:not(.media-card):not(.profile-card):not(.provider-card):focus,
 html.caps-motion .nav-item:focus,
 html.caps-motion .library-item:focus,
 html.caps-motion .row-item:not(.media-card):focus,
