@@ -136,10 +136,8 @@ var ICON_AUDIO =
   '<path fill="currentColor" d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>' +
   '</svg>';
 var ICON_SUBTITLE =
-  '<svg class="player-stream-icon player-stream-icon--cc" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<rect x="3" y="5" width="18" height="14" rx="2.75" fill="none" stroke="currentColor" stroke-width="1.75"/>' +
-  '<path fill="currentColor" d="M7.2 8.8h1.2c1.05 0 1.8.62 1.8 1.58 0 .96-.75 1.58-1.8 1.58h-.55v1.04H7.2V8.8zm1.2 2.42c.48 0 .75-.28.75-.68 0-.4-.27-.68-.75-.68h-.36v1.36h.36zm4.15 1.3h.9c.24.54.68.82 1.28.82 1.02 0 1.62-.72 1.62-1.88 0-1.12-.58-1.82-1.56-1.82-.62 0-1.08.28-1.38.76h-.94c.36-1 1.18-1.54 2.28-1.54 1.58 0 2.62 1.04 2.62 2.6 0 1.58-1.06 2.62-2.66 2.62-.94 0-1.68-.36-2.16-1.04z"/>' +
-  '<path fill="currentColor" d="M6.25 15.8h11.5v1.5H6.25zm0 2.35h8v1.5H6.25z"/>' +
+  '<svg class="player-stream-icon player-stream-icon--cc" viewBox="0 0 20 16" aria-hidden="true">' +
+  '<path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M2 0H18C19.1 0 20 0.9 20 2V14C20 15.1 19.1 16 18 16H2C0.9 16 0 15.1 0 14V2C0 0.9 0.9 0 2 0ZM2 14H18V2H2V14ZM4 6H6V8H4V6ZM12 10H4V12H12V10ZM14 10H16V12H14V10ZM16 6H8V8H16V6Z"/>' +
   '</svg>';
 
 var ICON_PREV =
@@ -151,12 +149,12 @@ var ICON_NEXT =
   '<path fill="currentColor" d="M16 6h2v12h-2V6zM6 18l8.5-6L6 6v12z"/>' +
   '</svg>';
 var ICON_REWIND =
-  '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path fill="currentColor" d="M11.99 5V1l-5 5 5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>' +
+  '<svg class="player-control-icon" viewBox="0 0 17.5 12" aria-hidden="true">' +
+  '<path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M0 6L8.5 0V12L0 6ZM17.5 0L9 6L17.5 12V0ZM3.47 6L6.5 8.14V3.86L3.47 6ZM12.47 6L15.5 8.14V3.86L12.47 6Z"/>' +
   '</svg>';
 var ICON_FORWARD =
-  '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path fill="currentColor" d="M12.01 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6H20c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>' +
+  '<svg class="player-control-icon" viewBox="0 0 17.5 12" aria-hidden="true">' +
+  '<path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M8.5 6L0 12V0L8.5 6ZM9 12L17.5 6L9 0V12ZM5.03 6L2 3.86V8.14L5.03 6ZM14.03 6L11 3.86V8.14L14.03 6Z"/>' +
   '</svg>';
 var ICON_PLAY =
   '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
@@ -167,8 +165,8 @@ var ICON_PAUSE =
   '<path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>' +
   '</svg>';
 var ICON_STOP =
-  '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path fill="currentColor" d="M6 6h12v12H6V6z"/>' +
+  '<svg class="player-control-icon" viewBox="0 0 12 12" aria-hidden="true">' +
+  '<path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M10 2H2V10H10V2ZM0 0V12H12V0H0Z"/>' +
   '</svg>';
 var ICON_CHEVRON_LEFT =
   '<svg class="player-menu-chevron-icon" viewBox="0 0 24 24" aria-hidden="true">' +
@@ -182,11 +180,10 @@ var ICON_SKIP_INTRO =
   '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
   '<path fill="currentColor" d="M4 18l8.5-6L4 6v12zm9-6v6h2V6h-2zm3.5 6 5.5-3-5.5-3v6z"/>' +
   '</svg>';
-// Stream-lines icon with a small badge to indicate codec/decision detail
+// Android TV Design Kit "movie" (film-slate) — node 8677:41841.
 var ICON_MEDIA_INFO =
-  '<svg class="player-media-info-btn-icon" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path fill="currentColor" d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h9v2H4v-2z"/>' +
-  '<path fill="currentColor" d="M17 14a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm-.5 1.5v1h-1v1h1v1h1v-1h1v-1h-1v-1h-1z"/>' +
+  '<svg class="player-media-info-btn-icon" viewBox="0 0 20 16" aria-hidden="true">' +
+  '<path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M15 0H18C19.1 0 20 0.9 20 2V14C20 15.1 19.1 16 18 16H2C0.9 16 0 15.1 0 14L0.01 2C0.01 0.9 0.9 0 2 0L4 4H7L5 0H7L9 4H12L10 0H12L14 4H17L15 0ZM2 6V14H18V6H2Z"/>' +
   '</svg>';
 
 function formatPlaybackDisplay(item) {
