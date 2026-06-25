@@ -1644,7 +1644,7 @@ function detailScreen(root, params, navigate) {
     renderDetail(item);
   }).catch(function (err) {
     if (destroyed) return;
-    screen.innerHTML = '<p class="status-msg">Error: ' + err.message + '</p>';
+    screen.innerHTML = '<p class="status-msg">Error: ' + escapeHtml(err && err.message ? err.message : 'unknown error') + '</p>';
   });
 
   return {

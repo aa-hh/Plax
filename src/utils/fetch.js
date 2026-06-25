@@ -51,7 +51,9 @@ function fetchJson(url, options) {
   return fetchWithTimeout(url, init, timeoutMs).then(function (res) {
     if (!res.ok) {
       return res.text().then(function (t) {
-        var err = new Error('HTTP ' + res.status + ': ' + (t || res.statusText));
+        // Keep the raw server body on err.body only; never fold it into the
+        // message, which can reach innerHTML sinks and become an XSS vector.
+        var err = new Error('HTTP ' + res.status + (res.statusText ? ' ' + res.statusText : ''));
         err.status = res.status;
         err.body = t;
         throw err;

@@ -468,7 +468,11 @@ function libraryScreen(root, params, navigate) {
       }
     }).catch(function (err) {
       if (destroyed || token !== gridLoadToken) return;
-      grid.innerHTML = '<p class="status-msg">Failed: ' + err.message + '</p>';
+      grid.innerHTML = '';
+      var failMsg = document.createElement('p');
+      failMsg.className = 'status-msg';
+      failMsg.textContent = 'Failed: ' + (err && err.message ? err.message : 'unknown error');
+      grid.appendChild(failMsg);
     });
   }
 

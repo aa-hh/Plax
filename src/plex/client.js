@@ -77,7 +77,9 @@ function mapPlexHttpError(status, body) {
   if (status === 500 || status === 502 || status === 503 || status === 504) {
     return new PlexApiError('Plex server unavailable (' + status + '). Check the server or network.', status, body);
   }
-  return new PlexApiError('HTTP ' + status + (body ? ': ' + body.slice(0, 120) : ''), status, body);
+  // Raw server body is preserved on the error (3rd arg) but kept out of the
+  // message, which can flow into innerHTML sinks and become an XSS vector.
+  return new PlexApiError('HTTP ' + status, status, body);
 }
 
 function tokenFromServerUrl(url) {
