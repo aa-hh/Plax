@@ -3,18 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <!--
-    Content-Security-Policy: the key control is `script-src 'self'` (no
-    'unsafe-inline'), which prevents any injected inline event handler
-    (such as an onerror attribute) or inline script block from executing —
-    so a DOM-XSS bug can no longer run script in the app origin and steal
-    the auth token.
+    Content-Security-Policy: the key control is that script-src has NO
+    'unsafe-inline', which prevents any injected inline event handler (such
+    as an onerror attribute) or inline script block from executing — so a
+    DOM-XSS bug can no longer run script in the app origin and steal the
+    auth token.
+    The app is packaged and served from file://, whose origin is opaque, so
+    'self' does NOT cover the local scripts/styles — `file:` must be listed
+    explicitly or the whole app white-screens (verified on the B8). Allowing
+    the file: scheme does not weaken the XSS backstop: an attacker cannot
+    write a file: script onto the device via XSS, and inline/remote (http/s)
+    script injection stays blocked because they are absent from script-src.
     connect/img/media stay broad because the app talks to arbitrary
     Plex/Jellyfin servers (any host, http or https) and renders data: QR
     codes; tightening those is not possible without breaking playback.
-    NOTE: must be validated on the real B8 (Chromium 53) before merge —
-    webOSTV.js or any polyfill using eval/inline would be blocked by this.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; media-src 'self' blob: data: https: http:; connect-src 'self' https: http:; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: https: http:; media-src 'self' file: blob: data: https: http:; connect-src 'self' file: https: http:; font-src 'self' file: data:; object-src 'none'; frame-src 'none'; base-uri 'self'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#0a0a0f">
   <meta name="color-scheme" content="dark">
