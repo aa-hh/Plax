@@ -569,11 +569,186 @@ function openTextInputModal(opts) {
   return close;
 }
 
+// ── Settings vocabulary (grouped cards + list-item rows) ─────────────────────
+// Single-scroll settings: overline-titled cards group related rows. Multi-choice
+// rows open the kit side panel; binary rows use an inline switch; read-only info
+// rows are non-focusable <div>s so D-pad skips them. Built on .gt-list-item.
+
+var CHEVRON_RIGHT =
+  '<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false">' +
+  '<path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/** Settings group: overline title + an elevated card holding rows. Append rows to `section.body`. */
+function createSettingsCard(opts) {
+  opts = opts || {};
+  var section = el('section', 'gt-settings-group');
+  if (opts.id) section.id = opts.id;
+  if (opts.title) {
+    var title = el('h2', 'gt-settings-group__title');
+    title.textContent = String(opts.title);
+    section.appendChild(title);
+  }
+  var card = el('div', 'gt-settings-card');
+  section.appendChild(card);
+  section.body = card;
+  return section;
+}
+
+function settingsRowMain(label, sublabel) {
+  var main = el('span', 'gt-list-item__main');
+  var lbl = el('span', 'gt-list-item__label');
+  lbl.textContent = label != null ? String(label) : '';
+  main.appendChild(lbl);
+  if (sublabel != null && sublabel !== '') {
+    var sub = el('span', 'gt-list-item__sublabel');
+    sub.textContent = String(sublabel);
+    main.appendChild(sub);
+  }
+  return main;
+}
+
+/** Read-only info row (label + value). Non-focusable — D-pad skips it. row.setValue(v) updates it. */
+function createSettingsInfoRow(opts) {
+  opts = opts || {};
+  var row = el('div', 'gt-settings-info');
+  var lbl = el('span', 'gt-settings-info__label');
+  lbl.textContent = String(opts.label || '');
+  var val = el('span', 'gt-settings-info__value');
+  if (opts.id) val.id = opts.id;
+  val.textContent = opts.value != null ? String(opts.value) : '';
+  row.appendChild(lbl);
+  row.appendChild(val);
+  row.setValue = function (v) { val.textContent = v != null ? String(v) : ''; };
+  return row;
+}
+
+/**
+ * Picker row: focusable list-item showing the current value + chevron; Enter opens
+ * the kit side panel (single-select). opts:
+ * { label, sublabel, options:[{id,label,detail}], selectedId, onPick(id,opt), id }
+ */
+function createSettingsPickerRow(opts) {
+  opts = opts || {};
+  var options = opts.options || [];
+  var selectedId = opts.selectedId;
+
+  var item = el('button', 'gt-list-item gt-settings-item');
+  item.type = 'button';
+  item.tabIndex = 0;
+  if (opts.id) item.id = opts.id;
+  item.appendChild(settingsRowMain(opts.label, opts.sublabel));
+
+  var trailing = el('span', 'gt-list-item__trailing');
+  var valSpan = el('span', 'gt-settings-value');
+  var chev = el('span', 'gt-settings-chevron');
+  chev.innerHTML = CHEVRON_RIGHT;
+  trailing.appendChild(valSpan);
+  trailing.appendChild(chev);
+  item.appendChild(trailing);
+
+  function labelFor(id) {
+    for (var i = 0; i < options.length; i++) {
+      if (options[i].id === id) return options[i].label;
+    }
+    return '';
+  }
+  function setSelected(id) { selectedId = id; valSpan.textContent = labelFor(id); }
+  setSelected(selectedId);
+
+  item.addEventListener('click', function () {
+    openSidePanel({
+      title: opts.label,
+      options: options,
+      selectedId: selectedId,
+      onPick: function (id, o) {
+        setSelected(id);
+        if (typeof opts.onPick === 'function') opts.onPick(id, o);
+      }
+    });
+  });
+  item.setSelected = setSelected;
+  return item;
+}
+
+/** Switch row: focusable list-item with a binary toggle; Enter flips it. row.setOn(bool). */
+function createSettingsSwitchRow(opts) {
+  opts = opts || {};
+  var on = !!opts.on;
+
+  var item = el('button', 'gt-list-item gt-settings-item');
+  item.type = 'button';
+  item.tabIndex = 0;
+  if (opts.id) item.id = opts.id;
+  item.setAttribute('role', 'switch');
+  item.setAttribute('aria-checked', on ? 'true' : 'false');
+  item.appendChild(settingsRowMain(opts.label, opts.sublabel));
+
+  var sw = el('span', 'gt-switch' + (on ? ' gt-switch--on' : ''));
+  sw.appendChild(el('span', 'gt-switch__knob'));
+  var trailing = el('span', 'gt-list-item__trailing');
+  trailing.appendChild(sw);
+  item.appendChild(trailing);
+
+  function setOn(v) {
+    on = !!v;
+    item.setAttribute('aria-checked', on ? 'true' : 'false');
+    if (on) sw.classList.add('gt-switch--on');
+    else sw.classList.remove('gt-switch--on');
+  }
+  item.addEventListener('click', function () {
+    setOn(!on);
+    if (typeof opts.onToggle === 'function') opts.onToggle(on);
+  });
+  item.setOn = setOn;
+  return item;
+}
+
+/** Action row: focusable list-item that runs onSelect; optional trailing hint + chevron. */
+function createSettingsActionRow(opts) {
+  opts = opts || {};
+  var cls = 'gt-list-item gt-settings-item';
+  if (opts.destructive) cls += ' gt-settings-item--destructive';
+  var item = el('button', cls);
+  item.type = 'button';
+  item.tabIndex = 0;
+  if (opts.id) item.id = opts.id;
+  item.appendChild(settingsRowMain(opts.label, opts.sublabel));
+
+  var trailing = el('span', 'gt-list-item__trailing');
+  if (opts.hint != null && opts.hint !== '') {
+    var hint = el('span', 'gt-settings-value');
+    hint.textContent = String(opts.hint);
+    trailing.appendChild(hint);
+  }
+  var chev = el('span', 'gt-settings-chevron');
+  chev.innerHTML = CHEVRON_RIGHT;
+  trailing.appendChild(chev);
+  item.appendChild(trailing);
+
+  if (typeof opts.onSelect === 'function') item.addEventListener('click', opts.onSelect);
+
+  item.setSublabel = function (text) {
+    var sub = item.querySelector('.gt-list-item__sublabel');
+    if (!sub) {
+      sub = el('span', 'gt-list-item__sublabel');
+      item.querySelector('.gt-list-item__main').appendChild(sub);
+    }
+    sub.textContent = text != null ? String(text) : '';
+  };
+  return item;
+}
+
 export {
   createButton,
   createChip,
   createTabs,
   createListItem,
+  createSettingsCard,
+  createSettingsInfoRow,
+  createSettingsPickerRow,
+  createSettingsSwitchRow,
+  createSettingsActionRow,
   openSidePanel,
   openActionDialog,
   openTextInputModal

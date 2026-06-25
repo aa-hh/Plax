@@ -5530,6 +5530,116 @@ video.native-player.subtitle-no-bg ::cue {
 .gt-list-item:focus .gt-list-item__trailing,
 .gt-list-item:focus .gt-list-item__sublabel { color: var(--focus-on-fill); }
 
+/* ── Settings vocabulary (grouped cards + list-item rows) ──
+   Single-scroll settings: overline-titled cards group related rows. Multi-choice
+   rows open the kit side panel; binary rows use an inline switch; read-only info
+   rows are non-focusable so D-pad skips them. Built on .gt-list-item.
+   NOTE: margin-based rhythm only — flex `gap` is a no-op on Chromium 53/webOS4. */
+.gt-settings-group {
+  margin: 0 0 var(--space-7);
+  max-width: 1000px;
+}
+.gt-settings-group__title {
+  margin: 0 0 var(--space-3) var(--space-2);
+  font-size: var(--font-small);
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.gt-settings-card {
+  background: var(--bg-surface);          /* surface-container */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+}
+/* Hairline divider between adjacent rows (focus fill sits above it). */
+.gt-settings-card > * + * {
+  border-top: 1px solid var(--border);
+}
+
+/* Read-only info row — list-item metrics but a non-focusable <div>. */
+.gt-settings-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--target-min);
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--gt-body);
+  color: var(--text-primary);
+}
+.gt-settings-info__value {
+  margin-left: var(--space-4);   /* gap→margin (Chrome53) */
+  color: var(--text-secondary);
+  text-align: right;
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Trailing value + chevron on picker / action rows. */
+.gt-settings-value { color: inherit; opacity: 0.85; }
+.gt-settings-chevron {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-3);
+  opacity: 0.6;
+}
+.gt-list-item:focus .gt-settings-chevron { opacity: 1; }
+.gt-settings-item--destructive .gt-list-item__label { color: var(--danger, #F2B8B5); }
+.gt-settings-item--destructive:focus .gt-list-item__label { color: var(--focus-on-fill); }
+
+/* Binary switch (Material 3 TV). Off = outline track; on = primary track. */
+.gt-switch {
+  position: relative;
+  display: inline-block;
+  width: 64px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--text-muted);          /* outline (off) */
+  flex-shrink: 0;
+}
+.gt-switch__knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-dim);
+}
+.gt-switch--on { background: var(--accent); }
+.gt-switch--on .gt-switch__knob { left: 32px; background: var(--surface-dim); }
+/* On focus the row inverts to a light fill; keep the switch readable on it. */
+.gt-list-item:focus .gt-switch { background: rgba(11, 13, 18, 0.35); }
+.gt-list-item:focus .gt-switch--on { background: var(--accent); }
+
+/* Stacked row (label + control + hint), e.g. the log-sink inline editor. */
+.gt-settings-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--space-4) var(--space-5);
+}
+.gt-settings-stacked > * + * { margin-top: var(--space-3); }   /* gap→margin */
+.gt-settings-stacked > label { font-size: var(--gt-body); color: var(--text-primary); }
+.gt-settings-editor__actions { display: flex; }
+.gt-settings-editor__actions > * + * { margin-left: var(--space-4); }   /* gap→margin */
+.gt-settings-editor__actions .btn { flex: 0 0 auto; }
+
+/* Footer card (Forget server — destructive action). */
+.gt-settings-footer { margin: var(--space-6) 0 var(--space-8); max-width: 1000px; }
+
+/* Settings sublabels (hints) wrap instead of truncating. */
+.gt-settings-item .gt-list-item__sublabel { white-space: normal; overflow: visible; }
+/* Muted notes + the async home-profiles list align with row content padding. */
+.gt-settings-card .settings-muted,
+.gt-settings-card .gt-settings-note { margin: 0; padding: var(--space-3) var(--space-5); }
+.gt-settings-card .settings-home-users { padding: 0 var(--space-5) var(--space-3); }
+.gt-settings-card .settings-home-user-row:last-child { border-bottom: 0; }
+.gt-settings-card .settings-watchlist-row { padding: var(--space-3) var(--space-5); }
+
 
 /* List items keep the tiny 1.025x lift (text blur imperceptible at that scale).
    Chips/tabs are text-bearing → no scale (fuzz); ring + background lift instead. */

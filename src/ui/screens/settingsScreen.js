@@ -5,6 +5,13 @@ import { renderPlaybackSettings } from '../../settings/playbackSettings.js';
 import { fetchHomeUsers } from '../../plex/users/homeUsers.js';
 import { focusFirst, getFocusables, attachFocusNav } from '../focus.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
+import {
+  createSettingsCard,
+  createSettingsInfoRow,
+  createSettingsPickerRow,
+  createSettingsSwitchRow,
+  createSettingsActionRow
+} from '../components/controls.js';
 import { VERSION } from '../../plex/client.js';
 import { isPerfEnabled } from '../../perf/resourceMonitor.js';
 import { isTvDebugEnabled, getLogSinkUrl, setLogSinkUrl, LOG_SINK_STORAGE_KEY } from '../../utils/tvDebug.js';
@@ -17,16 +24,6 @@ import {
   renameWatchlist,
   deleteWatchlist
 } from '../../watchlists/store.js';
-
-/* Build identifier from the generated build-info.js global (window.__PLAX_BUILD__).
-   Surfaced in the Account card's "App version" row so a deploy can be verified
-   on-device: if the build number here doesn't change after ./tvpush.sh, the new
-   bundle didn't actually install. */
-function buildStampLabel() {
-  var b = (typeof window !== 'undefined' && window.__PLAX_BUILD__) || null;
-  if (!b || !b.buildNumber) return '';
-  return ' · build ' + b.buildNumber + (b.gitCommit ? ' · ' + b.gitCommit : '');
-}
 
 /**
  * TV-safe text input modal. Opens a full-screen overlay with an <input>
@@ -66,7 +63,7 @@ function openTextInputModal(opts) {
     '</div>' +
     '<div class="detail-modal-footer">' +
     '<button type="button" class="btn btn-primary" id="tv-text-input-confirm" tabindex="0">Confirm</button>' +
-    '<button type="button" class="btn btn-outline" id="tv-text-input-cancel" tabindex="0">Cancel</button>' +
+    '<button type="button" class="btn btn-outline detail-modal-cancel" id="tv-text-input-cancel" tabindex="0">Cancel</button>' +
     '</div>' +
     '</div>';
 
@@ -187,6 +184,177 @@ function openTextInputModal(opts) {
   setTimeout(function () { input.focus(); }, 0);
 }
 
+/**
+ * "Log sink URL" setting: a full-width read row + an inline editor (TV-safe).
+ *
+ * Read state:  a full-width focusable row (label + saved value / "Not set").
+ *              Being full-width it sits on the vertical D-pad column, so travel
+ *              DOWN the settings list always lands on it — unlike a short input
+ *              with a right-aligned CTA, which the geometric nav skipped.
+ * Edit state:  selecting the row reveals the editor (input + Save/Cancel/Test)
+ *              and hides the read row; the input is focused + select-all'd,
+ *              raising the webOS keyboard. Keys are trapped at the document
+ *              capture phase so they never reach the screen's attachFocusNav:
+ *                461/8 → delete · 37/39 → move cursor (input focused)
+ *                13/38/40 → close keyboard + focus Save · 27 → cancel
+ *              On the buttons focus is contained: LEFT/RIGHT cycle Save/Cancel/
+ *              Test, UP re-opens the keyboard, Back/Esc cancels, Enter activates.
+ *              Test pings the value currently in the editor.
+ */
+function wireLogSinkField(setStatus) {
+  var readRow = document.getElementById('log-sink-row');
+  var editor = document.getElementById('log-sink-editor');
+  var input = document.getElementById('log-sink-url');
+  var saveBtn = document.getElementById('log-sink-save');
+  var cancelBtn = document.getElementById('log-sink-cancel');
+  var testBtn = document.getElementById('log-sink-test');
+  if (!readRow || !editor || !input || !saveBtn || !cancelBtn) return;
+  var valueSpan = readRow.querySelector('.gt-settings-value');
+  var buttons = [saveBtn, cancelBtn, testBtn].filter(Boolean);
+
+  var editing = false;
+
+  function savedValue() { return getLogSinkUrl() || ''; }
+  function refreshRead() { if (valueSpan) valueSpan.textContent = savedValue() || 'Not set'; }
+  function setStatusSafe(msg, isError) { if (typeof setStatus === 'function') setStatus(msg, isError); }
+  refreshRead();
+
+  function deleteChar() {
+    var s = input.selectionStart, end = input.selectionEnd, v = input.value;
+    if (s !== end) {
+      input.value = v.slice(0, s) + v.slice(end);
+      input.setSelectionRange(s, s);
+    } else if (s > 0) {
+      input.value = v.slice(0, s - 1) + v.slice(s);
+      input.setSelectionRange(s - 1, s - 1);
+    }
+  }
+
+  function moveCursor(delta) {
+    var pos = input.selectionStart + delta;
+    pos = Math.max(0, Math.min(pos, input.value.length));
+    input.setSelectionRange(pos, pos);
+  }
+
+  // Read mode is a full-width row (offset 0 → vertical D-pad always lands on it).
+  // Selecting it opens this inline editor; focus is then contained between the
+  // input and the Save/Cancel/Test buttons until the user commits or backs out.
+  function enterEdit() {
+    if (editing) return;
+    editing = true;
+    input.value = savedValue();
+    editor.hidden = false;
+    document.addEventListener('keydown', onEditKey, true);
+    // Focus the input first, THEN hide the read row, so focus never collapses to
+    // <body> (which would trip the screen's focus watchdog).
+    setTimeout(function () {
+      input.focus();
+      try { input.select(); } catch (e) { /* older Chromium */ }
+      readRow.hidden = true;
+    }, 0);
+  }
+
+  function exitEdit() {
+    editing = false;
+    document.removeEventListener('keydown', onEditKey, true);
+    readRow.hidden = false;
+    editor.hidden = true;
+    readRow.focus();
+  }
+
+  function commit() {
+    var next = input.value.trim();
+    setLogSinkUrl(next || null);
+    if (window.__plaxDebug && window.__plaxDebug.setLogSinkUrl) {
+      window.__plaxDebug.setLogSinkUrl(next);
+    }
+    refreshRead();
+    setStatusSafe(next ? 'Log sink saved — debug overlay must be on.' : 'Log sink cleared.', false);
+    exitEdit();
+  }
+
+  function cancel() { exitEdit(); }
+
+  // Test pings the value currently in the editor (what you're about to save).
+  function testSink() {
+    var url = input.value.trim();
+    if (!url) { setStatusSafe('Enter a Log sink URL first, then Test.', true); return; }
+    var payload;
+    try {
+      payload = JSON.stringify({
+        level: 'log',
+        tag: 'test',
+        message: 'ping from Plax settings',
+        ts: new Date().toISOString()
+      });
+    } catch (e) {
+      setStatusSafe('Test ping failed ✗ — could not build payload.', true);
+      return;
+    }
+    setStatusSafe('Sending test ping…', false);
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.timeout = 5000;
+      xhr.onload = function () {
+        if (xhr.status >= 200 && xhr.status < 300) setStatusSafe('Test ping sent ✓ → ' + url, false);
+        else setStatusSafe('Test ping failed ✗ (HTTP ' + xhr.status + ')', true);
+      };
+      xhr.onerror = function () { setStatusSafe('Test ping failed ✗ — could not reach sink.', true); };
+      xhr.ontimeout = function () { setStatusSafe('Test ping timed out ✗', true); };
+      xhr.send(payload);
+    } catch (e) {
+      setStatusSafe('Test ping failed ✗', true);
+    }
+  }
+
+  readRow.addEventListener('click', enterEdit);
+  saveBtn.addEventListener('click', commit);
+  cancelBtn.addEventListener('click', cancel);
+  if (testBtn) testBtn.addEventListener('click', testSink);
+
+  function focusButton(idx) {
+    if (!buttons.length) return;
+    idx = (idx + buttons.length) % buttons.length;
+    buttons[idx].focus();
+  }
+
+  function onEditKey(e) {
+    if (!editing) return;
+    var code = e.keyCode || e.which;
+
+    if (document.activeElement === input) {
+      // Keyboard up: trap editing keys so the screen nav can't grab focus.
+      if (code === 461 || code === 8) { e.preventDefault(); e.stopPropagation(); deleteChar(); return; }
+      if (code === 37) { e.preventDefault(); e.stopPropagation(); moveCursor(-1); return; }
+      if (code === 39) { e.preventDefault(); e.stopPropagation(); moveCursor(1); return; }
+      // Enter / Up / Down → unselect (close keyboard) + move to the action buttons.
+      if (code === 13 || code === 38 || code === 40) { e.preventDefault(); e.stopPropagation(); saveBtn.focus(); return; }
+      if (code === 27) { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+      return; // character keys flow through into the input
+    }
+
+    // A Save/Cancel/Test button is focused — keep focus inside the editor.
+    if (code === 461 || code === 27) { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+    if (code === 38) { e.preventDefault(); e.stopPropagation(); input.focus(); return; }       // up → re-open keyboard
+    if (code === 37) { e.preventDefault(); e.stopPropagation(); focusButton(buttons.indexOf(document.activeElement) - 1); return; }
+    if (code === 39) { e.preventDefault(); e.stopPropagation(); focusButton(buttons.indexOf(document.activeElement) + 1); return; }
+    if (code === 40) { e.preventDefault(); e.stopPropagation(); return; }                       // down swallowed (contained)
+    // Enter (13) falls through → native button click (Save / Cancel / Test).
+  }
+}
+
+/* Build identifier from the generated build-info global (window.__PLAX_BUILD__).
+   Surfaced in the Account card's "App version" row so a deploy can be verified
+   on-device: if the build number doesn't change after ./tvpush.sh, the new
+   bundle didn't actually install. */
+function buildStampLabel() {
+  var b = (typeof window !== 'undefined' && window.__PLAX_BUILD__) || null;
+  if (!b || !b.buildNumber) return '';
+  return ' · build ' + b.buildNumber + (b.gitCommit ? ' · ' + b.gitCommit : '');
+}
+
 function truncateId(id) {
   if (!id) return '—';
   if (id.length <= 16) return id;
@@ -208,26 +376,8 @@ function settingsScreen(root, params, navigate) {
     '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
     '<div class="home-main settings-main">' +
     '<h1 class="screen-title screen-title-compact">Settings</h1>' +
-    '<div class="settings-content">' +
+    '<div class="settings-content" id="settings-content">' +
     '<p class="status-msg settings-status" id="settings-status"></p>' +
-    '<h2 class="settings-section-title">Account</h2>' +
-    '<div id="account-section" class="settings-info-block"></div>' +
-    '<h2 class="settings-section-title" id="profiles-section-title">Profiles</h2>' +
-    '<div id="plex-home-section"></div>' +
-    '<h2 class="settings-section-title settings-watchlists-title hidden" id="watchlists-section-title">Watchlists</h2>' +
-    '<div id="watchlists-section" class="hidden"></div>' +
-    '<h2 class="settings-section-title">Playback</h2>' +
-    '<div id="playback-section"></div>' +
-    '<h2 class="settings-section-title">Network</h2>' +
-    '<div id="network-section"></div>' +
-    '<h2 class="settings-section-title">About</h2>' +
-    '<div id="about-section"></div>' +
-    '<h2 class="settings-section-title">Developer</h2>' +
-    '<div id="developer-section"></div>' +
-    '<div class="settings-actions detail-actions">' +
-    '<button class="btn" id="btn-back" tabindex="0">Back</button>' +
-    '<button class="btn" id="btn-forget-server" tabindex="0">Forget server</button>' +
-    '</div>' +
     '</div></div></div>';
 
   root.appendChild(screen);
@@ -248,84 +398,59 @@ function settingsScreen(root, params, navigate) {
     statusEl.className = 'status-msg settings-status' + (isError ? ' watch-status-error' : '');
   }
 
-  var accountSection = document.getElementById('account-section');
-  accountSection.innerHTML =
-    '<div class="settings-row settings-row--info"><label>Signed in as</label>' +
-    '<span id="account-user-name"></span></div>' +
-    '<div class="settings-row settings-row--info"><label>Server</label>' +
-    '<span id="account-server-name"></span></div>' +
-    '<div class="settings-row"><label>Switch server</label>' +
-    '<button class="btn" id="btn-switch-server" tabindex="0">Choose server</button></div>' +
-    '<div class="settings-row settings-row--info"><label>Client ID</label>' +
-    '<span>' + truncateId(state.clientId) + '</span></div>' +
-    '<div class="settings-row settings-row--info"><label>App version</label>' +
-    '<span>' + escapeHtml(VERSION + buildStampLabel()) + '</span></div>';
+  var content = document.getElementById('settings-content');
 
+  // ── Account (read-only info) ──
+  var accountCard = createSettingsCard({ title: 'Account' });
+  accountCard.body.appendChild(createSettingsInfoRow({
+    label: 'Signed in as',
+    value: (activeUser && (activeUser.title || activeUser.username || activeUser.email)) || '—'
+  }));
+  accountCard.body.appendChild(createSettingsInfoRow({
+    label: 'Server',
+    value: (state.activeServer && state.activeServer.name) || '—'
+  }));
   // Switch server → cross-provider saved-link picker (non-destructive: keeps every
   // saved Plex/Jellyfin link; just jumps the active session to another one).
-  document.getElementById('btn-switch-server').addEventListener('click', function () {
-    navigate('server-picker', { _from: 'settings' });
-  });
+  accountCard.body.appendChild(createSettingsActionRow({
+    label: 'Switch server',
+    hint: 'Choose',
+    onSelect: function () { navigate('server-picker', { _from: 'settings' }); }
+  }));
+  accountCard.body.appendChild(createSettingsInfoRow({ label: 'Client ID', value: truncateId(state.clientId) }));
+  // App version carries the on-device build stamp so a deploy can be verified:
+  // if this doesn't change after ./tvpush.sh, the new bundle didn't install.
+  accountCard.body.appendChild(createSettingsInfoRow({ label: 'App version', value: VERSION + buildStampLabel() }));
+  content.appendChild(accountCard);
 
-  var accountUserEl = document.getElementById('account-user-name');
-  if (accountUserEl) {
-    accountUserEl.textContent = activeUser && (activeUser.title || activeUser.username || activeUser.email) || '—';
-  }
-  var accountServerEl = document.getElementById('account-server-name');
-  if (accountServerEl) {
-    accountServerEl.textContent = state.activeServer && state.activeServer.name || '—';
-  }
-
-  renderPlaybackSettings(document.getElementById('playback-section'));
-  renderNetworkSettings(document.getElementById('network-section'), {
-    onChanged: function (message) {
-      setStatus(message, false);
-    }
-  });
-
-  if (canUseWatchlists(activeUser)) {
-    var wlTitle = document.getElementById('watchlists-section-title');
-    var wlSection = document.getElementById('watchlists-section');
-    if (wlTitle) wlTitle.classList.remove('hidden');
-    if (wlSection) {
-      wlSection.classList.remove('hidden');
-      renderWatchlistsSettings(wlSection, activeUser, navigate);
-    }
-  }
-
-  var plexHomeSection = document.getElementById('plex-home-section');
-  plexHomeSection.innerHTML =
-    '<div class="settings-row settings-row--info"><label>Current profile</label>' +
-    '<span id="current-profile-name"></span></div>' +
-    '<div class="settings-row"><label>Switch profile</label>' +
-    '<button class="btn" id="btn-switch-profile" tabindex="0">Choose profile</button></div>' +
-    '<div id="home-users-list" class="settings-home-users"></div>';
-
-  var currentProfileEl = document.getElementById('current-profile-name');
-  if (currentProfileEl) {
-    currentProfileEl.textContent = activeUser && (activeUser.title || activeUser.username) || '—';
-  }
-
+  // ── Profiles (provider-neutral: Plex Home users or Jellyfin "who's watching") ──
   var isJellyfin = state.provider === 'jellyfin';
-
-  document.getElementById('btn-switch-profile').addEventListener('click', function () {
-    if (isJellyfin) {
-      navigate('jellyfin-users', { _from: 'settings' });
-    } else {
-      navigate('profile-picker', { _from: 'settings' });
+  var homeCard = createSettingsCard({ title: 'Profiles' });
+  homeCard.body.appendChild(createSettingsInfoRow({
+    label: 'Current profile',
+    value: (activeUser && (activeUser.title || activeUser.username)) || '—'
+  }));
+  homeCard.body.appendChild(createSettingsActionRow({
+    label: 'Switch profile',
+    hint: 'Choose',
+    onSelect: function () {
+      navigate(isJellyfin ? 'jellyfin-users' : 'profile-picker', { _from: 'settings' });
     }
-  });
+  }));
+  var homeUsersList = document.createElement('div');
+  homeUsersList.className = 'settings-home-users';
+  homeCard.body.appendChild(homeUsersList);
+  content.appendChild(homeCard);
 
+  // The Plex Home profiles list is Plex-only (Jellyfin has no owner-proxy roster).
   if (!isJellyfin) {
     var ownerToken = getOwnerAuthToken() || state.ownerAuthToken || state.authToken;
     fetchHomeUsers(ownerToken, state.clientId).then(function (users) {
       if (!users.length) {
-        document.getElementById('home-users-list').innerHTML =
-          '<p class="settings-muted">Plex Home not available on this account.</p>';
+        homeUsersList.innerHTML = '<p class="settings-muted">Plex Home not available on this account.</p>';
         return;
       }
-      var list = document.getElementById('home-users-list');
-      list.innerHTML = '<p class="settings-muted">Home profiles</p>';
+      homeUsersList.innerHTML = '<p class="settings-muted">Home profiles</p>';
       users.forEach(function (u) {
         var row = document.createElement('div');
         row.className = 'settings-home-user-row';
@@ -335,122 +460,178 @@ function settingsScreen(root, params, navigate) {
           (u.restricted ? ' · Restricted' : '') +
           (u.hasPin ? ' · PIN' : '') +
           (active ? ' · Active' : '');
-        list.appendChild(row);
+        homeUsersList.appendChild(row);
       });
     }).catch(function () {
-      document.getElementById('home-users-list').innerHTML =
-        '<p class="settings-muted">Could not load Plex Home profiles.</p>';
+      homeUsersList.innerHTML = '<p class="settings-muted">Could not load Plex Home profiles.</p>';
     });
   }
 
-  var aboutSection = document.getElementById('about-section');
-  aboutSection.innerHTML =
-    '<div class="settings-row"><label>Design Review</label>' +
-    '<button class="btn" id="btn-design-review" tabindex="0">Open</button></div>' +
-    '<div class="settings-row"><label for="perf-hud-select">Performance HUD</label>' +
-    '<select id="perf-hud-select"><option value="0">Off</option><option value="1">On</option></select></div>' +
-    '<div class="settings-row"><label>Perf trace</label>' +
-    '<button class="btn" id="btn-perf-export" tabindex="0">Send to log</button>' +
-    '<button class="btn" id="btn-perf-clear" tabindex="0">Clear</button>' +
-    '<span class="settings-muted" id="perf-trace-status" style="margin-left:12px"></span>' +
-    '</div>' +
-    '<div class="settings-row"><label for="debug-log-select">Debug log overlay</label>' +
-    '<select id="debug-log-select"><option value="0">Off</option><option value="1">On</option></select></div>' +
-    '<div class="settings-row settings-row--stacked">' +
-    '<label for="log-sink-url">Log sink URL</label>' +
-    '<input id="log-sink-url" class="search-input settings-log-sink-input" type="text" tabindex="0" ' +
-    'placeholder="http://192.168.4.1:8765/log" autocomplete="off" />' +
-    '<p class="settings-hint">On your Mac run <code>npm run log:receive</code>, then use your Mac\'s LAN IP ' +
-    '(System Settings → Network). Requires debug overlay on. Logs append to <code>logs/tv.log</code>.</p>' +
-    '</div>';
-
-  document.getElementById('btn-design-review').addEventListener('click', function () {
-    navigate('design-review', { _from: 'settings' });
-  });
-
-  var perfSel = document.getElementById('perf-hud-select');
-  perfSel.value = isPerfEnabled() ? '1' : '0';
-  var debugSel = document.getElementById('debug-log-select');
-  debugSel.value = isTvDebugEnabled() ? '1' : '0';
-  debugSel.addEventListener('change', function () {
-    if (window.__plaxDebug) {
-      if (debugSel.value === '1') window.__plaxDebug.enable();
-      else window.__plaxDebug.disable();
-    }
-    setStatus('Debug log overlay ' + (debugSel.value === '1' ? 'enabled' : 'disabled') +
-      ' — relaunch recommended.', false);
-  });
-
-  var logSinkInput = document.getElementById('log-sink-url');
-  if (logSinkInput) {
-    logSinkInput.value = getLogSinkUrl() || '';
-    logSinkInput.addEventListener('change', function () {
-      var next = logSinkInput.value.trim();
-      setLogSinkUrl(next);
-      if (window.__plaxDebug && window.__plaxDebug.setLogSinkUrl) {
-        window.__plaxDebug.setLogSinkUrl(next);
-      }
-      setStatus(next ? 'Log sink saved — debug overlay must be on.' : 'Log sink cleared.', false);
-    });
+  // ── Watchlists (conditional) ──
+  if (canUseWatchlists(activeUser)) {
+    var wlCard = createSettingsCard({ title: 'Watchlists' });
+    content.appendChild(wlCard);
+    renderWatchlistsSettings(wlCard.body, activeUser, navigate);
   }
 
-  perfSel.addEventListener('change', function () {
-    if (window.__plaxPerf) {
-      if (perfSel.value === '1') window.__plaxPerf.enable();
-      else window.__plaxPerf.disable();
-    }
-    setStatus('Performance HUD ' + (perfSel.value === '1' ? 'enabled' : 'disabled') +
-      ' — relaunch to apply fully.', false);
+  // ── Playback ──
+  var playbackCard = createSettingsCard({ title: 'Playback' });
+  content.appendChild(playbackCard);
+  renderPlaybackSettings(playbackCard.body);
+
+  // ── Network ──
+  var networkCard = createSettingsCard({ title: 'Network' });
+  content.appendChild(networkCard);
+  renderNetworkSettings(networkCard.body, {
+    onChanged: function (message) { setStatus(message, false); }
   });
 
-  var perfStatusEl = document.getElementById('perf-trace-status');
-  function refreshPerfStatus() {
-    if (!perfStatusEl || !window.__plaxPerf) return;
+  // ── Developer ──
+  function perfTraceSummary() {
+    if (!window.__plaxPerf) return 'Perf telemetry not initialised.';
     var snap = window.__plaxPerf.getSnapshot();
-    perfStatusEl.textContent = snap.markCount + ' marks · ' + snap.sampleCount + ' samples';
+    return snap.markCount + ' marks · ' + snap.sampleCount + ' samples';
   }
-  refreshPerfStatus();
+
+  var devCard = createSettingsCard({ title: 'Developer' });
+
+  devCard.body.appendChild(createSettingsActionRow({
+    label: 'Design review',
+    hint: 'Open',
+    onSelect: function () { navigate('design-review', { _from: 'settings' }); }
+  }));
+
+  devCard.body.appendChild(createSettingsSwitchRow({
+    label: 'Performance HUD',
+    sublabel: 'On-screen FPS / memory overlay — relaunch to apply fully.',
+    on: isPerfEnabled(),
+    onToggle: function (on) {
+      if (window.__plaxPerf) { if (on) window.__plaxPerf.enable(); else window.__plaxPerf.disable(); }
+      setStatus('Performance HUD ' + (on ? 'enabled' : 'disabled') + ' — relaunch to apply fully.', false);
+    }
+  }));
+
+  devCard.body.appendChild(createSettingsSwitchRow({
+    label: 'Debug log overlay',
+    sublabel: 'Shows the on-TV log panel — relaunch recommended.',
+    on: isTvDebugEnabled(),
+    onToggle: function (on) {
+      if (window.__plaxDebug) { if (on) window.__plaxDebug.enable(); else window.__plaxDebug.disable(); }
+      setStatus('Debug log overlay ' + (on ? 'enabled' : 'disabled') + ' — relaunch recommended.', false);
+    }
+  }));
 
   var perfExporting = false;
-  document.getElementById('btn-perf-export').addEventListener('click', function () {
-    if (perfExporting) return; // guard against D-pad/Enter repeat firing duplicate traces
-    if (!window.__plaxPerf) {
-      setStatus('Perf telemetry not initialised.', true);
-      return;
+  var perfTraceRow = createSettingsActionRow({
+    label: 'Send perf trace to log',
+    sublabel: perfTraceSummary(),
+    hint: 'Send',
+    onSelect: function () {
+      if (perfExporting) return; // guard against D-pad/Enter repeat firing duplicate traces
+      if (!window.__plaxPerf) { setStatus('Perf telemetry not initialised.', true); return; }
+      var data = window.__plaxPerf.exportData();
+      if (!data.marks.length && !data.samples.length) {
+        setStatus('No perf data captured yet — turn HUD on and use the app first.', true);
+        return;
+      }
+      var sinkUrl = getLogSinkUrl();
+      if (!sinkUrl) {
+        setStatus('Set a Log sink URL below first (your Mac running npm run log:receive).', true);
+        return;
+      }
+      perfExporting = true;
+      setStatus('Sending perf trace…', false);
+      sendPerfTraceToSink(sinkUrl, data).then(function () {
+        setStatus('Perf trace sent (' + data.marks.length + ' marks, ' +
+          data.samples.length + ' samples) → ' + sinkUrl, false);
+      })['catch'](function (err) {
+        setStatus('Could not reach log sink: ' + (err && err.message || err), true);
+      })['finally'](function () {
+        perfExporting = false;
+      });
     }
-    var data = window.__plaxPerf.exportData();
-    if (!data.marks.length && !data.samples.length) {
-      setStatus('No perf data captured yet — turn HUD on and use the app first.', true);
-      return;
+  });
+  devCard.body.appendChild(perfTraceRow);
+
+  devCard.body.appendChild(createSettingsActionRow({
+    label: 'Clear perf buffer',
+    hint: 'Clear',
+    onSelect: function () {
+      if (window.__plaxPerf) window.__plaxPerf.clear();
+      perfTraceRow.setSublabel(perfTraceSummary());
+      setStatus('Perf trace buffer cleared.', false);
     }
-    var sinkUrl = getLogSinkUrl();
-    if (!sinkUrl) {
-      setStatus('Set a Log sink URL below first (your Mac running npm run log:receive).', true);
-      return;
+  }));
+
+  // Log sink: a full-width read row (so vertical D-pad reaches it) that opens an
+  // inline editor on select. Wired by wireLogSinkField.
+  var logSinkBlock = document.createElement('div');
+  logSinkBlock.id = 'log-sink-block';
+  var logSinkRead = createSettingsActionRow({
+    id: 'log-sink-row',
+    label: 'Log sink URL',
+    sublabel: 'POST debug logs to a receiver on your dev machine.',
+    hint: getLogSinkUrl() || 'Not set',
+    onSelect: function () { /* real handler attached in wireLogSinkField */ }
+  });
+  logSinkBlock.appendChild(logSinkRead);
+
+  var logSinkEditor = document.createElement('div');
+  logSinkEditor.className = 'gt-settings-stacked gt-settings-editor';
+  logSinkEditor.id = 'log-sink-editor';
+  logSinkEditor.hidden = true;
+  logSinkEditor.innerHTML =
+    '<label for="log-sink-url">Log sink URL</label>' +
+    '<input id="log-sink-url" class="tv-text-input" type="text" ' +
+    'placeholder="http://192.168.4.1:8765/log" autocomplete="off" autocorrect="off" ' +
+    'autocapitalize="off" spellcheck="false" />' +
+    '<div class="gt-settings-editor__actions">' +
+    '<button type="button" class="btn" id="log-sink-save" tabindex="0">Save</button>' +
+    '<button type="button" class="btn" id="log-sink-cancel" tabindex="0">Cancel</button>' +
+    '<button type="button" class="btn" id="log-sink-test" tabindex="0">Test</button>' +
+    '</div>' +
+    '<p class="settings-hint">On your Mac run <code>npm run log:receive</code>, then use your Mac\'s LAN IP ' +
+    '(System Settings → Network). Requires debug overlay on. Logs append to <code>logs/tv.log</code>.</p>';
+  logSinkBlock.appendChild(logSinkEditor);
+  devCard.body.appendChild(logSinkBlock);
+  content.appendChild(devCard);
+
+  wireLogSinkField(setStatus);
+
+  // ── Footer: Forget server (destructive) ──
+  // Removes ONLY the current saved link (others are never deleted), clears the
+  // active session, and routes to the saved-link picker if other links remain,
+  // else the provider picker to link a new one.
+  var footerCard = createSettingsCard({});
+  footerCard.classList.add('gt-settings-footer');
+  footerCard.body.appendChild(createSettingsActionRow({
+    label: 'Forget server',
+    sublabel: 'Removes this server from this device. Other saved servers are kept.',
+    destructive: true,
+    onSelect: function () {
+      var cur = getState();
+      var currentLinkId = cur.provider === 'jellyfin'
+        ? 'jf:' + ((cur.activeServer && (cur.activeServer.id || cur.activeServer.url)) ||
+                   (cur.jellyfinServer && (cur.jellyfinServer.id || cur.jellyfinServer.url)) || '')
+        : 'plex:' + cur.clientId;
+      removeSavedLink(currentLinkId);
+      clearActiveSession();
+      cache.invalidateAll();
+      invalidateRetention();
+      setState({
+        provider: null,
+        authToken: null,
+        ownerAuthToken: null,
+        user: null,
+        activeHomeUser: null,
+        servers: [],
+        activeServer: null,
+        libraries: []
+      });
+      navigate(getSavedLinks().length > 0 ? 'server-picker' : 'provider-picker', {});
     }
-    perfExporting = true;
-    setStatus('Sending perf trace…', false);
-    sendPerfTraceToSink(sinkUrl, data).then(function () {
-      setStatus('Perf trace sent (' + data.marks.length + ' marks, ' +
-        data.samples.length + ' samples) → ' + sinkUrl, false);
-    })['catch'](function (err) {
-      setStatus('Could not reach log sink: ' + (err && err.message || err), true);
-    })['finally'](function () {
-      perfExporting = false;
-    });
-  });
-
-  document.getElementById('btn-perf-clear').addEventListener('click', function () {
-    if (window.__plaxPerf) window.__plaxPerf.clear();
-    refreshPerfStatus();
-    setStatus('Perf trace buffer cleared.', false);
-  });
-
-  renderDeveloperSettings(document.getElementById('developer-section'));
-
-  document.getElementById('btn-back').addEventListener('click', function () {
-    navigate(params._from || 'library', {});
-  });
+  }));
+  content.appendChild(footerCard);
 
   function sendPerfTraceToSink(sinkUrl, data) {
     // POST the trace to the existing log-receiver (scripts/log-receiver.cjs).
@@ -513,36 +694,6 @@ function settingsScreen(root, params, navigate) {
     });
   }
 
-  // Forget server: remove ONLY the current link (the others are never deleted),
-  // clear the active session, and route to whatever remains — the saved-link
-  // picker if other links exist, else the provider picker to link a new one.
-  document.getElementById('btn-forget-server').addEventListener('click', function () {
-    var cur = getState();
-    var currentLinkId = cur.provider === 'jellyfin'
-      ? 'jf:' + ((cur.activeServer && (cur.activeServer.id || cur.activeServer.url)) ||
-                 (cur.jellyfinServer && (cur.jellyfinServer.id || cur.jellyfinServer.url)) || '')
-      : 'plex:' + cur.clientId;
-    removeSavedLink(currentLinkId);
-    clearActiveSession();
-    cache.invalidateAll();
-    invalidateRetention();
-    setState({
-      provider: null,
-      authToken: null,
-      ownerAuthToken: null,
-      user: null,
-      activeHomeUser: null,
-      servers: [],
-      activeServer: null,
-      libraries: []
-    });
-    if (getSavedLinks().length > 0) {
-      navigate('server-picker', {});
-    } else {
-      navigate('provider-picker', {});
-    }
-  });
-
   // Land focus on the first settings control (top-leftmost), not the sidebar
   // icon the user just clicked. LEFT returns to the sidebar from here.
   var settingsMain = screen.querySelector('.settings-main');
@@ -561,10 +712,26 @@ function settingsScreen(root, params, navigate) {
 
 function renderWatchlistsSettings(container, user, navigate) {
   container.innerHTML =
-    '<p class="settings-muted">Create lists and add titles with the bookmark on movie, season, and episode screens.</p>' +
-    '<div class="settings-row"><label>New list</label>' +
-    '<button class="btn" id="btn-create-watchlist" tabindex="0">Create watchlist</button></div>' +
+    '<p class="settings-muted gt-settings-note">Create lists and add titles with the bookmark on movie, season, and episode screens.</p>' +
     '<div id="watchlists-settings-list" class="settings-watchlists-list"></div>';
+
+  var createRow = createSettingsActionRow({
+    label: 'Create watchlist',
+    hint: 'New',
+    onSelect: function () {
+      openTextInputModal({
+        title: 'New watchlist name',
+        defaultValue: 'Watchlist',
+        returnFocus: createRow,
+        onConfirm: function (name) {
+          if (!name || !name.trim()) return;
+          createWatchlist(user, name.trim());
+          refreshList();
+        }
+      });
+    }
+  });
+  container.insertBefore(createRow, container.querySelector('#watchlists-settings-list'));
 
   function refreshList() {
     var listEl = document.getElementById('watchlists-settings-list');
@@ -617,136 +784,7 @@ function renderWatchlistsSettings(container, user, navigate) {
     });
   }
 
-  document.getElementById('btn-create-watchlist').addEventListener('click', function () {
-    var triggerBtn = document.getElementById('btn-create-watchlist');
-    openTextInputModal({
-      title: 'New watchlist name',
-      defaultValue: 'Watchlist',
-      returnFocus: triggerBtn,
-      onConfirm: function (name) {
-        if (!name || !name.trim()) return;
-        createWatchlist(user, name.trim());
-        refreshList();
-      }
-    });
-  });
-
   refreshList();
-}
-
-function renderDeveloperSettings(container) {
-  function currentUrl() {
-    return getLogSinkUrl() || '';
-  }
-
-  function renderContent() {
-    var url = currentUrl();
-    container.innerHTML =
-      '<p class="settings-muted">Remote log sink: POSTs structured JSON logs to a receiver on your dev machine (port 8765).</p>' +
-      '<div class="settings-row" id="dev-sink-row">' +
-      '<label>Remote log sink</label>' +
-      '<span id="dev-sink-url-display" style="font-size:var(--font-meta);color:var(--text-secondary);text-align:right;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
-      escapeHtml(url || 'Not set') + '</span>' +
-      '</div>' +
-      '<div class="settings-row">' +
-      '<label>Sink URL</label>' +
-      '<div style="display:flex;gap:var(--space-3);">' +
-      '<button type="button" class="btn" id="btn-dev-set-url" tabindex="0">Set URL</button>' +
-      '<button type="button" class="btn" id="btn-dev-clear-url" tabindex="0">Clear</button>' +
-      '<button type="button" class="btn" id="btn-dev-test-url" tabindex="0">Test</button>' +
-      '<span id="dev-test-status" style="align-self:center;font-size:var(--font-meta);color:var(--text-secondary);min-width:60px;"></span>' +
-      '</div>' +
-      '</div>';
-
-    var urlDisplay = document.getElementById('dev-sink-url-display');
-    var testStatus = document.getElementById('dev-test-status');
-
-    document.getElementById('btn-dev-set-url').addEventListener('click', function () {
-      var btn = document.getElementById('btn-dev-set-url');
-      openTextInputModal({
-        title: 'Remote log sink URL',
-        defaultValue: currentUrl(),
-        returnFocus: btn,
-        onConfirm: function (val) {
-          setLogSinkUrl(val.trim() || null);
-          if (urlDisplay) urlDisplay.textContent = getLogSinkUrl() || 'Not set';
-        }
-      });
-    });
-
-    document.getElementById('btn-dev-clear-url').addEventListener('click', function () {
-      setLogSinkUrl(null);
-      if (urlDisplay) urlDisplay.textContent = 'Not set';
-      if (testStatus) testStatus.textContent = '';
-    });
-
-    document.getElementById('btn-dev-test-url').addEventListener('click', function () {
-      var url = getLogSinkUrl();
-      if (!url) {
-        if (testStatus) {
-          testStatus.textContent = 'No URL set';
-          testStatus.style.color = 'var(--text-secondary)';
-        }
-        return;
-      }
-      if (testStatus) {
-        testStatus.textContent = 'Sending…';
-        testStatus.style.color = 'var(--text-secondary)';
-      }
-      var payload;
-      try {
-        payload = JSON.stringify({
-          level: 'log',
-          tag: 'test',
-          message: 'ping from Plax settings',
-          ts: new Date().toISOString()
-        });
-      } catch (e) {
-        if (testStatus) {
-          testStatus.textContent = 'Failed ✗';
-          testStatus.style.color = 'var(--error, #e74c3c)';
-        }
-        return;
-      }
-      try {
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', url, true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.onload = function () {
-          if (testStatus) {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              testStatus.textContent = 'Sent ✓';
-              testStatus.style.color = 'var(--accent, #f0b533)';
-            } else {
-              testStatus.textContent = 'Failed ✗ (' + xhr.status + ')';
-              testStatus.style.color = 'var(--error, #e74c3c)';
-            }
-          }
-        };
-        xhr.onerror = function () {
-          if (testStatus) {
-            testStatus.textContent = 'Failed ✗';
-            testStatus.style.color = 'var(--error, #e74c3c)';
-          }
-        };
-        xhr.ontimeout = function () {
-          if (testStatus) {
-            testStatus.textContent = 'Timeout ✗';
-            testStatus.style.color = 'var(--error, #e74c3c)';
-          }
-        };
-        xhr.timeout = 5000;
-        xhr.send(payload);
-      } catch (e) {
-        if (testStatus) {
-          testStatus.textContent = 'Failed ✗';
-          testStatus.style.color = 'var(--error, #e74c3c)';
-        }
-      }
-    });
-  }
-
-  renderContent();
 }
 
 export { settingsScreen };
