@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="dist/flow-harness.css">
+  <style>html,body{margin:0;background:#131314}#root{min-height:1080px}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="dist/flow-harness.js"></script>
+  <script>
+    var p = new URLSearchParams(location.search);
+    var s = p.get('screen') || 'home';
+    document.documentElement.classList.add('caps-motion');
+    (function go(){ if (window.renderScreen) window.renderScreen(s); else setTimeout(go, 30); })();
+  </script>
+</body>
+</html>

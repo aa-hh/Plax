@@ -951,6 +951,14 @@ re-versioned (refresh the node-id index), or the Android TV guidelines restructu
 Referenced by the root and `src/styles` / `src/ui` `AGENTS.md` Design Decision
 Protocol sections, and by the `.claude/hooks/design-protocol*.sh` hooks.
 
+### Living user-flow reference
+
+**Figma:** https://www.figma.com/design/WI3ps729HoHyWQKfEG3XSH/XPlay-%E2%80%94-App-User-Flow-Reference  
+**Inventory + update instructions:** `docs/design-system/user-flow.md`  
+**Thumbnails:** `docs/design-system/flow/thumbnails/*.png` (rendered by the harness in `docs/design-system/flow/harness/`)
+
+When a flow or screen changes: re-render the matching screen(s) via the harness → upload the new PNG to the matching Figma `img` node (node IDs in `user-flow.md`) → update arrows/labels if the transition changed.
+
 **⚠️ This file is untracked-prone — commit it.** It has been lost twice to branch
 operations while uncommitted (2026-06-19 reduced to one entry; reconciled back
 2026-06-20 from four divergent worktrees). Commit registry + `AGENTS.md` + `.claude/`
