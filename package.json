@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test",
+    "test": "npm run lint && node --test",
+    "lint": "eslint \"src/**/*.js\"",
     "build": "rollup -c build/rollup.config.js",
     "watch": "rollup -c build/rollup.config.js -w",
     "package": "npm run build && node scripts/package-ipk.cjs",
@@ -35,6 +36,8 @@
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^1.0.0",
     "@webos-tools/cli": "3.2.4",
+    "eslint": "^9.39.4",
+    "globals": "^17.7.0",
     "rollup": "^4.12.0",
     "rollup-plugin-copy": "^3.5.0",
     "rollup-plugin-postcss": "^4.0.2"
