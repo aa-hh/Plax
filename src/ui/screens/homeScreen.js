@@ -200,7 +200,7 @@ function homeScreen(root, params, navigate) {
           ilHeroTimer = null;
           if (destroyed || tok !== ilHeroToken) return;
           ilUpdateHero(card && card._plaxItem);
-        }, 220);
+        }, 420);
       }
     }
 
