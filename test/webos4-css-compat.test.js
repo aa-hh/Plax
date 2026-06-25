@@ -139,6 +139,18 @@ test('webOS 4 CSS: profile picker margins avoid calc division', function () {
   assert.match(cssSrc, /\.profile-picker-row \.profile-card[\s\S]*margin:\s*12px/);
 });
 
+test('webOS 4 CSS: episode-v2 panel is content-sized not flex:1 (Chrome53 column-flex compression guard)', function () {
+  // Chrome53 bug: a flex:1 child of a column-flex overflow-y:auto container
+  // causes its rows to overlap on the B8 — the scroll never fires because the
+  // panel tries to grow to exactly the viewport height, compressing/overlapping
+  // its children. Fix: flex:0 0 auto so the panel is content-sized and the
+  // outer overflow-y:auto creates the scrollbar. See webos4-flex-column-compression.md.
+  var block = firstRule('.detail-episode-v2-panel');
+  assert.doesNotMatch(block, /^\s*flex:\s*1(\s|;|$)/m, '.detail-episode-v2-panel must not use flex:1 (Chrome53 column-flex compression)');
+  assert.match(block, /flex:\s*0\s+0\s+auto/, '.detail-episode-v2-panel must use flex:0 0 auto');
+  assert.match(block, /width:\s*100%/, '.detail-episode-v2-panel must have width:100% (fills scroll container)');
+});
+
 test('webOS 4 CSS: positioning overlays use explicit edges not inset', function () {
   ['.loading-overlay', '.detail-modal', '.player-track-modal', '.poster-loading-overlay'].forEach(function (sel) {
     var block = firstRule(sel);

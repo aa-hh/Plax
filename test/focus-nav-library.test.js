@@ -256,7 +256,11 @@ function buildOverlayRailFixture() {
   return { screen: screen, grid: grid, COLX: COLX };
 }
 
-test('stale focusable cache after a grid rebuild traps DOWN on the sidebar', function () {
+test('stale focusable cache: DOWN from content is blocked, never jumps to sidebar', function () {
+  // Previously the sidebar (hub-settings at Y=900) was the only candidate in a
+  // stale cache for DOWN from the bottom grid row, so focus wrongly jumped there.
+  // Fix: spatialMove filters sidebar items from Up/Down candidates when focus is
+  // in content; handleKeyNav also eats the key so the platform nav can't fire.
   installMinimalDom();
   invalidateFocusableCache();
   var fx = buildOverlayRailFixture();
@@ -273,11 +277,12 @@ test('stale focusable cache after a grid rebuild traps DOWN on the sidebar', fun
   fx.grid.appendChild(below);
 
   fx.screen.querySelector('#card-7').focus();
-  handleKeyNav(fx.screen, keyEvent(ARROW_DOWN));
-  assert.equal(
-    document.activeElement.id, 'hub-settings',
-    'stale cache: DOWN wrongly falls through to the bottom rail item'
-  );
+  // DOWN with stale cache: sidebar is filtered, no valid content candidate below →
+  // handleKeyNav returns false (key is eaten), focus stays on card-7.
+  var moved = handleKeyNav(fx.screen, keyEvent(ARROW_DOWN));
+  assert.equal(moved, false, 'stale-cache DOWN returns false (no candidate in content)');
+  assert.equal(document.activeElement.id, 'card-7', 'focus must not jump to sidebar');
+  assert.notEqual(document.activeElement.id, 'hub-settings', 'sidebar must never be reached via DOWN');
 });
 
 test('invalidating the cache after a rebuild restores DOWN into the grid (and RIGHT back out of the rail)', function () {

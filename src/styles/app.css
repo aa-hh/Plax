@@ -151,6 +151,7 @@
   --drawer-actions-w: 268px;    /* kit dialog Actions column */
   --provider-card-w: 420px;
   --provider-card-media-h: 200px;
+  --server-card-w: 240px;        /* server-picker square card (logo tile + caption) */
   --login-fields-w: 560px;
   --search-input-max-w: 980px;
   --settings-content-max-w: 880px;
@@ -1468,9 +1469,13 @@ html.caps-motion .detail-watchlist-btn:focus {
    over a single Label Medium support line (year for films, "N Seasons" for shows).
    Title Medium = Roboto Medium 16/24 +0.15px (node 8661:31904); Label Medium =
    Roboto Medium, on-surface-variant. Tighter top gap than rails — poster-only home
-   rails hide text, but the browse grid leads with the caption. */
+   rails hide text, but the browse grid leads with the caption.
+   position:relative + z-index:1 brings the text above the caps-motion-scaled poster
+   wrap (transform creates a compositing layer that otherwise paints over siblings). */
 .media-grid .card-text {
   margin-top: var(--space-4);
+  position: relative;
+  z-index: 1;
 }
 
 .media-grid .card-title {
@@ -1517,47 +1522,35 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 }
 
 /* ── Google TV redesign — Home (sidebar drawer + rails) ──────────────────── */
-/* App mark at the top of the nav drawer */
+/* Plax logo at the top of the nav drawer. Full "plax" wordmark when the rail
+   has room (peek/expanded); compact "x" mark when collapsed icon-only. Letters
+   inherit `color` (white on this dark surface); the x keeps its brand gradient. */
 .browsing-hub-brand {
   display: flex;
   align-items: center;
   min-height: var(--target-min);
   padding: var(--space-2) 16px;
   margin-bottom: var(--space-4);
+  color: var(--gt-text);
 }
 .browsing-hub-brand__mark {
-  position: relative;
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
-  background: var(--gt-primary);
 }
-.browsing-hub-brand__mark::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  margin: -8px 0 0 -5px;
-  border-style: solid;
-  border-width: 8px 0 8px 13px;
-  border-color: transparent transparent transparent var(--gt-on-primary);
-}
-.browsing-hub-brand__name {
-  margin-left: var(--space-4);
-  font-size: var(--gt-headline);
-  font-weight: var(--gt-weight-medium);
-  color: var(--gt-text);
-  white-space: nowrap;
-}
-/* Collapsed rail: hide brand name, center the mark */
+.browsing-hub-brand__mark svg { display: block; width: 100%; height: 100%; }
+/* Full wordmark hidden until the rail expands (mirrors nav-item label reveal) */
+.browsing-hub-brand__wordmark { display: none; margin-left: 2px; }
+.browsing-hub-brand__wordmark svg { display: block; width: auto; height: 30px; }
+.browsing-hub-nav-host--peek .browsing-hub-brand__wordmark,
+.browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark { display: block; }
+.browsing-hub-nav-host--peek .browsing-hub-brand__mark,
+.browsing-hub-nav-host--expanded .browsing-hub-brand__mark { display: none; }
+/* Collapsed rail: center the compact mark */
 .browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand {
   justify-content: center;
   padding-left: 14px;
   padding-right: 14px;
-}
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand__name {
-  display: none;
 }
 /* Pin the System (settings) section to the bottom of the drawer */
 .browsing-hub-nav-host > .browsing-hub-section--system {
@@ -2437,10 +2430,12 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .detail-episode-v2-panel {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+  /* flex:0 0 auto (was flex:1): Chrome53 column-flex compression bug — a flex:1
+     child of a column-flex overflow scroll container causes its rows to overlap
+     on the B8. Content-size the panel so the outer overflow-y:auto handles scroll. */
+  flex: 0 0 auto;
   min-width: 0;
+  width: 100%;
 }
 
 .detail-episode-v2-panel > * + * {
@@ -2450,6 +2445,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-episode-v2-art-wrap {
   position: relative;
   align-self: flex-start;
+  flex-shrink: 0; /* guard: never compress the still thumbnail on Chrome53 */
   width: 360px;
   max-width: 50%;
   border-radius: var(--radius-md);
@@ -5687,7 +5683,16 @@ html.caps-motion .gt-list-item:focus {
   box-shadow: var(--focus-shadow);
   outline: none;
 }
-.provider-card:focus .provider-card__media { filter: brightness(1.25); }
+/* On focus: deepen the brand gradient so the media area reads as "active" without
+   the brightness(1.25) filter that was brightening the gradient background to
+   near-logo-color and reducing SVG logo contrast (Plex gold-on-gold,
+   Jellyfin gradient-on-gradient). Ring + deeper gradient = clear focus cue. */
+.provider-card[data-brand="plex"]:focus .provider-card__media {
+  background: radial-gradient(120% 140% at 50% 25%, rgba(229, 160, 13, 0.30), rgba(229, 160, 13, 0.08) 70%);
+}
+.provider-card[data-brand="jellyfin"]:focus .provider-card__media {
+  background: radial-gradient(120% 140% at 50% 25%, rgba(123, 92, 230, 0.34), rgba(0, 164, 220, 0.12) 70%);
+}
 .provider-card:focus .provider-card__desc { color: var(--text-primary); }
 
 /* ── Jellyfin login (server URL → Quick Connect / password) ──────────────────
@@ -5748,3 +5753,91 @@ html.caps-motion .gt-list-item:focus {
 .pairing-actions { display: flex; justify-content: center; }
 /* button spacing as margin (flex `gap` no-op on Chromium 53) */
 .pairing-actions > * + * { margin-left: var(--space-4); }
+
+/* ── Server picker (cross-provider: choose a saved Plex/Jellyfin link) ───────
+   A CARD grid (mirrors the provider/profile pickers): one square card per saved
+   link (brand logo media + caption) + an "Add a new server" card (outlined
+   circle + plus). Forget lives only in Settings. Cards focus like profile cards:
+   ring + scale on the MEDIA tile + blue label (NOT the light-fill control
+   treatment). Reached at launch and from Settings → Switch server (Back button).
+   margin-based gaps (flex `gap` no-op on Chromium 53). */
+.server-card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  margin: var(--space-6) -12px 0;   /* -12 cancels the per-card 12px ring/scale inset */
+  max-width: calc(4 * (var(--server-card-w) + 24px));   /* up to 4 cards/row */
+}
+.server-picker-back { margin-top: var(--space-7); }
+
+.server-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: var(--server-card-w);
+  margin: 12px;
+  padding: 0;
+  background: transparent;          /* the card chrome lives on the media tile */
+  border: 0;
+  border-radius: 0;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Square brand tile — the focus target (ring + scale), like .profile-card-avatar. */
+.server-card__media {
+  position: relative;
+  width: 100%;
+  height: var(--server-card-w);     /* 1:1 square */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  border: var(--focus-w) solid transparent;   /* holds the ring footprint, no reflow */
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.server-card[data-brand="plex"] .server-card__media {
+  background: radial-gradient(120% 140% at 50% 30%, rgba(229, 160, 13, 0.18), rgba(229, 160, 13, 0.04) 70%);
+  color: var(--text-primary);       /* Plex wordmark letters = currentColor */
+}
+.server-card[data-brand="jellyfin"] .server-card__media {
+  background: radial-gradient(120% 140% at 50% 30%, rgba(123, 92, 230, 0.20), rgba(0, 164, 220, 0.06) 70%);
+}
+.server-card__logo { width: 62%; height: auto; max-height: 56%; }
+
+/* "Add a new server": empty surface tile, outlined circle + plus, muted at rest. */
+.server-card--add .server-card__media {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+.server-card__glyph { width: 40%; height: 40%; }
+
+.server-card__label {
+  margin-top: var(--space-3);
+  font-size: var(--font-body);
+  color: var(--text-secondary);
+  font-weight: var(--gt-weight-label);
+  letter-spacing: var(--gt-ls-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.18s ease;
+}
+
+/* FOCUS = BLUE ring + scale on the media tile + blue label (profile-card model). */
+.server-card:focus { outline: none; }
+.server-card:focus .server-card__media {
+  border-color: var(--accent);
+  box-shadow: var(--focus-shadow);
+}
+.server-card:focus .server-card__label { color: var(--accent); }
+.server-card--add:focus .server-card__media { color: var(--accent); }
+html.caps-motion .server-card__media {
+  transition: transform var(--focus-motion-dur) ease, border-color 0.12s ease;
+}
+html.caps-motion .server-card:focus .server-card__media {
+  transform: scale(var(--gt-focus-scale-med));
+}

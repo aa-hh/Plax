@@ -148,6 +148,12 @@ function isPlayerSeekBar(el) {
   return !!(el && el.classList && el.classList.contains('player-seek-bar'));
 }
 
+// Is el inside the sidebar (browsing-hub-nav-host)?
+// Used to block vertical D-pad from jumping across the sidebar/content boundary.
+function isInSideNav(el) {
+  return !!(el && el.closest && el.closest('.browsing-hub-nav-host'));
+}
+
 // The geometric move: nearest focusable in the pressed direction.
 function spatialMove(container, key) {
   var active = document.activeElement;
@@ -158,6 +164,7 @@ function spatialMove(container, key) {
   var aRect = rectOf(active);
   if (!aRect) return null;
 
+  var activeSideNav = isInSideNav(active);
   var list = getFocusables(container);
   var best = null;
   var bestScore = Infinity;
@@ -167,6 +174,11 @@ function spatialMove(container, key) {
     var cRect = rectOf(c);
     if (!cRect) continue;
     if (!strictlyInDirection(aRect, cRect, key)) continue;
+    // Up/Down never crosses the sidebar/content boundary — sidebar is only
+    // reachable via Left. Without this, the sidebar wins when no content
+    // candidate exists above/below the focused element (e.g. at the top of
+    // a scrolled detail screen), scoring just 10k penalty over 0 penalty.
+    if ((key === ARROW_UP || key === ARROW_DOWN) && isInSideNav(c) !== activeSideNav) continue;
     var score = scoreCandidate(aRect, cRect, key);
     if (score < bestScore) { bestScore = score; best = c; }
   }
@@ -177,7 +189,15 @@ function handleKeyNav(container, e) {
   var key = e.keyCode;
   if ([ARROW_LEFT, ARROW_UP, ARROW_RIGHT, ARROW_DOWN].indexOf(key) < 0) return false;
   var target = spatialMove(container, key);
-  if (!target) return false;
+  if (!target) {
+    // Vertical key with no candidate: if focus is in the main content (not
+    // the sidebar), eat the event so the webOS platform navigator can't
+    // jump laterally to the sidebar when the user is at the content boundary.
+    if ((key === ARROW_UP || key === ARROW_DOWN) && !isInSideNav(document.activeElement)) {
+      e.preventDefault();
+    }
+    return false;
+  }
   e.preventDefault();
   target.focus();
   scrollFocusedIntoView(target);
