@@ -13,7 +13,10 @@ var path = require('path');
 var os = require('os');
 
 var DEFAULT_PORT = 8765;
-var HOST = '0.0.0.0';
+// Dev-only LAN log sink: the TV is a separate device, so by default we must
+// listen on all interfaces for it to POST in. Override with LOG_RECEIVER_HOST
+// (e.g. a specific LAN IP) to narrow the exposure on untrusted networks.
+var HOST = process.env.LOG_RECEIVER_HOST || '0.0.0.0';
 var LOG_DIR = path.join(__dirname, '..', 'logs');
 var LOG_FILE = path.join(LOG_DIR, 'tv.log');
 

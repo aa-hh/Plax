@@ -36,6 +36,7 @@ export default {
     copy({
       targets: [
         { src: 'index.html', dest: 'dist' },
+        { src: 'early-errors.js', dest: 'dist' },
         { src: 'appinfo.json', dest: 'dist' },
         { src: 'assets/**/*', dest: 'dist/assets' },
         { src: 'node_modules/webostvjs/webOSTV.js', dest: 'dist' }

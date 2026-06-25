@@ -33,6 +33,164 @@ var ARROW_UP = 38;
 var ARROW_RIGHT = 39;
 var ARROW_DOWN = 40;
 
+// ── Native text-input keyboard ownership ────────────────────────────────────
+// When a live <input>/<textarea> is the active field, the webOS on-screen
+// keyboard's editing keys must act on the FIELD, not the app: Left/Right move
+// the cursor and Back/Backspace deletes a character. Two things otherwise
+// hijack them — the geometric d-pad engine below (arrows → move focus) and the
+// router's global Back handler (461/Backspace → navigate back). Both listen on
+// `document`, so a single capture-phase listener on `window` (which runs first
+// in the capture path) can claim these keys and stopImmediatePropagation so
+// neither downstream handler sees them. Up/Down/Enter/Esc are intentionally
+// left to flow through, so the user can still leave the field and submit.
+// (The modal text inputs solve this with their own scoped handler; this is the
+// equivalent for native inputs that live inside the focus nav, e.g. search.)
+var KEY_BACKSPACE = 8;
+var KEY_BACK = 461;
+var EDITABLE_INPUT_TYPES = {
+  text: 1, search: 1, url: 1, tel: 1, email: 1, password: 1, number: 1, '': 1
+};
+
+function isEditableTextInput(el) {
+  if (!el || el.nodeType !== 1) return false;
+  if (el.isContentEditable) return true;
+  var tag = el.tagName;
+  if (tag === 'TEXTAREA') return true;
+  if (tag !== 'INPUT') return false;
+  return !!EDITABLE_INPUT_TYPES[(el.getAttribute('type') || '').toLowerCase()];
+}
+
+// The field that owns keyboard input. Tracked rather than read live from
+// document.activeElement because the webOS keyboard can pull DOM focus onto
+// <body> while it is open — we must keep editing the field in that window.
+var activeEditable = null;
+
+function editTarget() {
+  if (isEditableTextInput(document.activeElement)) return document.activeElement;
+  // Keyboard-stole-focus case: only honour the tracked field while focus has
+  // genuinely collapsed (to body/null), never when a real nav element is
+  // focused — otherwise a Backspace on a card would edit the search box.
+  var a = document.activeElement;
+  var collapsed = !a || a === document.body;
+  if (collapsed && activeEditable && document.contains(activeEditable)) return activeEditable;
+  return null;
+}
+
+function moveInputCursor(el, delta) {
+  try {
+    var pos = (el.selectionStart == null ? el.value.length : el.selectionStart) + delta;
+    pos = Math.max(0, Math.min(pos, el.value.length));
+    el.setSelectionRange(pos, pos);
+  } catch (e) { /* some input types reject selection APIs — ignore */ }
+}
+
+function deleteInputChar(el) {
+  var v = el.value;
+  var s, end;
+  try { s = el.selectionStart; end = el.selectionEnd; }
+  catch (e) { s = end = v.length; }
+  if (s == null) { s = end = v.length; }
+  if (s !== end) {
+    el.value = v.slice(0, s) + v.slice(end);
+    try { el.setSelectionRange(s, s); } catch (e) {}
+  } else if (s > 0) {
+    el.value = v.slice(0, s - 1) + v.slice(s);
+    try { el.setSelectionRange(s - 1, s - 1); } catch (e) {}
+  } else {
+    return; // nothing to delete; let the key fall through (e.g. Back navigates)
+  }
+  // Programmatic value changes don't fire 'input' — dispatch so live search and
+  // any other input listeners stay in sync.
+  try { el.dispatchEvent(new Event('input', { bubbles: true })); }
+  catch (e) {
+    var ev = document.createEvent('Event');
+    ev.initEvent('input', true, false);
+    el.dispatchEvent(ev);
+  }
+}
+
+// Build a keydown event that reliably carries keyCode/which 13 on Chrome 53.
+// The KeyboardEvent constructor and initKeyboardEvent both leave keyCode at 0
+// on that engine, so force the legacy fields with defineProperty — element
+// handlers (e.g. searchScreen) gate on `e.keyCode === 13`.
+function makeEnterKeydown() {
+  var ev;
+  try { ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }); }
+  catch (err) {
+    ev = document.createEvent('Event');
+    ev.initEvent('keydown', true, true);
+  }
+  try {
+    Object.defineProperty(ev, 'keyCode', { value: 13, configurable: true });
+    Object.defineProperty(ev, 'which', { value: 13, configurable: true });
+    if (ev.key !== 'Enter') Object.defineProperty(ev, 'key', { value: 'Enter', configurable: true });
+  } catch (err2) { /* read-only on some engines — key string still set above */ }
+  ev.__syntheticEnter = true;
+  return ev;
+}
+
+function onEditableKeydown(e) {
+  // Never re-process our own synthetic Enter (prevents any dispatch loop).
+  if (e.__syntheticEnter) return;
+  var el = editTarget();
+  if (!el) return;
+  var code = e.keyCode || e.which;
+  var k = e.key; // some webOS events carry only the key string, keyCode 0
+  var isLeft = code === ARROW_LEFT || k === 'ArrowLeft' || k === 'Left';
+  var isRight = code === ARROW_RIGHT || k === 'ArrowRight' || k === 'Right';
+  // The router treats both keyCode 461 and key 'Backspace'/'GoBack' as Back, so
+  // the guard must claim the same signals to win the delete.
+  var isDelete = code === KEY_BACK || code === KEY_BACKSPACE ||
+    k === 'Backspace' || k === 'Delete' || k === 'GoBack';
+  if (isLeft) {
+    e.preventDefault(); e.stopImmediatePropagation(); moveInputCursor(el, -1); return;
+  }
+  if (isRight) {
+    e.preventDefault(); e.stopImmediatePropagation(); moveInputCursor(el, 1); return;
+  }
+  if (isDelete) {
+    // Only swallow when there is actually something to delete; an empty field
+    // lets Back bubble through so the user can still leave the screen.
+    var v = el.value, s;
+    try { s = el.selectionStart; } catch (err) { s = v.length; }
+    if (v && (s == null || s > 0 || el.selectionStart !== el.selectionEnd)) {
+      e.preventDefault(); e.stopImmediatePropagation(); deleteInputChar(el); return;
+    }
+  }
+  // Enter — only intervene in the focus-stolen case (webOS keyboard pulled focus
+  // to <body>). When the field truly owns DOM focus its own element-level keydown
+  // handler fires normally; dispatching again would double-submit. When focus is
+  // on <body> the element handler never fires, so we re-dispatch a synthetic
+  // keydown(13) to the tracked field so screen-level handlers (e.g. searchScreen)
+  // pick it up as if the element had focus.
+  var isEnter = code === 13 || k === 'Enter';
+  if (isEnter) {
+    var a = document.activeElement;
+    var focusStolen = !a || a === document.body;
+    if (focusStolen && el === activeEditable) {
+      // Claim the event so it doesn't also reach nav/router as an OK press.
+      e.preventDefault(); e.stopImmediatePropagation();
+      el.dispatchEvent(makeEnterKeydown());
+      return;
+    }
+    // Field genuinely holds focus — let the event flow to its own element handler.
+    return;
+  }
+  // Up/Down/Esc and everything else fall through to nav + router.
+}
+
+function onEditableFocusIn(e) {
+  var t = e.target;
+  if (isEditableTextInput(t)) { activeEditable = t; return; }
+  // A real (non-body) element took focus → we've left the field.
+  if (t && t.nodeType === 1 && t !== document.body) activeEditable = null;
+}
+
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('keydown', onEditableKeydown, true);
+  document.addEventListener('focusin', onEditableFocusIn, true);
+}
+
 // --- Spatial scoring constants (tune on-device) -------------------------------
 // Cross-axis offset is penalised much harder than primary-axis distance so a
 // grid moves straight up/down and a row moves straight left/right instead of

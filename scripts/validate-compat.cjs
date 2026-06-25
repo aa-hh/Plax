@@ -43,6 +43,23 @@ check('has_subtitle_offset', code.indexOf('subtitleOffset') >= 0, 'missing subti
 check('single_video_element', (indexHtml.match(/<video/g) || []).length === 1, 'LG spec: only one video element in index.html');
 check('splash_screen', indexHtml.indexOf('splash-screen') >= 0, 'missing splash screen in index.html');
 check('loading_overlay', indexHtml.indexOf('loading-overlay') >= 0, 'missing loading overlay in index.html');
+
+/* Content-Security-Policy hardening (security review): keep the strict policy
+   and the externalized error shim from silently regressing. The XSS backstop
+   relies on `script-src 'self'` WITHOUT 'unsafe-inline'. */
+var cspTag = indexHtml.match(/<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/i);
+var cspContent = cspTag && (cspTag[0].match(/content="([^"]*)"/i) || cspTag[0].match(/content='([^']*)'/i));
+var csp = cspContent ? cspContent[1] : '';
+var scriptSrc = (csp.match(/script-src([^;]*)/) || [])[1] || '';
+check('csp_present', !!csp, 'index.html missing Content-Security-Policy meta tag');
+check('csp_script_src_self', /'self'/.test(scriptSrc), "CSP script-src must include 'self'");
+check('csp_no_unsafe_inline_script', !!csp && !/'unsafe-inline'/.test(scriptSrc),
+  "CSP script-src must not allow 'unsafe-inline' (defeats the DOM-XSS backstop)");
+check('early_errors_external',
+  fs.existsSync(path.join(distDir, 'early-errors.js')) && indexHtml.indexOf('early-errors.js') >= 0,
+  'early-errors.js must be external (in dist) and referenced by index.html');
+check('no_inline_script', !/<script(?![^>]*\bsrc=)[^>]*>/i.test(indexHtml),
+  'index.html must not contain an inline <script> (blocked by CSP script-src \'self\')');
 check('bitrate_probe', code.indexOf('bitrateCheck') >= 0, 'missing bitrate direct-play probe');
 check('hls_fallback', code.indexOf('transcodeProtocol') >= 0, 'missing HLS/HTTP transcode fallback');
 

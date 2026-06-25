@@ -334,7 +334,13 @@ function homeScreen(root, params, navigate) {
     }).catch(function (err) {
       if (destroyed || token !== renderToken) return;
       var el = document.getElementById('home-feed');
-      if (el) el.innerHTML = '<p class="status-msg">Could not load home: ' + err.message + '</p>';
+      if (el) {
+        el.innerHTML = '';
+        var msg = document.createElement('p');
+        msg.className = 'status-msg';
+        msg.textContent = 'Could not load home: ' + (err && err.message ? err.message : 'unknown error');
+        el.appendChild(msg);
+      }
     });
   }
 
