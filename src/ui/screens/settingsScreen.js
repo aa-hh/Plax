@@ -1,5 +1,5 @@
 import { getState, setState } from '../../core/store.js';
-import { clearAuth, getOwnerAuthToken } from '../../core/storage.js';
+import { getOwnerAuthToken, getSavedLinks, removeSavedLink, clearActiveSession } from '../../core/storage.js';
 import { renderNetworkSettings } from '../../settings/networkSettings.js';
 import { renderPlaybackSettings } from '../../settings/playbackSettings.js';
 import { fetchHomeUsers } from '../../plex/users/homeUsers.js';
@@ -226,7 +226,7 @@ function settingsScreen(root, params, navigate) {
     '<div id="developer-section"></div>' +
     '<div class="settings-actions detail-actions">' +
     '<button class="btn" id="btn-back" tabindex="0">Back</button>' +
-    '<button class="btn" id="btn-signout" tabindex="0">Sign out</button>' +
+    '<button class="btn" id="btn-forget-server" tabindex="0">Forget server</button>' +
     '</div>' +
     '</div></div></div>';
 
@@ -254,10 +254,18 @@ function settingsScreen(root, params, navigate) {
     '<span id="account-user-name"></span></div>' +
     '<div class="settings-row settings-row--info"><label>Server</label>' +
     '<span id="account-server-name"></span></div>' +
+    '<div class="settings-row"><label>Switch server</label>' +
+    '<button class="btn" id="btn-switch-server" tabindex="0">Choose server</button></div>' +
     '<div class="settings-row settings-row--info"><label>Client ID</label>' +
     '<span>' + truncateId(state.clientId) + '</span></div>' +
     '<div class="settings-row settings-row--info"><label>App version</label>' +
     '<span>' + escapeHtml(VERSION + buildStampLabel()) + '</span></div>';
+
+  // Switch server → cross-provider saved-link picker (non-destructive: keeps every
+  // saved Plex/Jellyfin link; just jumps the active session to another one).
+  document.getElementById('btn-switch-server').addEventListener('click', function () {
+    navigate('server-picker', { _from: 'settings' });
+  });
 
   var accountUserEl = document.getElementById('account-user-name');
   if (accountUserEl) {
@@ -505,8 +513,17 @@ function settingsScreen(root, params, navigate) {
     });
   }
 
-  document.getElementById('btn-signout').addEventListener('click', function () {
-    clearAuth();
+  // Forget server: remove ONLY the current link (the others are never deleted),
+  // clear the active session, and route to whatever remains — the saved-link
+  // picker if other links exist, else the provider picker to link a new one.
+  document.getElementById('btn-forget-server').addEventListener('click', function () {
+    var cur = getState();
+    var currentLinkId = cur.provider === 'jellyfin'
+      ? 'jf:' + ((cur.activeServer && (cur.activeServer.id || cur.activeServer.url)) ||
+                 (cur.jellyfinServer && (cur.jellyfinServer.id || cur.jellyfinServer.url)) || '')
+      : 'plex:' + cur.clientId;
+    removeSavedLink(currentLinkId);
+    clearActiveSession();
     cache.invalidateAll();
     invalidateRetention();
     setState({
@@ -519,9 +536,11 @@ function settingsScreen(root, params, navigate) {
       activeServer: null,
       libraries: []
     });
-    // Multi-backend: signing out clears the chosen provider, so return to the
-    // provider picker (not Plex pairing) — they can re-pick Plex or Jellyfin.
-    navigate('provider-picker', {});
+    if (getSavedLinks().length > 0) {
+      navigate('server-picker', {});
+    } else {
+      navigate('provider-picker', {});
+    }
   });
 
   // Land focus on the first settings control (top-leftmost), not the sidebar

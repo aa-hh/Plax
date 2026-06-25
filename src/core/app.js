@@ -32,6 +32,7 @@ import { watchlistScreen } from '../ui/screens/watchlistScreen.js';
 import { providerPickerScreen } from '../ui/screens/providerPickerScreen.js';
 import { jellyfinLoginScreen } from '../ui/screens/jellyfinLoginScreen.js';
 import { jellyfinUserPickerScreen } from '../ui/screens/jellyfinUserPickerScreen.js';
+import { serverPickerScreen } from '../ui/screens/serverPickerScreen.js';
 
 /**
  * One-shot boot diagnostic settling the webOS engine question: dumps the UA,
@@ -85,6 +86,7 @@ function startApp(platformMajor) {
   });
   register('profile-picker', profilePickerScreen);
   register('jellyfin-users', jellyfinUserPickerScreen);
+  register('server-picker', serverPickerScreen);
   register('home', homeScreen);
   register('library', libraryScreen);
   register('detail', detailScreen);

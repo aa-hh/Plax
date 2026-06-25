@@ -17,23 +17,34 @@ function resolveStartupRoute(persisted, ownerToken) {
   var provider = (persisted && persisted.provider) ||
     (persisted && persisted.authToken ? 'plex' : null);
 
-  // First run: no backend chosen yet → choose Plex or Jellyfin.
+  var savedLinkCount = (persisted && persisted.savedLinks && persisted.savedLinks.length) || 0;
+
+  // First run: no backend chosen yet. If saved links exist (forgot the active
+  // session but kept the saves), offer the cross-provider picker; else the chooser.
   if (!provider) {
+    if (savedLinkCount > 0) {
+      return { route: 'server-picker', params: {}, mark: 'boot:navigate-server-picker' };
+    }
     return { route: 'provider-picker', params: {}, mark: 'boot:navigate-provider-picker' };
   }
 
-  // Backend chosen but not signed in → that backend's auth screen.
+  // Backend chosen but not signed in → saved links (one tap back into any saved
+  // server, Plex or Jellyfin) if present; otherwise that backend's auth screen.
   if (!persisted.authToken) {
+    if (savedLinkCount > 0) {
+      return { route: 'server-picker', params: {}, mark: 'boot:navigate-server-picker' };
+    }
     return { route: 'pairing', params: { provider: provider }, mark: 'boot:navigate-pairing' };
   }
 
-  // Jellyfin has per-user sessions (no owner-proxy). The user picker needs a
-  // configured server — without one (e.g. provider was set to jellyfin but a stale
-  // Plex token lingers, or sign-in never completed), send them to the login to
-  // configure the server, NOT to an empty "who's watching".
+  // Jellyfin (signed in): the user picker needs a configured server. With one →
+  // who's watching. Without → saved links (if any) else the login form.
   if (provider === 'jellyfin') {
     if (persisted.jellyfinServer) {
       return { route: 'jellyfin-users', params: { _from: 'launch' }, mark: 'boot:navigate-jellyfin-users' };
+    }
+    if (savedLinkCount > 0) {
+      return { route: 'server-picker', params: {}, mark: 'boot:navigate-server-picker' };
     }
     return { route: 'pairing', params: { provider: 'jellyfin' }, mark: 'boot:navigate-pairing' };
   }

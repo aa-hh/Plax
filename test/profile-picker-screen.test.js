@@ -198,11 +198,16 @@ test('profile picker: card spacing uses margins not flex gap (webOS 4 safe)', fu
 test('profile picker: PIN pad uses explicit rows (webOS 4 safe)', function () {
   assert.match(screenSrc, /pin-pad-row/);
   assert.match(screenSrc, /row \* 3 \+ col/);
-  assert.match(cssSrc, /\.pin-pad-grid[\s\S]*display:\s*flex/);
-  assert.match(cssSrc, /\.pin-pad-grid[\s\S]*flex-direction:\s*column/);
+  // Scope the layout assertions to the .pin-pad-grid RULE BLOCK (not the whole
+  // file) — a greedy /\.pin-pad-grid[\s\S]*…/ over cssSrc matches any later rule's
+  // flex-wrap/grid (e.g. the server-picker card grid), which is a false positive.
+  var pinGridBlock = cssSrc.match(/\.pin-pad-grid\s*\{[\s\S]*?\}/);
+  assert.ok(pinGridBlock, 'pin-pad-grid rule present');
+  assert.match(pinGridBlock[0], /display:\s*flex/);
+  assert.match(pinGridBlock[0], /flex-direction:\s*column/);
   assert.match(cssSrc, /\.pin-pad-row[\s\S]*flex-wrap:\s*nowrap/);
-  assert.doesNotMatch(cssSrc, /\.pin-pad-grid[\s\S]*flex-wrap:\s*wrap/);
-  assert.doesNotMatch(cssSrc, /\.pin-pad-grid[\s\S]*display:\s*grid/);
+  assert.doesNotMatch(pinGridBlock[0], /flex-wrap:\s*wrap/);
+  assert.doesNotMatch(pinGridBlock[0], /display:\s*grid/);
   assert.match(cssSrc, /\.pin-pad-row > \*[\s\S]*width:\s*84px/);
   assert.match(cssSrc, /\.pin-pad-btn[\s\S]*padding:\s*0/);
 });

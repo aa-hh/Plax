@@ -1,5 +1,5 @@
 import { setState } from '../../core/store.js';
-import { persistAuth, upsertJellyfinSession } from '../../core/storage.js';
+import { persistAuth, upsertJellyfinSession, upsertJellyfinServer } from '../../core/storage.js';
 import { runAppBootstrap } from '../../core/appBootstrap.js';
 import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import { openTextInputModal } from '../components/controls.js';
@@ -18,7 +18,8 @@ import {
  * persists the session and navigates to Home — mirroring pairingScreen.
  */
 function jellyfinLoginScreen(root, params, navigate) {
-  var server = null;        // resolved { url, name, id, version }
+  // If arriving from the server picker, the server is pre-resolved.
+  var server = (params && params.savedServer) || null;
   var username = '';
   var qc = null;            // active Quick Connect controller
   var destroyed = false;
@@ -98,6 +99,11 @@ function jellyfinLoginScreen(root, params, navigate) {
     }
   }
 
+  // Pre-fill URL field if arriving from the server picker with a known server.
+  if (server) {
+    setFieldValue($('jf-url'), server.url, 'http://192.168.1.10:8096');
+  }
+
   // ---- session finalize ----
   function finalize(authResult) {
     if (!authResult || !authResult.AccessToken || !authResult.User) {
@@ -127,6 +133,8 @@ function jellyfinLoginScreen(root, params, navigate) {
       user: user,
       jellyfinServer: { url: server.url, name: server.name, id: server.id, version: server.version }
     });
+    // Persist to the saved-server list (survives sign-out, drives the server picker).
+    upsertJellyfinServer({ url: server.url, name: server.name, id: server.id, version: server.version });
     // Load libraries before Home (mirrors how profilePicker bootstraps for Plex).
     $('jf-subtitle').textContent = 'Loading your library…';
     runAppBootstrap({

@@ -132,6 +132,36 @@ test('startup route sends jellyfin provider with NO server to login (not the emp
   );
 });
 
+test('startup route offers the cross-provider server picker when not signed in but saved links exist', function () {
+  // Forgot the active session (or never finished sign-in) but kept saved links →
+  // one tap back into any saved Plex/Jellyfin server, not a from-scratch pairing.
+  assert.deepEqual(
+    resolveStartupRoute({
+      provider: 'plex', authToken: '',
+      savedLinks: [{ provider: 'jellyfin', id: 'jf:1' }, { provider: 'plex', id: 'plex:abc' }]
+    }, ''),
+    { route: 'server-picker', params: {}, mark: 'boot:navigate-server-picker' }
+  );
+});
+
+test('startup route shows the server picker on a first run that already has saved links', function () {
+  // No provider chosen yet, but the device remembers prior links → pick one.
+  assert.deepEqual(
+    resolveStartupRoute({ authToken: '', savedLinks: [{ provider: 'plex', id: 'plex:abc' }] }, ''),
+    { route: 'server-picker', params: {}, mark: 'boot:navigate-server-picker' }
+  );
+});
+
+test('startup route falls back to the server picker for signed-in jellyfin with no server but saved links', function () {
+  assert.deepEqual(
+    resolveStartupRoute({
+      provider: 'jellyfin', authToken: 'jf-token',
+      savedLinks: [{ provider: 'jellyfin', id: 'jf:1' }]
+    }, ''),
+    { route: 'server-picker', params: {}, mark: 'boot:navigate-server-picker' }
+  );
+});
+
 test('startup route treats a pre-migration Plex token as an implicit plex choice', function () {
   // No provider recorded but a token exists → existing Plex install, not first run.
   assert.deepEqual(

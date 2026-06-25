@@ -1,5 +1,5 @@
 import { getState, setState } from './store.js';
-import { persistAuth } from './storage.js';
+import { persistAuth, upsertPlexLink } from './storage.js';
 import { fetchUser } from '../plex/auth/pinAuth.js';
 import {
   discoverServers,
@@ -90,6 +90,18 @@ function runAppBootstrap(options) {
     var activeServer = pickActiveServer(servers, discovery.profileResources);
     if (!activeServer) throw new Error('No reachable Plex servers');
     setState({ servers: servers, activeServer: activeServer });
+    // Persist the Plex account as a saved link (survives sign-out / forget-server,
+    // drives the cross-provider Switch server picker). Keyed by clientId — one
+    // plex.tv account = one link. We store the ACCOUNT (owner) token so a later
+    // switch-back can re-list Home profiles + servers from plex.tv.
+    var ownerToken = getState().ownerAuthToken || token;
+    upsertPlexLink({
+      clientId: clientId,
+      authToken: ownerToken,
+      ownerAuthToken: ownerToken,
+      name: (user && (user.title || user.username)) || activeServer.name || 'Plex',
+      user: user || null
+    });
     // Default background is now a flat Material surface-dim (CSS); no ultrablur
     // image on <body> — the dithered gradient showed visible seams on the B8.
     console.info('[bootstrap] server selected', {

@@ -409,6 +409,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
     - **Scroll-back is cache-instant:** a card scrolled out of the window is destroyed and re-created on return, but the poster *bytes* stay cached (`posterImages.loadedUrls` + HTTP cache; no re-fetch). `createMediaCard` binds the poster at creation when `isPosterLoaded(url)` even if it would otherwise be deferred, so the returning card reveals from cache immediately instead of placeholder→fade. (IDB blob cache is off on B8, so this is session-scoped.)
   - **D-pad nav coupling (critical):** when the node set changes, `renderWindow` **must call `invalidateFocusableCache()`** (focus.js caches focusables per container). Omitting it = the geometric nav keeps scoring detached cards, so DOWN falls through to the always-cached bottom rail item and you can't get back into the grid. Regression-tested in `test/focus-nav-library.test.js`.
 - **Platform deviations (ratified):** 2:3 not 16:9; blue focus accents; type up-scaled for 10-foot; no JetStream backdrop image (standard bg); `overflow:visible` on `.library-layout` so the negative-left rail shows (the screen + `.library-grid-host` clip their own overflow).
+- **Resolved 2026-06-22:** added `position: relative; z-index: 1` to `.media-grid .card-text` — caps-motion `transform: scale(1.1)` on `.card-poster-wrap` creates a compositing layer that painted over the caption text (scaled poster's bottom edge extended ~3px into the title line). The z-index brings the text above the transformed poster wrap.
 - **Tests:** `test/webos4-css-compat.test.js` — "library grid uses margin gutters not gap" (`-14px -14px` / `14px 14px`) and "library grid uses the standard 2-col card dimensions" (`--row-poster-w/h`).
 
 ### Player overlay
@@ -726,7 +727,9 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
 
   Rules of thumb: **2 states → switch**, **3+ → picker (modal)**, navigation/one-shot → action row, immutable → info row.
 - **Tokens:** card bg `--bg-surface #1E1F20`; border/dividers `--border #444746`; radius `--radius-lg 12`; overline `--font-small 19/600` uppercase `--text-secondary`; row focus inherits `gt-list-item:focus` (`--focus-fill #E3E3E3` / `--focus-on-fill #303030`); switch off `--text-muted`, on `--accent`.
-- **Platform notes:** switch has no transition (Chrome53-safe); no on-screen Back (remote-only); Sign out has no confirm dialog (parity with prior behaviour — revisit if accidental sign-outs occur).
+- **Platform notes:** switch has no transition (Chrome53-safe); no on-screen Back (remote-only); the destructive footer action has no confirm dialog (parity with prior behaviour — revisit if accidental triggers occur).
+- **Account actions (added 2026-06-23):** the Account section gained a **"Switch server"** row (`#btn-switch-server` → `server-picker {_from:'settings'}`, non-destructive cross-provider jump) and the footer's old **"Sign out"** became **"Forget server"** (`#btn-forget-server`): removes **only the current saved link** (`removeSavedLink` keyed by `'plex:'+clientId` or `'jf:'+serverId`) + `clearActiveSession()`, then routes to `server-picker` if other links remain, else `provider-picker`. See [Server picker](#server-picker-cross-provider-saved-link-chooser).
+- **⚠️ Code/registry drift (noted 2026-06-23):** the live `settingsScreen.js` in the working tree is still the **older flat `.settings-row` + raw `.btn`** layout, NOT the grouped-cards spec recorded above (that redesign sits on an unmerged branch). The two new controls were added in the flat file's existing idiom (mirroring its "Switch profile" row + footer button). When the grouped-cards redesign lands, re-home "Switch server" as a `createSettingsActionRow` and "Forget server" as a `destructive` action row in the footer.
 
 ### Status badges  (app-specific — audited 2026-06-19)
 
@@ -734,6 +737,17 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
 - **Code:** `.badge-watched` (30×30, top-right) · `.badge-progress` (`--accent-soft`/`--accent`) · `.badge-unwatched` (`--success` green) `src/styles/app.css:1456+`
 - **Anatomy:** small dot/pill on the poster, semantic color only; keep inside poster bounds, no focus-ring overlap.
 - **Note:** not from the kit — a Plax convention; kept deliberately. No reconciliation needed.
+
+### Plax brand logo  (app-specific — added 2026-06-23)
+
+- **Status:** ✅ app brand asset (no kit component — this is the product wordmark, not a Material element).
+- **Single source of truth:** `src/ui/brand/plaxLogo.js` exports `plaxWordmarkSvg()` (full "plax") + `plaxMarkSvg()` (compact "x"). The launcher-icon rasteriser `scripts/generate-icons.cjs` **mirrors the same geometry numbers** — edit both together.
+- **Anatomy (wordmark, viewBox 216×100, y-down):** x-height top `y=36`, baseline `y=80`, ascender `y=14`, descender `y=98`. Letter stroke weight **15**; bowls (p, a) = stroked circles (r 14.5, stroke 15); the **x** = two crossing strokes (weight 17) — **left half ("<") inherits `currentColor`, right half (">") = the brand gradient**, exactly as the supplied logo.
+- **Brand gradient:** `--plax-grad-top #A640CF` (purple) → `--plax-grad-bottom #1BA1E4` (blue), top→bottom of the chevron. (Hard-coded as `PLAX_GRAD_*` in `plaxLogo.js`; not yet promoted to CSS tokens.)
+- **Color usage:** letters use `currentColor`, so one artwork serves every surface — **white `--gt-text` on the dark TV UI**, ink on a light tile. The x's gradient is fixed regardless of surface.
+- **Hosts:** nav drawer brand lockup — full wordmark on **peek/expanded** rail, compact "x" mark when **collapsed** (`.browsing-hub-brand__mark` / `__wordmark`, `src/styles/app.css:1524+`, built in `browsingHubNav.js`). Launcher tiles `assets/icon.png` (80×80) + `assets/icon-large.png` (130×130).
+- **webOS compliance:** icons are 80/130 px full-bleed square RGBA PNGs, solid `#0a0a0f` background (no alpha — legible on any launcher theme), no pre-rounded corners (launcher masks its own). `appinfo.json` `title`/`vendor` = "Plax", `id` = `com.plax`.
+- **Platform notes:** SVG `linearGradient`/`stroke`/`currentColor` all render on Chromium 53; no `gap`, no `:focus-within`. Collapse/expand driven by the JS `--expanded`/`--peek` host classes (not `:focus-within`).
 
 ### Tabs (season selector)  ✅ reconciled 2026-06-20
 
@@ -858,14 +872,49 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
       span.provider-card__media → svg.provider-card__logo   ← branded gradient bg + brand logo
       span.provider-card__desc             ← how this backend connects
   ```
-- **Tokens:** card bg `--bg-elevated #1B1B1B` + soft shadow; 1px `--border` / `--radius-lg 12`; 420px wide, media 200px tall (logo ≤96px); brand media — Plex radial gold `rgba(229,160,13,.18)`, Jellyfin radial purple→blue `rgba(123,92,230,.20)`→`rgba(0,164,220,.06)`; desc `--space-5 --space-6 --space-6`, `--gt-body`, `--text-secondary`→`--text-primary` on focus; focus = `border-color:--accent` + `--focus-shadow` + media `brightness(1.25)`.
+- **Tokens:** card bg `--bg-elevated #1B1B1B` + soft shadow; 1px `--border` / `--radius-lg 12`; 420px wide, media 200px tall (logo ≤96px); brand media — Plex radial gold `rgba(229,160,13,.18)`, Jellyfin radial purple→blue `rgba(123,92,230,.20)`→`rgba(0,164,220,.06)`; desc `--space-5 --space-6 --space-6`, `--gt-body`, `--text-secondary`→`--text-primary` on focus; focus = `border-color:--accent` + `--focus-shadow` + **deeper brand gradient** (Plex `.18→.30` / `.04→.08`; Jellyfin `.20→.34` / `.06→.12`).
 - **Platform notes:** ring only, no scale (caps-motion gate). Brand: Plex gold `#E5A00D`, Jellyfin gradient `#AA5CC3→#00A4DC`.
+- **Resolved 2026-06-22:** removed `filter: brightness(1.25)` on `.provider-card:focus .provider-card__media` — it was brightening the gradient to near-logo-color and reducing SVG logo contrast (Plex gold-on-gold, Jellyfin gradient-on-gradient). Replaced with explicit `:focus` gradient rules per brand that deepen the background opacity, keeping logo contrast intact. Ring + `--focus-shadow` remain the primary cue.
+
+### Server picker (cross-provider saved-link chooser)
+
+- **Status:** ✅ to-spec · 2026-06-23 (new screen — **card grid**, redesigned from the initial list version per user)
+- **Figma source:** none — app-specific flow; card visuals reconcile to the ✅ **Provider-picker card** (brand-logo media) + ✅ **Profile card** (square tile, ring+scale focus, NOT the light-fill control treatment).
+- **Android TV guideline:** [Cards](https://developer.android.com/design/ui/tv/guides/components/cards) (selection cards, single-select grid).
+- **Purpose:** one screen to jump between **every saved Plex/Jellyfin link** without re-linking. Reached at launch (not signed in + ≥1 saved link) and from **Settings → Switch server** (`_from:'settings'`, which adds a Back button). Switching is **non-destructive** — only the active session is cleared; saved links + cached Jellyfin sessions survive.
+- **Code:** `serverPickerScreen()` (`src/ui/screens/serverPickerScreen.js`); brand marks `src/ui/brand/providerMarks.js` (`plexMarkSvg`/`jellyfinMarkSvg`/`addServerGlyphSvg` — official Plex 2022 wordmark + Jellyfin icon, supplied by user); `.server-card*` in `src/styles/app.css`; route `server-picker` in `app.js`; routing in `startupRouting.js`.
+- **Anatomy:**
+  ```
+  .screen.screen-center.server-picker-screen
+    h1.screen-title          ← "Choose a server"
+    p.screen-subtitle        ← "…switching never removes them."
+    .server-card-grid        ← flex-wrap, centered, margin -12px (cancels card inset), ≤4/row
+      button.server-card[data-brand=plex|jellyfin][data-link-id] × N
+        span.server-card__media → svg.server-card__logo   ← square brand tile (radius-lg), brand radial tint
+        span.server-card__label                            ← Plex: account name · Jellyfin: server URL
+      button.server-card.server-card--add[data-add=1]
+        span.server-card__media → svg.server-card__glyph   ← outlined circle + plus (no logo)
+        span.server-card__label                            ← "Add a new server"
+    button.btn.server-picker-back            ← "Back" (only when _from === 'settings')
+  ```
+- **NB — no `.card` base class:** `.server-card` deliberately does NOT carry `.card` (it leaks the generic light-fill focus inversion → white tile, same trap profile/provider cards avoid). All chrome is on `.server-card*` directly.
+- **Card spec:** square media tile `--server-card-w` (240px) radius `--radius-lg`; logo `62%`/max-h `56%`; brand tints — Plex gold radial `rgba(229,160,13,.18→.04)` + media `color:--text-primary` (wordmark letters = currentColor white, chevron stays `#EBAF00`), Jellyfin purple→blue radial `rgba(123,92,230,.20)`→`rgba(0,164,220,.06)` (mark keeps its own gradient). Add tile = `--bg-elevated` + `--text-secondary` glyph. Label `--font-body`/`--text-secondary` → `--accent` on focus.
+- **Focus (profile-card model):** ring `--accent` + `--focus-shadow` on the **media tile** + blue label; transform scale `--gt-focus-scale-med` under `html.caps-motion` (webOS 4+). No light-fill inversion.
+- **Saved-links model** (`storage.js` — key `plax_savedLinks`, **survives `clearAuth`/`clearActiveSession`**):
+  - Plex link `{ provider:'plex', id:'plex:'+clientId, name, authToken, ownerAuthToken, clientId, user }` — saved in `appBootstrap.runPlexBootstrap` once user + activeServer resolve (account/owner token stored so a switch-back can re-list Home + servers). `name` = account holder (`user.title||username`).
+  - Jellyfin link `{ provider:'jellyfin', id:'jf:'+serverId, name, url, version, jfId }` — saved in `jellyfinLoginScreen.finalize` via `upsertJellyfinServer`.
+  - Seeds from legacy `plax_jellyfinServers` / `plax_jellyfinServer` on first read. Back-compat adapters `getJellyfinServers/upsert/remove` map onto `savedLinks` filtered by provider.
+- **Switch (select a card):** `clearActiveSession()` + cache/retention invalidate, then restore the link's session into state+storage and route — Plex → `profile-picker {_from:'switch',_alwaysChoose:true}`; Jellyfin → `jellyfin-users {_from:'switch'}` (server restored; user picker handles per-user auth). Add card → `provider-picker`.
+- **Forget:** NOT on the cards — lives only in **Settings → Forget server** (removes the current link; see Settings entry). Cards are choose-only per user decision.
+- **Routing** (`startupRouting.js`, pure — reads `persisted.savedLinks`): not signed in (any provider) + saved links → `server-picker`; signed-in Jellyfin without a server but with saved links → `server-picker`; first run with saved links → `server-picker`; otherwise `provider-picker`/`pairing`/`jellyfin-users` as before.
+- **Platform notes:** no `flex gap` (Chrome53) — margin rhythm; vertical/square selection cards (not 16:9); `attachFocusNav` sequential. Verified via headless-Chrome harness screenshot (sim access was unavailable).
 
 ### Jellyfin login screen
 
 - **Status:** ✅ to-spec · 2026-06-20
 - **Reuses:** the outlined **Text field** via `openTextInputModal` for all text entry (server URL / username / password); Quick Connect code reuses `.pairing-code` (Plex PIN display); buttons `.btn`/`.btn-primary`.
 - **Code:** `jellyfinLoginScreen()` (via the `pairing` route when `params.provider==='jellyfin'`); `.jellyfin-login *` in `app.css`.
+- **Update 2026-06-23:** accepts `params.savedServer` to pre-fill the URL field (arriving from server picker); calls `upsertJellyfinServer(server)` in `finalize()` on every successful connect.
 - **Anatomy:**
   ```
   .jellyfin-login (screen screen-center)
