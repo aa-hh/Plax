@@ -109,7 +109,29 @@ function deleteInputChar(el) {
   }
 }
 
+// Build a keydown event that reliably carries keyCode/which 13 on Chrome 53.
+// The KeyboardEvent constructor and initKeyboardEvent both leave keyCode at 0
+// on that engine, so force the legacy fields with defineProperty — element
+// handlers (e.g. searchScreen) gate on `e.keyCode === 13`.
+function makeEnterKeydown() {
+  var ev;
+  try { ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }); }
+  catch (err) {
+    ev = document.createEvent('Event');
+    ev.initEvent('keydown', true, true);
+  }
+  try {
+    Object.defineProperty(ev, 'keyCode', { value: 13, configurable: true });
+    Object.defineProperty(ev, 'which', { value: 13, configurable: true });
+    if (ev.key !== 'Enter') Object.defineProperty(ev, 'key', { value: 'Enter', configurable: true });
+  } catch (err2) { /* read-only on some engines — key string still set above */ }
+  ev.__syntheticEnter = true;
+  return ev;
+}
+
 function onEditableKeydown(e) {
+  // Never re-process our own synthetic Enter (prevents any dispatch loop).
+  if (e.__syntheticEnter) return;
   var el = editTarget();
   if (!el) return;
   var code = e.keyCode || e.which;
@@ -135,7 +157,26 @@ function onEditableKeydown(e) {
       e.preventDefault(); e.stopImmediatePropagation(); deleteInputChar(el); return;
     }
   }
-  // Up/Down/Enter/Esc and everything else fall through to nav + router.
+  // Enter — only intervene in the focus-stolen case (webOS keyboard pulled focus
+  // to <body>). When the field truly owns DOM focus its own element-level keydown
+  // handler fires normally; dispatching again would double-submit. When focus is
+  // on <body> the element handler never fires, so we re-dispatch a synthetic
+  // keydown(13) to the tracked field so screen-level handlers (e.g. searchScreen)
+  // pick it up as if the element had focus.
+  var isEnter = code === 13 || k === 'Enter';
+  if (isEnter) {
+    var a = document.activeElement;
+    var focusStolen = !a || a === document.body;
+    if (focusStolen && el === activeEditable) {
+      // Claim the event so it doesn't also reach nav/router as an OK press.
+      e.preventDefault(); e.stopImmediatePropagation();
+      el.dispatchEvent(makeEnterKeydown());
+      return;
+    }
+    // Field genuinely holds focus — let the event flow to its own element handler.
+    return;
+  }
+  // Up/Down/Esc and everything else fall through to nav + router.
 }
 
 function onEditableFocusIn(e) {
