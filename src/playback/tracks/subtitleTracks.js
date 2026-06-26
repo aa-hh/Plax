@@ -965,6 +965,14 @@ function buildSubtitleFetchPlan(server, session, track, options) {
     }
   }
 
+  // Make the active A/B variant unmistakable in the log for each playback.
+  if (resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack)) {
+    tvError('subtitles', 'extract-mode', {
+      mode: getSubtitleExtractMode(),
+      order: attempts.map(function (a) { return a.label; }).join(' > ')
+    });
+  }
+
   return attempts;
 }
 
