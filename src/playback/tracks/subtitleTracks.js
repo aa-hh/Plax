@@ -845,16 +845,10 @@ function buildSubtitleFetchPlan(server, session, track, options) {
       'subtitles-start-owner',
       buildSubtitleTranscodeStartUrlWithOwnerToken(server, session, resolvedTrack, playbackMode)
     );
-    // /library/streams serves the embedded sub once Plex has extracted it (501
-    // until ready → retried by loadClientSubtitleFromUrls). Prioritise it even on
-    // WAN — it's the proven working endpoint (returned 1068 cues once extracted).
-    if (!isAdvancedSubtitleCodec(resolvedTrack)) {
-      pushSubtitleAttempt(
-        attempts,
-        'stream-embedded',
-        buildStreamKeySubtitleUrl(server, resolvedTrack)
-      );
-    }
+    // NOTE: /library/streams/{id}.srt is intentionally NOT used for embedded subs —
+    // a truly embedded MKV sub has no `key`, so PMS returns 501 "not a sidecar
+    // subtitle" forever (confirmed via plex-for-kodi + the PMS log: 20 futile
+    // retries). The sidecar comes from /subtitles/:/transcode/universal/start above.
   }
 
   if (!preferUniversalFirst &&
@@ -867,14 +861,6 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   }
 
   var embedded = resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack);
-  if (!preferUniversalFirst && embedded && !isAdvancedSubtitleCodec(resolvedTrack)) {
-    pushSubtitleAttempt(
-      attempts,
-      'stream-embedded',
-      buildStreamKeySubtitleUrl(server, resolvedTrack)
-    );
-  }
-
   var metadataPath = resolveSessionMetadataPath(session);
   var partPath = resolveSessionPartPath(session);
   var advanced = isAdvancedSubtitleCodec(resolvedTrack) ? 'text' : null;
@@ -960,13 +946,7 @@ function buildSubtitleFetchPlan(server, session, track, options) {
         buildStreamKeySubtitleUrl(server, resolvedTrack)
       );
     }
-    if (embedded && !isAdvancedSubtitleCodec(resolvedTrack)) {
-      pushSubtitleAttempt(
-        attempts,
-        'stream-embedded',
-        buildStreamKeySubtitleUrl(server, resolvedTrack)
-      );
-    }
+    // No stream-embedded for embedded subs — no key → permanent 501 (see above).
   }
 
   // Make the active A/B variant unmistakable in the log for each playback.

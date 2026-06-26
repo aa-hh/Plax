@@ -425,9 +425,9 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   var dedicated = attempts.filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0];
   assert.ok(dedicated);
   assert.ok(dedicated.url.indexOf('/video/:/transcode/universal/subtitles') >= 0);
-  var streamEmbedded = attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0];
-  assert.ok(streamEmbedded);
-  assert.ok(streamEmbedded.url.indexOf('/library/streams/1893985.srt') >= 0);
+  // /library/streams/{id}.srt (stream-embedded) is NOT used for embedded subs —
+  // they have no key, so PMS 501s forever. The sidecar comes from /start.
+  assert.equal(attempts.some(function (a) { return a.label === 'stream-embedded'; }), false);
   var metaAuto = attempts.filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
   assert.ok(metaAuto);
   assert.ok(metaAuto.url.indexOf('subtitles=auto') >= 0);
@@ -475,7 +475,7 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
       'subtitleStreamID'
     ].indexOf(key) >= 0, 'unexpected subtitle query param: ' + key);
   });
-  assert.equal(attempts.filter(function (a) { return a.label === 'stream-embedded'; }).length, 1);
+  assert.equal(attempts.filter(function (a) { return a.label === 'stream-embedded'; }).length, 0);
 });
 
 test('buildSubtitleFetchPlan HLS primary uses same transcode session and protocol=hls', function () {
@@ -528,16 +528,13 @@ test('buildSubtitleFetchPlan deprioritizes stream fetch on wan', function () {
     playbackMode: 'transcode-hls'
   });
   // For embedded subs the proven endpoint leads (Approach A default): subtitles-start,
-  // then the dedicated-session fallback, then stream-embedded — BEFORE the universal
-  // attempts, even on wan.
+  // then the dedicated-session fallback — BEFORE the universal attempts, even on wan.
+  // No stream-embedded (embedded subs have no key → permanent 501).
   assert.equal(plan[0].label, 'subtitles-start');
   assert.equal(plan[1].label, 'subtitles-dedicated-session');
-  assert.equal(plan[2].label, 'stream-embedded');
-  var streamEmbedded = plan.filter(function (a) { return a.label === 'stream-embedded'; })[0];
-  assert.ok(streamEmbedded);
-  assert.ok(plan.indexOf(streamEmbedded) < plan.findIndex(function (a) {
-    return a.label === 'universal-metadata-auto';
-  }));
+  assert.equal(plan.some(function (a) { return a.label === 'stream-embedded'; }), false);
+  assert.ok(plan.findIndex(function (a) { return a.label === 'subtitles-start'; }) <
+    plan.findIndex(function (a) { return a.label === 'universal-metadata-auto'; }));
 });
 
 test('buildSubtitleFetchPlan uses location=wan for remote PMS connection', function () {
@@ -810,7 +807,6 @@ test('buildSubtitleFetchPlan includes part path only when metadata path missing'
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
   assert.equal(attempts[0].label, 'subtitles-start');
   assert.ok(attempts.filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0]);
-  assert.ok(attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0]);
   assert.equal(
     attempts.some(function (a) { return a.label.indexOf('universal-part-') === 0; }),
     false
