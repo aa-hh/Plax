@@ -496,7 +496,14 @@ function buildSubtitleTranscodeStartUrl(server, session, track, playbackMode) {
   // 400s in the PMS log — the stream id on /universal/start was the differentiator.
   var resolution = subtitleResolutionParam(session);
   if (resolution) params.videoResolution = resolution;
-  var sessionId = resolvePlaybackSessionId(session);
+  // CRITICAL: use a DEDICATED session id, NOT the live video direct-play session.
+  // The official client's winning 200 ran the subtitle decision+start on a session
+  // with NO video direct-play on it (verified in PMS log: session pskgm2… only had
+  // a /decision, this /start, and a session PUT — no /library/parts/…/file.mkv).
+  // directPlay=1 is correct (directPlay=0 gets directPlayDecisionCode=3000); the
+  // missing ingredient was a SEPARATE session. Shared with the prime decision via
+  // session.subtitleTranscodeSessionId so both key off the same session.
+  var sessionId = dedicatedSubtitleSessionId(session);
   if (sessionId) params.session = sessionId;
   var offsetSec = offsetSecondsForPlex(session);
   if (offsetSec > 0) params.offset = String(offsetSec);
@@ -534,35 +541,44 @@ function dedicatedSubtitleSessionId(session) {
 }
 
 /**
- * Approach A prime: a directPlay=1 decision with subtitles=sidecar (and NO
- * subtitleStreamID — the stream is selected server-side via the prior PUT
- * /library/parts). Mirrors step 2 of the captured official-client sequence
- * (PUT → decision?subtitles=sidecar → start) that returns a 200 SRT.
+ * Approach A prime — byte-matched to the official client's winning decision
+ * (PMS log, session pskgm2…):
+ *   GET /video/:/transcode/universal/decision?directPlay=1&directStream=1
+ *       &directStreamAudio=1&protocol=hls&fastSeek=1&path=…&session=<DEDICATED>
+ *       &mediaIndex=0&partIndex=0&mediaBufferSize=50000&hasMDE=1&subtitleSize=75
+ *       &videoQuality=100&videoResolution=…&audioBoost=100&autoAdjustSubtitle=1
+ *       &subtitles=sidecar&location=wan
+ * Key points: a DEDICATED session (separate from the video direct-play session),
+ * directPlay=1, protocol=hls, NO subtitleStreamID (selected via PUT /library/parts),
+ * and NO client profile (hasMDE=1 + directPlay=1 makes PMS ignore profiles anyway —
+ * and the profile-extra in the query is what 400s the matching /start). This
+ * decision registers the dedicated session that the /start then extracts against.
  */
 function buildSubtitleSidecarDecisionUrl(server, session, playbackMode) {
   if (!server || !session || session.subtitleStreamId == null) return null;
   var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
   if (!mediaPath) return null;
   var params = {
-    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
-    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
-    partIndex: session.partIndex != null ? session.partIndex : 0,
-    hasMDE: '1',
     directPlay: '1',
     directStream: '1',
     directStreamAudio: '1',
-    protocol: 'http',
+    protocol: 'hls',
+    fastSeek: '1',
+    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
+    session: dedicatedSubtitleSessionId(session),
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    mediaBufferSize: '50000',
+    hasMDE: '1',
+    subtitleSize: '75',
+    videoQuality: '100',
+    audioBoost: '100',
+    autoAdjustSubtitle: '1',
     subtitles: 'sidecar',
-    autoAdjustQuality: '0',
-    mediaBufferSize: '102400',
-    location: plexLocationForServer(server),
-    'X-Plex-Client-Profile-Name': 'Generic',
-    'X-Plex-Client-Profile-Extra': buildWebOsClientProfileExtra()
+    location: plexLocationForServer(server)
   };
-  var sessionId = resolvePlaybackSessionId(session);
-  if (sessionId) params.session = sessionId;
-  var offsetSec = offsetSecondsForPlex(session);
-  if (offsetSec > 0) params.offset = String(offsetSec);
+  var resolution = subtitleResolutionParam(session);
+  if (resolution) params.videoResolution = resolution;
   var query = buildQuery(params);
   return {
     url: server.connectionUri.replace(/\/$/, '') +

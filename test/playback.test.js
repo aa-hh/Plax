@@ -722,16 +722,20 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     assert.ok(decision);
     var q = new URL(decision.url).searchParams;
     assert.equal(q.get('path'), '/library/metadata/33622');
-    // Default Approach A prime: directPlay=1 subtitles=sidecar decision, NO
-    // subtitleStreamID (stream selected server-side via PUT /library/parts).
+    // Default Approach A prime: byte-matched to the official decision —
+    // directPlay=1, protocol=hls, subtitles=sidecar, NO subtitleStreamID, and a
+    // DEDICATED session (NOT the video direct-play session), NO client profile.
     assert.equal(q.get('directPlay'), '1');
+    assert.equal(q.get('protocol'), 'hls');
     assert.equal(q.get('subtitles'), 'sidecar');
     assert.equal(q.get('subtitleStreamID'), null);
-    // Uses the direct-play (playback) session, not a fresh one.
-    assert.equal(q.get('session'), 'plax-1779812905191');
-    assert.equal(q.get('X-Plex-Client-Profile-Name'), 'Generic');
+    assert.equal(q.get('session'), session.subtitleTranscodeSessionId);
+    assert.notEqual(q.get('session'), 'plax-1779812905191');
+    assert.equal(q.get('X-Plex-Client-Profile-Name'), null);
+    assert.equal(q.get('X-Plex-Client-Profile-Extra'), null);
     assert.equal(q.get('copyts'), null);
-    assert.equal(q.get('audioBoost'), null);
+    // Official decision carries audioBoost=100 / subtitleSize=75 / videoQuality=100.
+    assert.equal(q.get('audioBoost'), '100');
     assert.equal(q.get('X-Plex-Audio-Stream'), null);
     assert.equal(q.get('X-Plex-Client-Identifier'), null);
     assert.equal(q.get('X-Plex-Token'), null);
