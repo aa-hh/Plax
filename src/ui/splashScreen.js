@@ -23,17 +23,31 @@ function createSplash() {
 
   document.body.appendChild(el);
 
+  var showTime = Date.now();
+  // Minimum time the splash stays visible. Prevents it from being created and
+  // destroyed in the same JS tick (before the browser has painted even one frame),
+  // which is what happens when the startup screen mounts synchronously.
+  var MIN_MS = 600;
   var dismissed = false;
+
+  function doFade() {
+    el.classList.add('splash-screen--out');
+    setTimeout(function () {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 450);
+  }
 
   function dismiss() {
     if (dismissed) return;
     dismissed = true;
-    el.classList.add('splash-screen--out');
-    // Remove from DOM after the fade-out transition completes.
-    // 400ms matches the CSS transition duration.
-    setTimeout(function () {
-      if (el.parentNode) el.parentNode.removeChild(el);
-    }, 450);
+    var remaining = MIN_MS - (Date.now() - showTime);
+    if (remaining > 0) {
+      setTimeout(doFade, remaining);
+    } else {
+      // At least defer to the next animation frame so the browser has painted
+      // the splash at least once before we begin the fade.
+      requestAnimationFrame(doFade);
+    }
   }
 
   return { dismiss: dismiss };
