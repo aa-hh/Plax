@@ -723,9 +723,9 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     // Dedicated transcode session: directPlay=0 so PMS creates a transcode
     // session WITH transcode permission (the direct-play session is denied).
     assert.equal(q.get('directPlay'), '0');
-    // subtitles=auto WITHOUT subtitleStreamID — stream pre-selected via PUT.
-    assert.equal(q.get('subtitles'), 'auto');
-    assert.equal(q.get('subtitleStreamID'), null);
+    // plex-for-kodi shape: subtitles=sidecar WITH the explicit subtitleStreamID.
+    assert.equal(q.get('subtitles'), 'sidecar');
+    assert.equal(q.get('subtitleStreamID'), '1894444');
     // Session must be the dedicated subtitle session, NOT the direct-play one.
     assert.equal(q.get('session'), session.subtitleTranscodeSessionId);
     assert.notEqual(q.get('session'), 'plax-1779812905191');

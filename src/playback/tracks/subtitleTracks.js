@@ -508,19 +508,6 @@ function dedicatedSubtitleSessionId(session) {
 }
 
 /**
- * Byte-matches the OFFICIAL Plex-for-LG subtitle request captured in the PMS
- * server log (House of the Dragon S3E1 on a B8, alongside our failing calls):
- *   GET /video/:/transcode/universal/subtitles
- *       ?protocol=dash&directPlay=0&directStream=1&directStreamAudio=0
- *       &session=<DEDICATED>&subtitles=auto&Accept-Language=en …
- *
- * The crux is a DEDICATED session (not the direct-play one) + directPlay=0, so
- * PMS treats it as a transcode session that HAS transcode permission and serves
- * the embedded sub. The video keeps direct-playing untouched (its own session)
- * → HDR/Dolby Vision preserved. Identity/token go in headers (clean query) to
- * avoid this PMS build's 400 on identity-in-query.
- */
-/**
  * Register the dedicated subtitle session as a TRANSCODE session (directPlay=0)
  * before fetching the sub. PMS only extracts an embedded sub against a session
  * that has transcode permission; a fresh, never-transcoded session id is unknown
@@ -537,15 +524,18 @@ function buildDedicatedSubtitleDecisionUrl(server, session, track, playbackMode)
     path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
     mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
     partIndex: session.partIndex != null ? session.partIndex : 0,
-    hasMDE: '1',
+    // directPlay=0 (no hasMDE — it's a no-op when directPlay=0 and was implicated
+    // in the "invalid subtitle setting 'auto'" rejection). This is the shape the
+    // official open-source Plex client (plex-for-kodi getDecisionPath) uses to
+    // register a transcode session for an embedded sub: subtitles=sidecar WITH
+    // the explicit subtitleStreamID (NOT auto — auto on a part with a selected
+    // sub is what PMS rejects).
     directPlay: '0',
     directStream: '1',
     directStreamAudio: '1',
     protocol: 'dash',
-    // subtitles=auto WITHOUT subtitleStreamID — the stream was already selected
-    // via PUT /library/parts. Combining both triggers PMS's "invalid subtitle
-    // setting 'auto'" rejection (seen in the server log).
-    subtitles: 'auto',
+    subtitles: 'sidecar',
+    subtitleStreamID: String(session.subtitleStreamId),
     autoAdjustQuality: '0',
     mediaBufferSize: '102400',
     location: plexLocationForServer(server),
@@ -563,6 +553,13 @@ function buildDedicatedSubtitleDecisionUrl(server, session, track, playbackMode)
   };
 }
 
+/**
+ * Fetch the extracted SRT text from the dedicated transcode session registered
+ * by buildDedicatedSubtitleDecisionUrl. Byte-matches the OFFICIAL Plex-for-LG
+ * /video/:/transcode/universal/subtitles request captured in the PMS server log
+ * (the only difference that made theirs work: their session was a registered
+ * transcode session — which the directPlay=0 decision above now provides).
+ */
 function buildDedicatedSubtitleSessionUrl(server, session, track, playbackMode) {
   if (!server || !session) return null;
   var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
