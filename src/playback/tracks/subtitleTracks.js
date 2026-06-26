@@ -479,11 +479,15 @@ function buildSubtitleTranscodeStartUrl(server, session, track, playbackMode) {
     audioBoost: '100',
     copyts: '1',
     location: plexLocationForServer(server),
-    // PMS returns 400 with no capability context. Profile params are capability
-    // declarations (not identity), safe in the query even though X-Plex-Token
-    // and device identity must stay in headers (see comment below).
-    'X-Plex-Client-Profile-Name': 'Generic',
-    'X-Plex-Client-Profile-Extra': buildWebOsClientProfileExtra()
+    // Byte-matched to a captured official-client 200 (39 KB SRT). CRITICAL: the
+    // official /start does NOT send X-Plex-Client-Profile-Name / -Extra — the
+    // session already carries its profile from the playback decision. Re-sending
+    // the profile-extra here is what 400s us (PMS logs: "ClientProfileExtra:
+    // missing … parameter" / "video transcode target already exists"). Accept and
+    // Accept-Language go in the QUERY here (the official client does that; they're
+    // not identity, so they don't trip the identity-in-query 400).
+    Accept: 'application/json',
+    'Accept-Language': 'en-GB'
   };
   // DO NOT send subtitleStreamID here. PMS 400s the transcode endpoints when the
   // stream id is on the query; the stream is selected SERVER-SIDE via the prior

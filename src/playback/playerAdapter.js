@@ -857,6 +857,10 @@ function normalizeSubtitleFetchAttempts(urls) {
 }
 
 var SUBTITLE_FETCH_TIMEOUT_MS = 20000;
+// /subtitles/:/transcode/universal/start holds the connection while PMS extracts
+// the embedded sub — a captured official 200 took ~60s to return the full SRT.
+// Give the start/sidecar fetch a much longer ceiling so we don't kill it early.
+var SUBTITLE_START_TIMEOUT_MS = 120000;
 
 function xhrSubtitleText(url, options, originalErr) {
   if (typeof XMLHttpRequest === 'undefined') {
@@ -1040,7 +1044,8 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
         accept: (entry.init && entry.init.headers && entry.init.headers.Accept) || null
       });
     }
-    var fetchOptions = Object.assign({ timeout: SUBTITLE_FETCH_TIMEOUT_MS }, entry.init || {});
+    var fetchTimeout = isStartLabel ? SUBTITLE_START_TIMEOUT_MS : SUBTITLE_FETCH_TIMEOUT_MS;
+    var fetchOptions = Object.assign({ timeout: fetchTimeout }, entry.init || {});
     return promiseWithTimeout(
       fetchSubtitleTextWithManifestFollow(url, fetchOptions),
       fetchOptions.timeout,

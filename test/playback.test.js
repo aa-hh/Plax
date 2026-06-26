@@ -411,12 +411,16 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   // and NO subtitleStreamID (stream selected server-side via PUT /library/parts).
   assert.equal(attempts[0].label, 'subtitles-start');
   assert.ok(attempts[0].url.indexOf('/subtitles/:/transcode/universal/start') >= 0);
-  assert.ok(attempts[0].url.indexOf('Accept=') < 0, 'Accept must be a header, not a query param');
-  assert.equal(attempts[0].init.headers.Accept, 'application/json');
+  // Byte-matched to the official 200: Accept/Accept-Language ARE in the query.
+  assert.ok(attempts[0].url.indexOf('Accept=application%2Fjson') >= 0);
   assert.ok(attempts[0].url.indexOf('directPlay=1') >= 0);
   assert.ok(attempts[0].url.indexOf('subtitles=sidecar') >= 0);
   assert.ok(attempts[0].url.indexOf('subtitleStreamID=') < 0,
     'subtitleStreamID must NOT be on the transcode start (PMS 400s it)');
+  // CRITICAL: the official /start sends NO client profile — re-sending it 400s us.
+  assert.ok(attempts[0].url.indexOf('X-Plex-Client-Profile-Extra') < 0,
+    'client profile must NOT be on /start');
+  assert.ok(attempts[0].url.indexOf('X-Plex-Client-Profile-Name') < 0);
   // Approach B is still available as a fallback even in default mode.
   var dedicated = attempts.filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0];
   assert.ok(dedicated);
