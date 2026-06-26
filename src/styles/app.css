@@ -5777,11 +5777,16 @@ html.caps-motion .gt-list-item:focus {
 }
 .provider-card[data-brand="plex"] .provider-card__media {
   background: radial-gradient(120% 140% at 50% 25%, rgba(229, 160, 13, 0.18), rgba(229, 160, 13, 0.04) 70%);
+  color: var(--text-primary);   /* Plex wordmark letters = currentColor (white); chevron stays gold */
 }
 .provider-card[data-brand="jellyfin"] .provider-card__media {
   background: radial-gradient(120% 140% at 50% 25%, rgba(123, 92, 230, 0.20), rgba(0, 164, 220, 0.06) 70%);
 }
-.provider-card__logo { width: 70%; height: auto; max-height: 96px; }
+/* Official vector marks sized to fill the 200px media band. Plex is a wide
+   wordmark (sized by width); Jellyfin is a ~square icon (sized by height). */
+.provider-card__logo { display: block; }
+.provider-card[data-brand="plex"] .provider-card__logo { width: 78%; height: auto; max-height: 96px; }
+.provider-card[data-brand="jellyfin"] .provider-card__logo { width: auto; height: 150px; }
 .provider-card__desc {
   padding: var(--space-5) var(--space-6) var(--space-6);
   font-size: var(--gt-body);
