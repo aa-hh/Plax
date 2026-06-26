@@ -4,7 +4,8 @@ import './abortControllerPolyfill.js';
 import '../styles/app.css';
 import * as persistentCache from './persistentCache.js';
 import { setPersistentImpl as setCachePersistentImpl } from './cache.js';
-import { init as initRouter, register, navigate, getRoute } from './router.js';
+import { init as initRouter, register, navigate, getRoute, onFirstMount } from './router.js';
+import { createSplash } from '../ui/splashScreen.js';
 import { getState, setState } from './store.js';
 import { loadPersistedAuth, persistAuth, getOwnerAuthToken } from './storage.js';
 import { isRestrictedProfile } from '../security/libraryAccess.js';
@@ -143,6 +144,12 @@ function startApp(platformMajor) {
   }
 
   var startupRoute = resolveStartupRoute(persisted, ownerToken);
+
+  // Show the splash screen synchronously before the first navigate so the
+  // transition from the browser's blank page to app UI is seamless.
+  var splash = createSplash();
+  onFirstMount(function () { splash.dismiss(); });
+
   // Plex → profile-picker, Jellyfin → jellyfin-users; both picker screens are the
   // bootstrap hosts that load libraries before Home. (Plex.tv link is once per
   // device; Home/Jellyfin users are chosen at the picker.)

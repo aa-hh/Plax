@@ -728,6 +728,21 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
 - **Tokens:** card bg `--bg-surface #1E1F20`; border/dividers `--border #444746`; radius `--radius-lg 12`; overline `--font-small 19/600` uppercase `--text-secondary`; row focus inherits `gt-list-item:focus` (`--focus-fill #E3E3E3` / `--focus-on-fill #303030`); switch off `--text-muted`, on `--accent`.
 - **Platform notes:** switch has no transition (Chrome53-safe); no on-screen Back (remote-only); Sign out has no confirm dialog (parity with prior behaviour — revisit if accidental sign-outs occur).
 
+### Splash screen  📐 reference (2026-06-26)
+
+- **Status:** 📐 reference — app-specific; no Figma kit component. Spec is the task brief.
+- **Code:** `src/ui/splashScreen.js` (`createSplash()`) · CSS `.splash-screen` / `.splash-screen--out` / `.splash-logo` in `src/styles/app.css` (end of file).
+- **Anatomy:**
+  ```
+  .splash-screen   ← position:fixed inset:0 background:#000 z-index:9999
+    .splash-logo   ← 440px wide, color:#fff, contains plaxWordmarkSvg() inline SVG
+  ```
+- **Behaviour:** injected into `document.body` synchronously in `startApp()` before the first `navigate()` call. Dismissed (fade-out 0.4s opacity transition, then DOM removal) via `onFirstMount()` callback in `src/core/router.js` — fires once after the first screen factory returns (line after `entry.instance = routes[...](host, ...)` in `render()`). One-shot: `firstMountCallback` is nulled on first invocation.
+- **Logo:** `plaxWordmarkSvg()` from `src/ui/brand/plaxLogo.js` — the full "plax" wordmark SVG (viewBox 216×100, `currentColor` letters + purple→blue gradient right-arm on the "x"). Host element is `color:#fff` so the wordmark renders white on black.
+- **Chrome53 notes:** uses `-webkit-` flex prefixes; `transition: opacity` on a `position:fixed` element is supported on Chromium 53. No `inset` shorthand (explicit `top/right/bottom/left: 0`).
+
+---
+
 ### Status badges  (app-specific — audited 2026-06-19)
 
 - **Status:** ✅ app convention (no direct kit component; nearest = Tag `4212:27233`)

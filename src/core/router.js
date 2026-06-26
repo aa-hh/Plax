@@ -9,6 +9,13 @@ var currentParams = {};
 var rootEl = null;
 var screenInstance = null;
 
+/** One-shot callback fired after the very first screen factory returns. */
+var firstMountCallback = null;
+
+function onFirstMount(cb) {
+  firstMountCallback = cb;
+}
+
 /**
  * Screen retention ("window stack"), Kodi-style.
  *
@@ -351,6 +358,13 @@ function render() {
   entry.instance = routes[currentRoute](host, currentParams, navigate);
   screenInstance = entry.instance;
 
+  // Fire the one-shot first-mount hook (used by the splash screen).
+  if (firstMountCallback) {
+    var cb = firstMountCallback;
+    firstMountCallback = null;
+    try { cb(); } catch (e) { /* ignore */ }
+  }
+
   enforceRetentionCap();
 
   if (perfOn) {
@@ -392,6 +406,7 @@ export {
   getRoute,
   back,
   init,
+  onFirstMount,
   shouldExitToLauncher,
   invalidateRetention
 };

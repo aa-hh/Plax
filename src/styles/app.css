@@ -5748,3 +5748,44 @@ html.caps-motion .gt-list-item:focus {
 .pairing-actions { display: flex; justify-content: center; }
 /* button spacing as margin (flex `gap` no-op on Chromium 53) */
 .pairing-actions > * + * { margin-left: var(--space-4); }
+
+/* ── Splash screen ─────────────────────────────────────────────────────────
+   Full-viewport black overlay shown on cold boot until the first screen is
+   mounted. z-index 9999 floats above every app layer (hud 1800, loading 1005).
+   Chrome 53 supports opacity transitions on fixed elements — no extra flags.
+   ───────────────────────────────────────────────────────────────────────── */
+.splash-screen {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 9999;
+  background: #000;
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  opacity: 1;
+  pointer-events: none;
+  -webkit-transition: opacity 0.4s ease;
+  transition: opacity 0.4s ease;
+}
+.splash-screen--out {
+  opacity: 0;
+}
+.splash-logo {
+  width: 440px;
+  color: #fff;
+  display: block;
+}
+.splash-logo svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
