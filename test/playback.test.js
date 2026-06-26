@@ -720,13 +720,16 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     assert.ok(decision);
     var q = new URL(decision.url).searchParams;
     assert.equal(q.get('path'), '/library/metadata/33622');
-    // directPlay=1: PMS can match the video profile and return a non-null resourceSession.
-    // directPlay=0 + subtitle-only profile returns size=0/resourceSession=null.
-    assert.equal(q.get('directPlay'), '1');
-    // directStream is start.m3u8-only now; decision mirrors plex-for-kodi shape.
-    assert.equal(q.get('directStream'), null);
+    // Dedicated transcode session: directPlay=0 so PMS creates a transcode
+    // session WITH transcode permission (the direct-play session is denied).
+    assert.equal(q.get('directPlay'), '0');
+    // subtitles=auto WITHOUT subtitleStreamID — stream pre-selected via PUT.
+    assert.equal(q.get('subtitles'), 'auto');
+    assert.equal(q.get('subtitleStreamID'), null);
+    // Session must be the dedicated subtitle session, NOT the direct-play one.
+    assert.equal(q.get('session'), session.subtitleTranscodeSessionId);
+    assert.notEqual(q.get('session'), 'plax-1779812905191');
     assert.equal(q.get('X-Plex-Client-Profile-Name'), 'Generic');
-    assert.equal(q.get('subtitles'), null);
     assert.equal(q.get('copyts'), null);
     assert.equal(q.get('audioBoost'), null);
     assert.equal(q.get('X-Plex-Audio-Stream'), null);
@@ -770,14 +773,16 @@ test('prepareClientSubtitlePlayback adopts server resourceSession for subtitle f
     };
     var track = { id: 1894444, codec: 'srt', delivery: 'embedded' };
     await prepareClientSubtitlePlayback(server, session, track, 'direct');
-    assert.equal(session.transcodeSessionId, 'plex-sub-session-42');
-    var metaAuto = buildSubtitleFetchPlan(server, session, track, {
+    // Prime adopts the resourceSession PMS minted as the dedicated subtitle session.
+    assert.equal(session.subtitleTranscodeSessionId, 'plex-sub-session-42');
+    var dedicated = buildSubtitleFetchPlan(server, session, track, {
       playbackMode: 'direct'
-    }).filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
-    assert.ok(metaAuto);
-    assert.ok(metaAuto.url.indexOf('transcodeSessionId=plex-sub-session-42') >= 0);
+    }).filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0];
+    assert.ok(dedicated);
+    // The subtitle fetch keys off the exact session PMS is extracting against.
+    assert.ok(dedicated.url.indexOf('session=plex-sub-session-42') >= 0);
     assert.equal(
-      metaAuto.init.headers['X-Plex-Session-Identifier'],
+      dedicated.init.headers['X-Plex-Session-Identifier'],
       'plax-1779812905191'
     );
   } finally {

@@ -520,6 +520,49 @@ function dedicatedSubtitleSessionId(session) {
  * → HDR/Dolby Vision preserved. Identity/token go in headers (clean query) to
  * avoid this PMS build's 400 on identity-in-query.
  */
+/**
+ * Register the dedicated subtitle session as a TRANSCODE session (directPlay=0)
+ * before fetching the sub. PMS only extracts an embedded sub against a session
+ * that has transcode permission; a fresh, never-transcoded session id is unknown
+ * to PMS and 400s on /subtitles. A directPlay=0 decision makes PMS create the
+ * transcode session (and begin extracting the selected subtitle) without
+ * touching the separate direct-play session the video streams from.
+ */
+function buildDedicatedSubtitleDecisionUrl(server, session, track, playbackMode) {
+  if (!server || !session || session.subtitleStreamId == null) return null;
+  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
+  if (!mediaPath) return null;
+  var subSession = dedicatedSubtitleSessionId(session);
+  var params = {
+    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    hasMDE: '1',
+    directPlay: '0',
+    directStream: '1',
+    directStreamAudio: '1',
+    protocol: 'dash',
+    // subtitles=auto WITHOUT subtitleStreamID — the stream was already selected
+    // via PUT /library/parts. Combining both triggers PMS's "invalid subtitle
+    // setting 'auto'" rejection (seen in the server log).
+    subtitles: 'auto',
+    autoAdjustQuality: '0',
+    mediaBufferSize: '102400',
+    location: plexLocationForServer(server),
+    session: subSession,
+    'X-Plex-Client-Profile-Name': 'Generic',
+    'X-Plex-Client-Profile-Extra': buildWebOsClientProfileExtra()
+  };
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/video/:/transcode/universal/decision' + (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session, 'application/xml') }
+  };
+}
+
 function buildDedicatedSubtitleSessionUrl(server, session, track, playbackMode) {
   if (!server || !session) return null;
   var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
@@ -628,18 +671,17 @@ function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
   if (playbackMode !== 'direct') {
     return Promise.resolve();
   }
-  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
-  // Include subtitleStreamID so PMS registers the subtitle session and returns
-  // a resourceSession. Without it PMS just confirms direct play and returns no
-  // resourceSession, leaving subtitles-start with nothing to extract against.
-  var request = buildUniversalDecisionRequest(
-    server, session, mediaPath, track, playbackMode,
-    { subtitles: 'auto', omitSubtitleStreamId: false }
-  );
+  // Register a DEDICATED transcode session (directPlay=0) — NOT the direct-play
+  // session. PMS denies subtitle transcode on the direct-play session and 400s
+  // an unknown fresh session id on /subtitles. This decision makes PMS create
+  // the transcode session and begin extracting the selected embedded sub, while
+  // the video keeps direct-playing on its own session (HDR/DoVi preserved).
+  var request = buildDedicatedSubtitleDecisionUrl(server, session, track, playbackMode);
   if (!request) return Promise.resolve();
   tvError('subtitles', 'prime-decision-req', {
     url: String(request.url).replace(/X-Plex-Token=[^&]+/gi, 'X-Plex-Token=[redacted]'),
-    subtitleStreamId: session && session.subtitleStreamId
+    subtitleStreamId: session && session.subtitleStreamId,
+    subtitleSession: session && session.subtitleTranscodeSessionId
   });
   return fetchText(
     request.url,
@@ -648,14 +690,12 @@ function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
     var resourceSession = extractDecisionResourceSession(body);
     tvError('subtitles', 'prime-decision', {
       resourceSession: resourceSession,
-      playbackSessionId: session && session.playbackSessionId,
-      transcodeSessionId: session && session.transcodeSessionId,
-      bodyHead: body ? String(body).replace(/\s+/g, ' ').slice(0, 200) : '(empty)',
-      matched: !!(resourceSession && session &&
-        session.playbackSessionId &&
-        resourceSession === session.playbackSessionId)
+      subtitleSession: session && session.subtitleTranscodeSessionId,
+      bodyHead: body ? String(body).replace(/\s+/g, ' ').slice(0, 200) : '(empty)'
     });
-    if (resourceSession && session) session.transcodeSessionId = resourceSession;
+    // Adopt the resourceSession PMS minted (if it differs) so the subtitle fetch
+    // and stream poll key off the exact session PMS is extracting against.
+    if (resourceSession && session) session.subtitleTranscodeSessionId = resourceSession;
   }).catch(function (err) {
     tvError('subtitles', 'prime-decision-fail', {
       msg: err && err.message,
