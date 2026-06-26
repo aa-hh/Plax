@@ -10,6 +10,7 @@ import { invalidateRetention } from '../../core/router.js';
 import * as cache from '../../core/cache.js';
 import { fetchPublicUsers, authenticateByName } from '../../backends/jellyfin/auth.js';
 import { primaryUrl } from '../../backends/jellyfin/images.js';
+import { getCachedAvatar, fetchAndCacheAvatar, evictAvatarsNotIn } from '../../core/avatarCache.js';
 import { openTextInputModal } from '../components/controls.js';
 import { clampProfilePickerCols } from './profilePickerScreen.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
@@ -164,7 +165,15 @@ function jellyfinUserPickerScreen(root, params, navigate) {
     if (entry.imageTag && baseUrl) {
       avatar.classList.add('profile-card-avatar--img');
       var img = document.createElement('img');
-      img.src = primaryUrl({ url: baseUrl }, entry.userId, entry.imageTag, 300);
+      var networkUrl = primaryUrl({ url: baseUrl }, entry.userId, entry.imageTag, 300);
+      var cached = getCachedAvatar(entry.userId);
+      if (cached) {
+        img.src = cached;
+      } else {
+        img.src = networkUrl;
+        // Fetch and cache in the background — does not block render
+        fetchAndCacheAvatar(entry.userId, networkUrl);
+      }
       img.alt = '';
       img.addEventListener('error', function () {
         avatar.classList.remove('profile-card-avatar--img');
@@ -249,6 +258,7 @@ function jellyfinUserPickerScreen(root, params, navigate) {
       if (destroyed) return;
       setStatus('');
       var entries = buildEntries(publicUsers, sessions);
+      evictAvatarsNotIn(entries.map(function (e) { return e.userId; }));
       if (!entries.length) {
         // No public users and no cached sessions — go straight to manual sign-in.
         onOtherUser();
