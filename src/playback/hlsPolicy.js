@@ -47,19 +47,17 @@ function getWebOsPlatformMajor() {
 }
 
 /**
- * True on real LG TVs running webOS 4.x (e.g. 2018 B8). Detection is delegated
- * to the capability matrix's `resolveWebOsMajor` (the single source of truth for
- * the `OLED\d{2}[BCEW]8` model regex + version parsing). The Plex identity uses
- * `platformVersion` for the OS version, so map it onto the deviceInfo shape the
- * matrix expects (`version` + `model`).
+ * True on real LG TVs running webOS 4.x (e.g. 2018 B8). Single source of truth is
+ * the capability matrix's `resolveWebOsMajor`, fed the store's `deviceInfo`
+ * (sdkVersion-derived `versionMajor` + `model`) — NOT the Plex client identity.
+ * This keeps delivery detection backend-neutral (Plex and Jellyfin both read the
+ * same device facts) and decoupled from Plex auth/identity construction.
  */
 function isWebOs4Tv() {
   if (!shouldUseWebOsHlsProfileExtra()) return false;
-  var identity = getPlexClientIdentity() || {};
-  return resolveWebOsMajor({
-    version: identity.platformVersion,
-    model: identity.model
-  }) === 4;
+  var state = typeof getState === 'function' ? getState() : null;
+  var deviceInfo = (state && state.deviceInfo) || {};
+  return resolveWebOsMajor(deviceInfo) === 4;
 }
 
 function isFullTranscodeStrategy(strategy) {

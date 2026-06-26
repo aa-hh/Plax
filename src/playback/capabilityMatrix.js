@@ -1,6 +1,8 @@
 /**
  * Single source of truth for LG webOS TV media capabilities, keyed by webOS
- * generation (major version 4 / 5 / 6, plus a `default` = latest-known).
+ * generation: 4, 5, 6, and `modern` (webOS 7+, i.e. LG's year-numbered 22–26),
+ * plus a `default` = latest-known. Per-version Chromium engine + HLS version are
+ * captured in WEBOS_RELEASES (webOS 4 → 26).
  *
  * DOM-free and store-free on purpose: no `document`, no `getState`. This keeps
  * the matrix Node-testable and importable from anywhere (resolver takes a plain
@@ -77,17 +79,51 @@ function makeSubtitle(defaultDecision) {
   };
 }
 
+// --- per-webOS-version release metadata: engine + transport/security ---
+// Source: LG webOS TV specs (web-api-and-web-engine, streaming-protocol-drm, tls).
+//   chromium — governs JS/CSS/MSE/EME (and our Chrome53 build/CSS guardrail).
+//   hls      — native-HLS version: v5 = webOS 4 (byte-range); v7 = webOS 5+
+//              (multi-audio + WebVTT multi-sub, partial). HLS is the ONLY adaptive
+//              protocol — webOS has NO MPEG-DASH.
+//   tls      — highest TLS supported: webOS 4 caps at 1.2; 5+ add 1.3. (A Plex/
+//              Jellyfin server that requires TLS 1.3 is unreachable on webOS 4.)
+//   http2    — HTTP/2 from webOS 5+; HTTP/3 never.
+// webOS 6.0 (2021) was the last dot-numbered release; LG then switched to year
+// numbers (22–26). Media CEILINGS are identical 5→26 for what we advertise, so
+// capability ENTRIES live at the tiers where advertised behaviour changes
+// (4, 5, 6, modern); this table preserves each year's exact engine/transport.
+var WEBOS_RELEASES = {
+  4:  { year: 2018, chromium: 53,  hls: 5, tls: 1.2, http2: false },
+  5:  { year: 2020, chromium: 68,  hls: 7, tls: 1.3, http2: true },
+  6:  { year: 2021, chromium: 79,  hls: 7, tls: 1.3, http2: true },
+  22: { year: 2022, chromium: 87,  hls: 7, tls: 1.3, http2: true },
+  23: { year: 2023, chromium: 94,  hls: 7, tls: 1.3, http2: true },
+  24: { year: 2024, chromium: 108, hls: 7, tls: 1.3, http2: true },
+  25: { year: 2025, chromium: 120, hls: 7, tls: 1.3, http2: true },
+  26: { year: 2026, chromium: 132, hls: 7, tls: 1.3, http2: true }
+};
+var LATEST_WEBOS_VERSION = 26;
+
+// Premium audio newer panels MAY decode natively but which the spec lists as
+// "specific models only" (webOS 22+): NOT guaranteed per version, so never
+// advertised blindly — gate behind a runtime probe before treating as direct
+// play. Kept as data so the future probe layer has the candidate list.
+var PREMIUM_AUDIO_MODEL_DEPENDENT = ['ac4', 'mpegh', 'dca-ma', 'dca-hi-res', 'dca-x', 'opus'];
+
 // --- per-generation matrix ---
 
 var MATRIX = {
   4: {
-    label: 'webOS 4 (2018)',
+    label: 'webOS 4 (2018, Chrome 53)',
+    chromium: 53,
+    hlsVersion: 5,
     containers: ['mp4', 'mkv', 'ts'],
     video: {
       h264: H264,
       hevc: HEVC
-      // webOS 4 has NO vp9 / av1.
+      // webOS 4 has NO vp9 / av1 at 4K, and no 8K decode.
     },
+    uhd8kVideoCodecs: [],
     audio: makeAudio(),
     subtitle: makeSubtitle('none'),
     transport: {
@@ -97,7 +133,9 @@ var MATRIX = {
     }
   },
   5: {
-    label: 'webOS 5 (2020)',
+    label: 'webOS 5 (2020, Chrome 68)',
+    chromium: 68,
+    hlsVersion: 7,
     containers: ['mp4', 'mkv', 'ts'],
     video: {
       h264: H264,
@@ -105,6 +143,7 @@ var MATRIX = {
       vp9: VP9,
       av1: AV1
     },
+    uhd8kVideoCodecs: ['hevc', 'vp9', 'av1'],
     audio: makeAudio(),
     subtitle: makeSubtitle('auto'),
     transport: {
@@ -114,7 +153,9 @@ var MATRIX = {
     }
   },
   6: {
-    label: 'webOS 6 (2021)',
+    label: 'webOS 6 (2021, Chrome 79)',
+    chromium: 79,
+    hlsVersion: 7,
     containers: ['mp4', 'mkv', 'ts'],
     video: {
       h264: H264,
@@ -122,7 +163,34 @@ var MATRIX = {
       vp9: VP9,
       av1: AV1
     },
+    uhd8kVideoCodecs: ['hevc', 'av1'], // 8K VP9 model-dependent from webOS 6
     audio: makeAudio(),
+    subtitle: makeSubtitle('auto'),
+    transport: {
+      fmp4HlsBroken: false,
+      nativeHlsNeedsCodecsPatch: false,
+      preferProgressiveHttp: false
+    }
+  },
+  // webOS 7+ — LG's year-numbered 22/23/24/25/26 (Chrome 87→132). Same advertised
+  // media ceilings as 5/6 (H.264/HEVC + VP9/AV1 @4K, 8K HEVC/AV1); the deltas are
+  // a modern web engine and model-dependent premium audio (see WEBOS_RELEASES /
+  // PREMIUM_AUDIO_MODEL_DEPENDENT). Chromium here is the modern-range minimum (87);
+  // the exact per-year value is in WEBOS_RELEASES.
+  modern: {
+    label: 'webOS 22+ (2022+, Chrome 87+)',
+    chromium: 87,
+    hlsVersion: 7,
+    containers: ['mp4', 'mkv', 'ts'],
+    video: {
+      h264: H264,
+      hevc: HEVC,
+      vp9: VP9,
+      av1: AV1
+    },
+    uhd8kVideoCodecs: ['hevc', 'av1'],
+    audio: makeAudio(),
+    premiumAudioModelDependent: PREMIUM_AUDIO_MODEL_DEPENDENT.slice(),
     subtitle: makeSubtitle('auto'),
     transport: {
       fmp4HlsBroken: false,
@@ -132,8 +200,8 @@ var MATRIX = {
   }
 };
 
-// default = latest-known (same as 6).
-MATRIX.default = MATRIX[6];
+// default = latest-known (modern / webOS 26).
+MATRIX.default = MATRIX.modern;
 
 // --- detection (copied from webos.js to stay DOM-free) ---
 
@@ -179,9 +247,13 @@ function resolveWebOsMajor(deviceInfo) {
 function entryForMajor(major) {
   if (major === 4) return { version: 4, entry: MATRIX[4] };
   if (major === 5) return { version: 5, entry: MATRIX[5] };
-  if (major >= 6) return { version: 6, entry: MATRIX[6] };
-  // unknown (0) or anything below 4 → default (latest-known).
-  return { version: 6, entry: MATRIX.default };
+  if (major === 6) return { version: 6, entry: MATRIX[6] };
+  // webOS 7+ — including LG's year-numbered 22/23/24/25/26 — share the modern
+  // media tier; preserve the reported major so callers can look up the exact
+  // Chromium/HLS in WEBOS_RELEASES.
+  if (major >= 7) return { version: major, entry: MATRIX.modern };
+  // unknown (0) or anything below 4 → default (latest-known / modern).
+  return { version: LATEST_WEBOS_VERSION, entry: MATRIX.default };
 }
 
 /**
@@ -273,8 +345,33 @@ function subtitlePolicy(caps) {
   return toEntry(caps).subtitle;
 }
 
+/** Chromium engine major for a resolved caps/entry (governs JS/CSS/MSE). */
+function chromiumVersion(caps) {
+  return toEntry(caps).chromium || 0;
+}
+
+/** Native-HLS version (5 = webOS 4; 7 = webOS 5+). */
+function hlsVersion(caps) {
+  return toEntry(caps).hlsVersion || 0;
+}
+
+/** Video codecs decodable at 8K for this tier (empty on webOS 4). */
+function uhd8kVideoCodecs(caps) {
+  return toEntry(caps).uhd8kVideoCodecs || [];
+}
+
+/**
+ * Per-webOS-version release metadata { year, chromium, hls }. Accepts the real
+ * reported major (incl. year-numbered 22–26); falls back to the latest known.
+ */
+function releaseInfoForMajor(major) {
+  return WEBOS_RELEASES[major] || WEBOS_RELEASES[LATEST_WEBOS_VERSION];
+}
+
 export {
   MATRIX,
+  WEBOS_RELEASES,
+  LATEST_WEBOS_VERSION,
   getDeviceCapabilities,
   resolveWebOsMajor,
   isVideoCodecSupported,
@@ -283,5 +380,9 @@ export {
   audioTranscodeTarget,
   directPlayAudioCodecList,
   transportFlags,
-  subtitlePolicy
+  subtitlePolicy,
+  chromiumVersion,
+  hlsVersion,
+  uhd8kVideoCodecs,
+  releaseInfoForMajor
 };

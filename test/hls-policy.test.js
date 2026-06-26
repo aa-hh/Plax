@@ -34,6 +34,9 @@ function mockTvWebOS(device) {
 
 test.beforeEach(function () {
   resetPlexDeviceInfoForTest();
+  // isWebOs4Tv() now reads getState().deviceInfo (matrix-driven, backend-neutral),
+  // so reset it between tests to avoid version leak across cases.
+  setState({ deviceInfo: {} });
   savedPalmSystem = globalThis.PalmSystem;
   savedWebOS = globalThis.webOS;
   globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
@@ -70,8 +73,22 @@ test('webOS 4 TV HLS start uses device profile with HEVC direct play', function 
   assert.ok(!/add-transcode-target[^+]*videoCodec=h264,hevc/.test(transcode['X-Plex-Client-Profile-Extra']));
 });
 
+test('isWebOs4Tv reads deviceInfo (matrix), decoupled from the Plex identity', function () {
+  // Plex identity says webOS 6, but the canonical deviceInfo says webOS 4 →
+  // detection must follow deviceInfo (single source of truth, backend-neutral).
+  setPlexDeviceInfo({ modelName: 'OLED65C1PUA', version: '6.2.1' });
+  setState({ deviceInfo: { versionMajor: 4, model: 'OLED55B8LLA' } });
+  assert.equal(isWebOs4Tv(), true);
+
+  // And the converse: identity B8, deviceInfo webOS 5 → not webOS 4.
+  setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  setState({ deviceInfo: { versionMajor: 5 } });
+  assert.equal(isWebOs4Tv(), false);
+});
+
 test('webOS 5+ TV keeps mpegts profile extra', function () {
   setPlexDeviceInfo({ modelName: 'OLED65C1PUA', version: '6.2.1' });
+  setState({ deviceInfo: { versionMajor: 6 } });
   assert.equal(isWebOs4Tv(), false);
 
   var params = applyWebOsHlsTranscodeParams({}, { strategy: 'direct-stream' });
@@ -83,6 +100,7 @@ test('applyWebOsHlsTranscodeParams includes profile extra for webOS simulator HL
     modelName: 'WEBOS26_SIMULATOR',
     version: '26.0.0'
   });
+  setState({ deviceInfo: { versionMajor: 26, model: 'WEBOS26_SIMULATOR' } });
   assert.equal(usesWebOsTvPmsProfile(), false);
   assert.equal(shouldUseWebOsHlsProfileExtra(), true);
 

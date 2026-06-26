@@ -68,8 +68,8 @@ test('collectHubPrefetchPosterUrls sizes row thumbs for first two hub rows', fun
   };
   var urls = collectHubPrefetchPosterUrls(hubPrefetchResult, { perRow: 12, maxRows: 2 });
   assert.equal(urls.length, 3);
-  assert.match(urls[0], /width=180/);
-  assert.match(urls[0], /height=270/);
+  assert.match(urls[0], /width=210/);
+  assert.match(urls[0], /height=315/);
 });
 
 test('collectHubPrefetchPosterUrls dedupes and caps maxUrls', function () {

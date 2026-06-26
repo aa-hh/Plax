@@ -7,7 +7,8 @@ platform-agnostic: the webOSTV.js wrappers, version gating, Magic Remote motion
 cursor, and display metrics. This is where cross-version behaviour is decided.
 
 *Keep this file up to date when:* the minimum webOS version changes, a feature
-gate is added, or the motion/exit behaviour changes.
+gate is added, the motion/exit behaviour changes, or the device/runtime detection
+chain changes.
 
 ## Notable Patterns
 
@@ -24,6 +25,20 @@ gate is added, or the motion/exit behaviour changes.
   `exit-longpress-back`.
 - **Simulator vs real TV differ.** `webosRuntime.js` distinguishes them; timing
   and HLS decoder behaviour are not identical — confirm playback on hardware.
+- **The `webOS` global is load-bearing and the detection FAILS SILENTLY without it.**
+  `webOS` comes from `webOSTV.js` (the `webostvjs` dependency), loaded via a
+  `<script>` in `index.html` and copied into `dist` by `build/rollup.config.js`.
+  If it's absent (dep undeclared/pruned, or the copy skipped), `webOS` is undefined
+  and `getWebOSVersion()` falls through its `PalmSystem` branch and returns
+  `'simulator'` **on a real TV** → `isSimulatorRuntime()` true →
+  `getPlexClientIdentity()` (src/plex/clientIdentity.js) returns the *browser*
+  identity (Plex Web / Chrome / model=Browser) → `isWebOs4Tv()` false → webOS4
+  transcode/remux is mis-delivered as native HLS → `networkState:3` stall (the
+  "embedded SRT stuck on Buffering" bug). When editing `getWebOSVersion()` /
+  `isSimulatorRuntime()`, do NOT make the no-`webOS` path silently assume simulator;
+  a missing dependency must surface, not degrade. Guard: `scripts/package-ipk.cjs`
+  refuses to package without `webOSTV.js`; regression tests in
+  `test/package-assets.test.js`. Memory `webostvjs-missing-dep-misdetect`.
 
 ## Key Files
 

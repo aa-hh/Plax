@@ -12,7 +12,7 @@ import {
   PMS_PLATFORM
 } from '../src/plex/clientIdentity.js';
 import { plexClientQuery } from '../src/plex/client.js';
-import { buildPlaybackUrl } from '../src/playback/sessionController.js';
+import { buildPlaybackUrl } from '../src/backends/plex/playback.js';
 
 var savedClientId;
 var savedPalmSystem;

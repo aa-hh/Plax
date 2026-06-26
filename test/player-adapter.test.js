@@ -293,6 +293,7 @@ test('play uses hls.js for H.264 transcode fallback on webOS 4 TV', function () 
     }
   };
   setPlexDeviceInfo({ modelName: 'OLED55B9PUA', version: '4.9.0' });
+  setState({ deviceInfo: { versionMajor: 4, model: 'OLED55B9PUA' } });
 
   playerModule.play('http://127.0.0.1/video.m3u8', session, { mode: 'transcode-hls' });
 
@@ -312,7 +313,7 @@ test('play uses native source mediaOption for direct play on webOS 4', function 
     }
   };
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
-  setState({ deviceInfo: { uhd: true, hdr10: true, dolbyVision: true } });
+  setState({ deviceInfo: { uhd: true, hdr10: true, dolbyVision: true, versionMajor: 4 } });
 
   playerModule.play('http://127.0.0.1/video.mkv', session, { mode: 'direct' });
 
@@ -817,4 +818,100 @@ test('truncatePlaybackString helper bounds long strings', function () {
   var truncated = playerModule.__truncatePlaybackStringForTest('abcdefghijklmnopqrstuvwxyz', 10);
   assert.equal(truncated, 'abcdefg...');
   assert.equal(playerModule.__truncatePlaybackStringForTest('short', 10), 'short');
+});
+
+// ---------------------------------------------------------------------------
+// Dual-backend regression tests
+// playerAdapter.js is shared between Plex and Jellyfin. These sessions use
+// the distinct shapes each backend passes to play() so future changes are
+// exercised against both. Add new playback regressions in both shapes.
+// ---------------------------------------------------------------------------
+
+var plexSession = {
+  server: { connectionUri: 'http://127.0.0.1:32400', accessToken: 'plex-tok' },
+  item: { ratingKey: '99', duration: 120000 }
+};
+
+var jellyfinSession = {
+  server: { url: 'http://127.0.0.1:8096', userId: 'jf-user-1', accessToken: 'jf-tok' },
+  item: { id: 'jf-item-42', duration: 120000 }
+};
+
+[
+  { label: 'plex', session: plexSession, url: 'http://127.0.0.1:32400/library/parts/99/file.mkv' },
+  { label: 'jellyfin', session: jellyfinSession, url: 'http://127.0.0.1:8096/Videos/jf-item-42/stream' }
+].forEach(function (tc) {
+  // Regression: ghost buffering overlay after pause → resume (Bug #2).
+  // Chrome 53 fires a spurious `waiting` during decoder-pipeline reactivation.
+  // If `playing` fires before `waiting` (warm buffer), the overlay got stuck.
+  test('resume: spurious waiting after playing does not leave buffering overlay (' + tc.label + ')', function () {
+    var video = setupVideo({ paused: false });
+    playerModule.init();
+    mockProgressApi();
+    playerModule.play(tc.url, tc.session, { mode: 'direct' });
+
+    var bufferingState = false;
+    playerModule.onBuffering(function (show) { bufferingState = show; });
+
+    playerModule.pause();
+    assert.equal(bufferingState, false, 'overlay hidden after pause');
+
+    playerModule.resume();
+    // playing fires first (warm buffer) → clears resuming flag
+    video.dispatchEvent('playing');
+    assert.equal(bufferingState, false, 'overlay still hidden after playing');
+
+    // spurious waiting fires after playing — must be suppressed
+    video.dispatchEvent('waiting');
+    assert.equal(bufferingState, false, 'overlay must NOT show from spurious waiting after playing');
+  });
+
+  // Regression: `waiting` during the pause→play window (before any playing event)
+  // must also be suppressed; clears once `playing` fires.
+  test('resume: waiting before playing clears when playing fires (' + tc.label + ')', function () {
+    var video = setupVideo({ paused: false });
+    playerModule.init();
+    mockProgressApi();
+    playerModule.play(tc.url, tc.session, { mode: 'direct' });
+
+    var bufferingState = false;
+    playerModule.onBuffering(function (show) { bufferingState = show; });
+
+    playerModule.pause();
+    playerModule.resume();
+
+    // waiting fires before playing — should be suppressed during resume window
+    video.dispatchEvent('waiting');
+    assert.equal(bufferingState, false, 'overlay suppressed during resume window');
+
+    // playing clears the resume window — no overlay
+    video.dispatchEvent('playing');
+    assert.equal(bufferingState, false, 'overlay stays hidden after playing');
+  });
+
+  // Real rebuffer must still arm the watchdog after the resume window closes.
+  // The resume window closes on the first timeupdate (first real frame advance).
+  test('resume: genuine stall after resume window still triggers rebuffer timeout (' + tc.label + ')', function () {
+    var clock = fakeTimers();
+    playerModule.setRebufferTimersForTest(clock);
+    var video = setupVideo({ paused: false });
+    playerModule.init();
+    mockProgressApi();
+    playerModule.play(tc.url, tc.session, { mode: 'direct' });
+
+    var timeouts = 0;
+    playerModule.onRebufferTimeout(function () { timeouts += 1; });
+
+    playerModule.pause();
+    playerModule.resume();
+
+    // playing fires, then timeupdate closes the resume window
+    video.dispatchEvent('playing');
+    video.dispatchEvent('timeupdate');
+
+    // now a genuine stall must arm the watchdog
+    video.dispatchEvent('waiting');
+    clock.tick(playerModule.REBUFFER_TIMEOUT_MS);
+    assert.equal(timeouts, 1, 'genuine stall must still timeout');
+  });
 });

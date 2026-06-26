@@ -14,6 +14,7 @@ import {
   setPlexDeviceInfo,
   resetPlexDeviceInfoForTest
 } from '../src/plex/clientIdentity.js';
+import { setState } from '../src/core/store.js';
 
 test('isLadderFallbackStreamChange: ladder and subtitle-fallback', function () {
   assert.equal(isLadderFallbackStreamChange('direct-stream-fallback'), true);
@@ -302,6 +303,7 @@ test('decideErrorFallback: webOS 4 skips remux after direct play failure', funct
   };
   resetPlexDeviceInfoForTest();
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  setState({ deviceInfo: { versionMajor: 4, model: 'OLED55B8LLA' } });
 
   var state = createPlaybackFallbackState();
   assert.deepEqual(
@@ -314,6 +316,7 @@ test('decideErrorFallback: webOS 4 skips remux after direct play failure', funct
   delete globalThis.PalmSystem;
   delete globalThis.webOS;
   resetPlexDeviceInfoForTest();
+  setState({ deviceInfo: {} });
 });
 
 test('clearHlsFallbackAfterHlsTranscodeStart resets hls flag for HLS URL', function () {

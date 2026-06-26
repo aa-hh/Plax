@@ -12,6 +12,27 @@ engine behind it.
 *Keep this file up to date when:* the direct-play→transcode decision logic
 changes, the fallback chain changes, or capability/bitrate tables are revised.
 
+## Dual-backend rule
+
+**`playerAdapter.js` and `playerScreen.js` serve both Plex and Jellyfin.** Any change to
+playback logic, buffering state, subtitle switching, pause/resume, or quality
+selection must be verified against both backends. Key differences:
+
+| Concern | Plex | Jellyfin |
+|---|---|---|
+| Session shape | `{ server: { connectionUri, accessToken }, item: { ratingKey } }` | `{ server: { url, userId, accessToken }, item: { id } }` |
+| Timeline/progress | `updateProgress(server, ratingKey, ms, state, …)` | Different progress API shape |
+| Subtitle URLs | Built via `prepareClientSubtitlePlayback` (Plex API) | Built via Jellyfin subtitle endpoint |
+| Stream restart target | Plex `/playbackInfo` → new session | Jellyfin `/PlaybackInfo` → new session |
+
+Test files that must stay green for both:
+- `test/player-adapter.test.js` — exercises `playerAdapter.js` with both Plex and Jellyfin session shapes
+- `test/jellyfin-playback.test.js` — Jellyfin stream URL construction
+- `test/playback-integration.test.js` — end-to-end playback flow
+
+When adding a regression test for a playback bug, add it in **both** session shapes
+using the `[plexSession, jellyfinSession].forEach(...)` pattern already in `player-adapter.test.js`.
+
 ## Notable Patterns
 
 - **Three-tier delivery decision:** direct play (original file, progressive URL,

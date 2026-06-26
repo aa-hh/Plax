@@ -385,6 +385,80 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
   );
 }
 
+/**
+ * Plex's dedicated subtitle-conversion endpoint, captured verbatim from the
+ * official Plex-for-LG client (PMS log, House of the Dragon S3E1 on a B8):
+ *   GET /subtitles/:/transcode/universal/start
+ *       ?directPlay=1&directStream=1&directStreamAudio=1&protocol=http&copyts=1
+ *       &subtitles=sidecar&offset=<sec>&session=<playbackSession>&path=<metadata>…
+ *
+ * The video DIRECT-PLAYS (directPlay=1 → HDR/Dolby untouched, NO remux/transcode);
+ * Plex converts the part's selected EMBEDDED subtitle (selected via the /library/
+ * parts PUT) to text from `offset` onward. This is the ONLY shape that serves an
+ * embedded sub during direct play — the /video/:/transcode/universal/subtitles
+ * endpoint 400s for embedded streams (verified on-device + probe-subs.sh).
+ */
+function subtitleResolutionParam(session) {
+  var version = session && session.version;
+  if (!version) return null;
+  if (version.width && version.height) {
+    return String(version.width) + 'x' + String(version.height);
+  }
+  var res = String(version.videoResolution || '').toLowerCase();
+  if (res.indexOf('4k') >= 0 || res.indexOf('2160') >= 0) return '3840x2160';
+  if (res.indexOf('1080') >= 0) return '1920x1080';
+  if (res.indexOf('720') >= 0) return '1280x720';
+  return null;
+}
+
+function buildSubtitleTranscodeStartUrl(server, session, track, playbackMode) {
+  if (!server || !session || session.subtitleStreamId == null) return null;
+  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
+  if (!mediaPath) return null;
+  var params = {
+    // Byte-matches the official Plex-for-LG /subtitles/:/transcode/universal/start
+    // request (captured from PMS logs). Accept=application/json marks this as the
+    // extraction TRIGGER (returns a JSON manifest, not the SRT); the SRT is then
+    // pulled from /library/streams (501 until extracted, then 200).
+    Accept: 'application/json',
+    'Accept-Language': 'en',
+    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    protocol: 'http',
+    fastSeek: '1',
+    directPlay: '1',
+    directStream: '1',
+    directStreamAudio: '1',
+    hasMDE: '1',
+    mediaBufferSize: '50000',
+    subtitles: 'sidecar',
+    subtitleSize: '75',
+    autoAdjustSubtitle: '1',
+    videoQuality: '100',
+    audioBoost: '100',
+    copyts: '1',
+    location: plexLocationForServer(server)
+  };
+  var resolution = subtitleResolutionParam(session);
+  if (resolution) params.videoResolution = resolution;
+  var sessionId = resolvePlaybackSessionId(session);
+  if (sessionId) params.session = sessionId;
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  // CRITICAL: this PMS build 400s universal "start" URLs that carry the X-Plex-*
+  // identity in the QUERY (memory webos4-directplay-subtitle-and-mkv). The official
+  // Plex-for-LG client passes identity + token in HEADERS with a clean query. So do
+  // NOT use serverUrl() (it appends plexClientQuery to the URL) — build a bare query
+  // and send identity/token via subtitleFetchHeaders.
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/subtitles/:/transcode/universal/start' + (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session, 'application/json') }
+  };
+}
+
 function subtitleFetchHeaders(server, session, accept) {
   var headers = plexHeaders({
     Accept: accept || 'text/srt, text/vtt, text/plain;q=0.9, */*;q=0.1'
@@ -451,6 +525,8 @@ function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
     Object.assign({ timeout: 15000 }, request.init || {})
   ).then(function (body) {
     var resourceSession = extractDecisionResourceSession(body);
+    console.info('[subtitles] prime-decision resourceSession=' + resourceSession +
+      ' playbackSessionId=' + (session && session.playbackSessionId));
     if (resourceSession && session) session.transcodeSessionId = resourceSession;
   }).catch(function (err) {
     console.warn('[subtitles] decision prime failed:', err.message);
@@ -488,6 +564,28 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   var resolvedTrack = track || null;
   var playbackMode = options.playbackMode || 'direct';
   var preferUniversalFirst = plexLocationForServer(server) === 'wan';
+
+  // PRIMARY for EMBEDDED subs: the official Plex-for-LG endpoint — serves the
+  // embedded sub while the video direct-plays (HDR preserved). Sidecar/external
+  // subs are real files fetched faster via /library/streams, so only prepend this
+  // for embedded tracks.
+  if (resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack)) {
+    pushSubtitleAttempt(
+      attempts,
+      'subtitles-start',
+      buildSubtitleTranscodeStartUrl(server, session, resolvedTrack, playbackMode)
+    );
+    // /library/streams serves the embedded sub once Plex has extracted it (501
+    // until ready → retried by loadClientSubtitleFromUrls). Prioritise it even on
+    // WAN — it's the proven working endpoint (returned 1068 cues once extracted).
+    if (!isAdvancedSubtitleCodec(resolvedTrack)) {
+      pushSubtitleAttempt(
+        attempts,
+        'stream-embedded',
+        buildStreamKeySubtitleUrl(server, resolvedTrack)
+      );
+    }
+  }
 
   if (!preferUniversalFirst &&
       isSidecarSubtitleTrack(resolvedTrack) && !isAdvancedSubtitleCodec(resolvedTrack)) {

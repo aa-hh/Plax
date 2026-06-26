@@ -2,6 +2,7 @@ import { getState } from '../../core/store.js';
 import { filterLibrariesForUser, isMovieOrTvSection } from '../../security/libraryAccess.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
 import { iconSvgForKind, libraryIconKind } from '../icons/navIcons.js';
+import { plaxWordmarkSvg, plaxMarkSvg } from '../brand/plaxLogo.js';
 
 var SEARCH_NAV_ITEM = { id: 'search', label: 'Search', iconKind: 'search' };
 var SETTINGS_NAV_ITEM = { id: 'settings', label: 'Settings', iconKind: 'settings' };
@@ -210,9 +211,17 @@ function mountBrowsingHubNav(host, options) {
   var brand = document.createElement('div');
   brand.className = 'browsing-hub-brand';
   brand.setAttribute('aria-hidden', 'true');
+  // Brand lockup = the full "plax" wordmark when the rail has room (peek/
+  // expanded), collapsing to the compact "x" mark when icon-only. Both are
+  // inline SVG (crisp at any scale; linearGradient/stroke render on Chromium 53)
+  // sourced from the single brand module so the launcher icon stays in sync.
   brand.innerHTML =
-    '<span class="browsing-hub-brand__mark"></span>' +
-    '<span class="browsing-hub-brand__name">Plax</span>';
+    '<span class="browsing-hub-brand__mark">' +
+      plaxMarkSvg() +
+    '</span>' +
+    '<span class="browsing-hub-brand__wordmark">' +
+      plaxWordmarkSvg() +
+    '</span>';
   host.appendChild(brand);
 
   // Expand-on-focus via a JS class. CSS :focus-within is Chrome 60+, but the B8

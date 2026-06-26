@@ -13,6 +13,7 @@ import { loadHomeFeedPhased, loadSimilar, loadHubRows } from './hubs.js';
 import { search } from './search.js';
 import {
   resolveStreamUrl,
+  buildSubtitlePlan,
   updateProgress,
   reportTimeline,
   markWatched,
@@ -114,6 +115,7 @@ var jellyfinBackend = {
 
   // playback (sessionController delegates here for provider==='jellyfin')
   resolveStreamUrl: resolveStreamUrl,
+  buildSubtitlePlan: buildSubtitlePlan,
 
   // watch state / progress
   reportTimeline: reportTimeline,

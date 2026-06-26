@@ -298,7 +298,7 @@ test('upgradeStrategyForTextSubtitles promotes direct to direct-stream when subs
 });
 
 test('resolvePlaybackStrategy no longer upgrades auto direct for text subs', async function () {
-  var mod = await import('../src/playback/sessionController.js');
+  var mod = await import('../src/backends/plex/playback.js');
   assert.equal(
     mod.resolvePlaybackStrategy({ quality: 'auto', subtitleStreamId: 5, subtitleBurnIn: false }),
     'direct'
@@ -406,8 +406,12 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   };
   var attempts = buildSubtitleFetchPlan(server, session, track);
   assert.ok(attempts.length >= 4);
-  assert.equal(attempts[0].label, 'stream-embedded');
-  assert.ok(attempts[0].url.indexOf('/library/streams/1893985.srt') >= 0);
+  // PRIMARY: the official /subtitles/:/transcode/universal/start endpoint (embedded).
+  assert.equal(attempts[0].label, 'subtitles-start');
+  assert.ok(attempts[0].url.indexOf('/subtitles/:/transcode/universal/start') >= 0);
+  var streamEmbedded = attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0];
+  assert.ok(streamEmbedded);
+  assert.ok(streamEmbedded.url.indexOf('/library/streams/1893985.srt') >= 0);
   var metaAuto = attempts.filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
   assert.ok(metaAuto);
   assert.ok(metaAuto.url.indexOf('subtitles=auto') >= 0);
@@ -507,10 +511,14 @@ test('buildSubtitleFetchPlan deprioritizes stream fetch on wan', function () {
   var plan = buildSubtitleFetchPlan(server, session, track, {
     playbackMode: 'transcode-hls'
   });
-  assert.equal(plan[0].label, 'universal-metadata-auto');
+  // For embedded subs the proven endpoints lead: subtitles-start then
+  // stream-embedded (extracted on demand), BEFORE the universal attempts —
+  // even on wan, because stream-embedded is the one that actually returns cues.
+  assert.equal(plan[0].label, 'subtitles-start');
+  assert.equal(plan[1].label, 'stream-embedded');
   var streamEmbedded = plan.filter(function (a) { return a.label === 'stream-embedded'; })[0];
   assert.ok(streamEmbedded);
-  assert.ok(plan.indexOf(streamEmbedded) > plan.findIndex(function (a) {
+  assert.ok(plan.indexOf(streamEmbedded) < plan.findIndex(function (a) {
     return a.label === 'universal-metadata-auto';
   }));
 });
@@ -778,7 +786,8 @@ test('buildSubtitleFetchPlan includes part path only when metadata path missing'
     partIndex: 0
   };
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
-  assert.equal(attempts[0].label, 'stream-embedded');
+  assert.equal(attempts[0].label, 'subtitles-start');
+  assert.ok(attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0]);
   assert.equal(
     attempts.some(function (a) { return a.label.indexOf('universal-part-') === 0; }),
     false
