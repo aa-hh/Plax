@@ -27,7 +27,7 @@ function providerPickerScreen(root, params, navigate) {
   screen.setAttribute('data-focus-mode', 'sequential');
   screen.innerHTML =
     '<h1 class="screen-title">Choose your media server</h1>' +
-    '<p class="screen-subtitle">XPlay works with Plex or Jellyfin. Pick the one you use — ' +
+    '<p class="screen-subtitle">Plax works with Plex or Jellyfin. Pick the one you use — ' +
     'you can switch later by signing out.</p>' +
     '<div class="provider-cards">' +
       providerCard('plex', 'Sign in with your plex.tv account and pick a server', PLEX_LOGO, 'plex') +
