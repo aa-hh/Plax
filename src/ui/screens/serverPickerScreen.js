@@ -7,6 +7,7 @@ import {
 import * as cache from '../../core/cache.js';
 import { invalidateRetention } from '../../core/router.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import { signalReady } from '../splashScreen.js';
 import { plexMarkSvg, jellyfinMarkSvg, addServerGlyphSvg } from '../brand/providerMarks.js';
 
 /**
@@ -137,6 +138,7 @@ function serverPickerScreen(root, params, navigate) {
   }
 
   focusFirst(screen);
+  signalReady();
 
   return {
     destroy: function () {

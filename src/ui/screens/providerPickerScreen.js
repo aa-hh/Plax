@@ -1,6 +1,7 @@
 import { setState } from '../../core/store.js';
 import { persistAuth, clearAuth } from '../../core/storage.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import { signalReady } from '../splashScreen.js';
 import { plexMarkSvg, jellyfinMarkSvg } from '../brand/providerMarks.js';
 
 // Official brand marks (single source of truth: src/ui/brand/providerMarks.js) —
@@ -65,6 +66,7 @@ function providerPickerScreen(root, params, navigate) {
   });
 
   focusFirst(screen);
+  signalReady();
 
   return {
     destroy: function () { detachFocus(); }

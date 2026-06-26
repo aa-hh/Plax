@@ -10,6 +10,7 @@ import { fetchHomeSize } from '../../plex/auth/pinAuth.js';
 import { fetchHomeUsers, switchToHomeUser } from '../../plex/users/homeUsers.js';
 import { createPinEntry, isNumericKeyCode } from '../pinEntry.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import { signalReady } from '../splashScreen.js';
 import { createSpinner } from '../components/spinner.js';
 import * as cache from '../../core/cache.js';
 import { invalidateRetention } from '../../core/router.js';
@@ -677,11 +678,13 @@ function profilePickerScreen(root, params, navigate) {
           return;
         }
         renderProfiles(homeUsers);
+        signalReady();
       }).catch(function (err) {
         clearTimeout(loadTimeout);
         setProfileLoading(false);
         if (params._from) {
           showLoadError(err.message || 'Could not load profiles.');
+          signalReady();
           return;
         }
         bootstrapWithoutProfiles();

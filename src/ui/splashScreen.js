@@ -3,14 +3,35 @@ import { plaxWordmarkSvg } from './brand/plaxLogo.js';
 /**
  * Splash screen — full-viewport black overlay with the centred Plax wordmark.
  *
- * Usage:
- *   var splash = createSplash();   // inject immediately (before first navigate)
- *   splash.dismiss();              // call once the first screen is mounted
+ * Two-part dismiss contract:
+ *   1. Screens call signalReady() after their first meaningful render (user list
+ *      shown, home hubs visible, etc.). This is the PRIMARY dismiss trigger.
+ *   2. app.js registers an onFirstMount fallback so the splash always clears
+ *      even if a screen never calls signalReady() — e.g. the pairing screen or
+ *      any screen added later without the signal wired up. The fallback fires
+ *      3 s after the factory returns (long enough for most async renders).
  *
- * The element is appended to document.body so it sits above #app-root.
- * z-index 9999 ensures it floats above every other layer (loading overlay is
- * --z-loading: 1005; perf HUD is --z-hud: 1800).
+ * Usage:
+ *   // app.js — before first navigate():
+ *   var splash = createSplash();
+ *   onFirstMount(function () { setTimeout(splash.dismiss, 3000); }); // fallback
+ *
+ *   // startup screen — after first render():
+ *   import { signalReady } from '../splashScreen.js';
+ *   signalReady();
  */
+
+// Module-level dismiss fn — set by createSplash(), cleared on dismiss.
+var _dismiss = null;
+
+/**
+ * Called by startup screens after their first meaningful render.
+ * No-ops if the splash is already gone or was never created.
+ */
+function signalReady() {
+  if (_dismiss) _dismiss();
+}
+
 function createSplash() {
   var el = document.createElement('div');
   el.id = 'splash-screen';
@@ -24,9 +45,6 @@ function createSplash() {
   document.body.appendChild(el);
 
   var showTime = Date.now();
-  // Minimum time the splash stays visible. Prevents it from being created and
-  // destroyed in the same JS tick (before the browser has painted even one frame),
-  // which is what happens when the startup screen mounts synchronously.
   var MIN_MS = 600;
   var dismissed = false;
 
@@ -40,17 +58,18 @@ function createSplash() {
   function dismiss() {
     if (dismissed) return;
     dismissed = true;
+    _dismiss = null;
     var remaining = MIN_MS - (Date.now() - showTime);
     if (remaining > 0) {
       setTimeout(doFade, remaining);
     } else {
-      // At least defer to the next animation frame so the browser has painted
-      // the splash at least once before we begin the fade.
       requestAnimationFrame(doFade);
     }
   }
 
+  _dismiss = dismiss;
+
   return { dismiss: dismiss };
 }
 
-export { createSplash };
+export { createSplash, signalReady };

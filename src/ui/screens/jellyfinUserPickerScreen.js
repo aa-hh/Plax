@@ -14,6 +14,7 @@ import { getCachedAvatar, fetchAndCacheAvatar, evictAvatarsNotIn } from '../../c
 import { openTextInputModal } from '../components/controls.js';
 import { clampProfilePickerCols } from './profilePickerScreen.js';
 import { focusFirst, attachFocusNav } from '../focus.js';
+import { signalReady } from '../splashScreen.js';
 
 /**
  * Jellyfin "who's watching" picker — the multi-user analog of Plex's profile
@@ -263,13 +264,16 @@ function jellyfinUserPickerScreen(root, params, navigate) {
         // No public users and no cached sessions — go straight to manual sign-in.
         onOtherUser();
         render([]);
+        signalReady();
         return;
       }
       render(entries);
+      signalReady();
     }).catch(function () {
       if (destroyed) return;
       setStatus('');
       render(buildEntries([], sessions));
+      signalReady();
     });
   }
 

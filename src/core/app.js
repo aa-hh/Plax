@@ -150,7 +150,9 @@ function startApp(platformMajor) {
   // Show the splash screen synchronously before the first navigate so the
   // transition from the browser's blank page to app UI is seamless.
   var splash = createSplash();
-  onFirstMount(function () { splash.dismiss(); });
+  // Fallback: if the startup screen never calls signalReady() (e.g. pairing,
+  // server-picker, or any future screen not yet wired), dismiss after 3 s.
+  onFirstMount(function () { setTimeout(splash.dismiss, 3000); });
 
   // Plex → profile-picker, Jellyfin → jellyfin-users; both picker screens are the
   // bootstrap hosts that load libraries before Home. (Plex.tv link is once per
