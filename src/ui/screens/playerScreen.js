@@ -2699,9 +2699,15 @@ function playerScreen(root, params, navigate) {
   });
 
   var detachRemote = attachRemoteKeys({
+    onTogglePlayPause: function () {
+      if (player.isPaused()) player.resume(); else player.pause();
+      updatePauseButton();
+      syncPlaybackProgressUi();
+      setOverlayVisible(true);
+      onOverlayActivity();
+    },
     onPlay: function () {
       if (player.isPaused()) player.resume();
-      else player.pause();
       updatePauseButton();
       syncPlaybackProgressUi();
       setOverlayVisible(true);

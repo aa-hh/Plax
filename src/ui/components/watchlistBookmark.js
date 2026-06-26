@@ -118,9 +118,16 @@ function openWatchlistPicker(screen, item, user, opts) {
   return { close: function () { if (teardown) teardown(); } };
 }
 
+function openWatchlistPickerForItem(screen, item, onChange) {
+  var user = getState().activeHomeUser || getState().user;
+  if (!canUseWatchlists(user) || !supportsWatchlistBookmark(item)) return;
+  openWatchlistPicker(screen, item, user, { onChange: onChange || function () {} });
+}
+
 export {
   watchlistBookmarkButtonHtml,
   supportsWatchlistBookmark,
   wireWatchlistBookmark,
-  updateBookmarkButton
+  updateBookmarkButton,
+  openWatchlistPickerForItem
 };

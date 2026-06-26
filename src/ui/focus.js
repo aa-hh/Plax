@@ -191,15 +191,75 @@ if (typeof window !== 'undefined' && window.addEventListener) {
   document.addEventListener('focusin', onEditableFocusIn, true);
 }
 
-// --- Spatial scoring constants (tune on-device) -------------------------------
-// Cross-axis offset is penalised much harder than primary-axis distance so a
-// grid moves straight up/down and a row moves straight left/right instead of
-// drifting diagonally to a slightly-closer neighbour.
-var CROSS_AXIS_PENALTY = 8;
-// Flat cost added when the candidate's cross-axis range does not overlap the
-// active element's range at all (keeps focus within the current column/row when
-// an aligned option exists).
-var MISALIGN_PENALTY = 10000;
+// --- Declarative nav overrides ------------------------------------------------
+// Two ways to pin a specific element as the target for a direction:
+//
+//   1. HTML attribute on the source element:
+//        <button data-nav-right="#my-other-btn">…</button>
+//      Accepts any CSS selector; evaluated live so dynamic content works.
+//
+//   2. JS programmatic map (for elements you can't easily annotate):
+//        import { addNavOverride } from './focus.js';
+//        addNavOverride('.sidebar-item--last', ARROW_RIGHT, '.content-first-card');
+//
+// Overrides are checked before the geometric scorer. Unresolved selectors
+// (element not in DOM or not focusable) fall through to geometry.
+
+var _navOverrides = []; // [{ fromSel, dir, toSel }]
+
+function addNavOverride(fromSel, directionKey, toSel) {
+  _navOverrides.push({ fromSel: fromSel, dir: directionKey, toSel: toSel });
+}
+
+function clearNavOverrides() { _navOverrides = []; }
+
+var _dirAttr = {};
+_dirAttr[37] = 'data-nav-left';
+_dirAttr[38] = 'data-nav-up';
+_dirAttr[39] = 'data-nav-right';
+_dirAttr[40] = 'data-nav-down';
+
+function resolveNavOverride(active, key) {
+  if (!active) return null;
+  // 1. data-nav-* attribute on the element itself
+  var attr = _dirAttr[key];
+  if (attr) {
+    var sel = active.getAttribute(attr);
+    if (sel) {
+      try {
+        var el = document.querySelector(sel);
+        if (el && isNavFocusable(el)) return el;
+      } catch (e) { /* invalid selector — ignore */ }
+    }
+  }
+  // 2. Programmatic override map
+  for (var i = 0; i < _navOverrides.length; i++) {
+    var ov = _navOverrides[i];
+    if (ov.dir !== key) continue;
+    try {
+      if (!active.matches(ov.fromSel)) continue;
+      var target = document.querySelector(ov.toSel);
+      if (target && isNavFocusable(target)) return target;
+    } catch (e) { /* invalid selector — ignore */ }
+  }
+  return null;
+}
+
+// --- Spatial scoring constants -------------------------------------------
+// score = primaryAxisGap + GAP_PENALTY × cross-axis-edge-gap
+//
+// Primary distance (how far the move goes) dominates. The cross-axis term
+// only kicks in when the candidate is outside the active element's column/row
+// (edge-to-edge gap > 0); elements that overlap horizontally/vertically have
+// zero extra penalty and compete purely on vertical/horizontal proximity.
+//
+// GAP_PENALTY = 1 keeps column-following for grids (same-column wins by a
+// small margin) while letting a much-closer off-column element beat a
+// far-away same-column element — fixing the cast-card→action-button case
+// where 580 px of vertical proximity advantage was overwhelmed by the old
+// flat 10 000-pt or 30-pt/px gap terms. The sidebar guard (isInSideNav) is
+// independent and keeps the sidebar unreachable via Up/Down.
+var GAP_PENALTY = 1;
 
 function navTabIndex(el) {
   if (!el) return 0;
@@ -264,8 +324,8 @@ function strictlyInDirection(a, c, key) {
   var cCy = c.top + c.height / 2;
   if (key === ARROW_LEFT) return cCx < aCx - 1 && c.right <= a.right;
   if (key === ARROW_RIGHT) return cCx > aCx + 1 && c.left >= a.left;
-  if (key === ARROW_UP) return cCy < aCy - 1 && c.bottom <= a.bottom;
-  if (key === ARROW_DOWN) return cCy > aCy + 1 && c.top >= a.top;
+  if (key === ARROW_UP) return cCy < aCy - 1 && c.bottom <= a.top;
+  if (key === ARROW_DOWN) return cCy > aCy + 1 && c.top >= a.bottom;
   return false;
 }
 
@@ -278,9 +338,8 @@ function primaryAxisGap(a, c, key) {
   return 0;
 }
 
-// How far off the travel axis the candidate sits (drift), plus whether the two
-// rects overlap on the cross axis (same column for vertical moves, same row for
-// horizontal moves).
+// How far off the travel axis the candidate sits (drift), whether the two rects
+// overlap on the cross axis, and the edge-to-edge gap when they don't.
 function crossAxisOffset(a, c, key) {
   var horizontalMove = key === ARROW_LEFT || key === ARROW_RIGHT;
   var aStart = horizontalMove ? a.top : a.left;
@@ -291,15 +350,21 @@ function crossAxisOffset(a, c, key) {
   var cMid = (cStart + cEnd) / 2;
   var offset = Math.abs(cMid - aMid);
   var overlaps = cEnd > aStart && cStart < aEnd;
-  return { offset: offset, overlaps: overlaps };
+  // Edge-to-edge gap: 0 when overlapping, positive distance otherwise.
+  var gap = overlaps ? 0 : Math.max(cStart - aEnd, aStart - cEnd);
+  return { offset: offset, overlaps: overlaps, gap: gap };
 }
 
 function scoreCandidate(a, c, key) {
   var primary = Math.max(0, primaryAxisGap(a, c, key));
   var cross = crossAxisOffset(a, c, key);
-  var score = primary + CROSS_AXIS_PENALTY * cross.offset;
-  if (!cross.overlaps) score += MISALIGN_PENALTY;
-  return score;
+  // Overlapping elements (gap=0) sort purely by primary distance — no cross
+  // penalty at all. Non-overlapping elements pay GAP_PENALTY per pixel of
+  // edge-to-edge gap, so column-preference is preserved without the
+  // center-to-center term that previously overwhelmed primary proximity.
+  // Tiny center-alignment tiebreaker (0.001×) so equal-gap candidates sort
+  // by cross-axis center distance rather than arbitrary DOM order.
+  return primary + GAP_PENALTY * cross.gap + 0.001 * cross.offset;
 }
 
 function isPlayerSeekBar(el) {
@@ -319,6 +384,9 @@ function spatialMove(container, key) {
   if (isPlayerSeekBar(active) && (key === ARROW_LEFT || key === ARROW_RIGHT)) {
     return null;
   }
+  // Declarative override wins over geometry.
+  var override = resolveNavOverride(active, key);
+  if (override) return override;
   var aRect = rectOf(active);
   if (!aRect) return null;
 
@@ -682,6 +750,28 @@ function attachFocusNav(container) {
   };
 }
 
+// Returns all valid candidates in `key` direction from current active element,
+// each annotated with their score. Used by the focus-debug overlay to label arrows.
+function getScoredCandidates(container, key) {
+  var active = document.activeElement;
+  var aRect = active && rectOf(active);
+  if (!aRect) return [];
+  var activeSideNav = isInSideNav(active);
+  var list = getFocusables(container);
+  var results = [];
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    if (c === active) continue;
+    var cRect = rectOf(c);
+    if (!cRect) continue;
+    if (!strictlyInDirection(aRect, cRect, key)) continue;
+    if ((key === ARROW_UP || key === ARROW_DOWN) && isInSideNav(c) !== activeSideNav) continue;
+    results.push({ el: c, rect: cRect, score: Math.round(scoreCandidate(aRect, cRect, key)) });
+  }
+  results.sort(function (a, b) { return a.score - b.score; });
+  return results;
+}
+
 export {
   focusableSelector,
   getFocusables,
@@ -692,5 +782,8 @@ export {
   scrollFocusedIntoView,
   isNavFocusable,
   spatialMove,
-  restoreFocus
+  getScoredCandidates,
+  restoreFocus,
+  addNavOverride,
+  clearNavOverrides
 };

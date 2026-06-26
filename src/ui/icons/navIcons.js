@@ -59,6 +59,9 @@ function settingsIconSvg() { return svgIcon('hub-icon--settings', P_GEAR); }
 function libraryIconSvg() { return svgIcon('hub-icon--library', P_VIDEO_LIBRARY, '0 0 20 20'); }
 function subtitlesIconSvg() { return svgIcon('hub-icon--subtitles', P_SUBTITLES, '0 0 20 16'); }
 function qualityIconSvg() { return svgIcon('hub-icon--quality', P_SETTINGS_FILLED, '0 0 19.4542 20', true); }
+function moreOptionsIconSvg() {
+  return svgIcon('hub-icon--more', 'M2 8a1.5 1.5 0 1 0 3 0A1.5 1.5 0 0 0 2 8zm6.5 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0zM13 8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z', '0 0 18 16', true);
+}
 
 function iconSvgForKind(kind, filled) {
   if (kind === 'home') return homeIconSvg();
@@ -86,6 +89,7 @@ export {
   settingsIconSvg,
   subtitlesIconSvg,
   qualityIconSvg,
+  moreOptionsIconSvg,
   starIconSvg,
   iconSvgForKind,
   libraryIconKind

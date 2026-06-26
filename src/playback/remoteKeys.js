@@ -11,8 +11,10 @@ var KEYS = {
   BACK: 461,
   /** Channel Up — skip intro when offered during playback */
   SKIP_INTRO: 33,
-  /** Yellow (data broadcast) on some LG remotes */
-  YELLOW: 32,
+  /** Yellow color button (LG remote keycode) — play/pause toggle */
+  YELLOW: 405,
+  /** Spacebar — play/pause toggle in the simulator */
+  SPACE: 32,
   /** Magic Remote "Search" key — handled globally in router.js */
   SEARCH: 84,
   /** Info — toggle player controls on some LG remotes */
@@ -52,7 +54,10 @@ function attachRemoteKeys(handlers) {
     } else if (code === KEYS.SKIP_NEXT) {
       if (handlers.onSkipNext) handlers.onSkipNext();
       handled = true;
-    } else if (code === KEYS.SKIP_INTRO || code === KEYS.YELLOW) {
+    } else if (code === KEYS.YELLOW || code === KEYS.SPACE) {
+      if (handlers.onTogglePlayPause) handlers.onTogglePlayPause();
+      handled = true;
+    } else if (code === KEYS.SKIP_INTRO) {
       if (handlers.onSkipIntro) handlers.onSkipIntro();
       handled = true;
     } else if (code === KEYS.INFO || code === KEYS.GREEN) {

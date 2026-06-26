@@ -374,7 +374,7 @@ test('episode grid: DOWN from bottom row reaches detail-link-0', function () {
   assert.equal(document.activeElement.id, 'detail-link-0');
 });
 
-test('episode grid: UP from ep-0 reaches season-2 (best cross-axis alignment)', function () {
+test('episode grid: UP from ep-0 reaches btn-start (closest row above)', function () {
   installMinimalDom();
   invalidateFocusableCache();
   var screen = buildDetailScreen();
@@ -382,8 +382,9 @@ test('episode grid: UP from ep-0 reaches season-2 (best cross-axis alignment)', 
 
   screen.querySelector('#ep-0').focus();
   handleKeyNav(screen, keyEvent(ARROW_UP));
-  // ep-0 center x=220; season-2 center x=220 — perfect alignment wins
-  assert.equal(document.activeElement.id, 'season-2');
+  // ep-0 spans x=0..440; btn-start at y=130..180 is closest row above (primaryGap=40)
+  // season chips are further up (primaryGap=124) — vertical proximity wins
+  assert.equal(document.activeElement.id, 'btn-start');
 });
 
 // ─── Detail links ─────────────────────────────────────────────────────────────

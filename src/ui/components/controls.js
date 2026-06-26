@@ -186,7 +186,7 @@ function openSidePanel(opts) {
   var multi = !!opts.multiSelect;
   var returnFocus = document.activeElement;
 
-  var overlay = el('div', 'gt-side-panel player-track-modal');
+  var overlay = el('div', 'gt-side-panel');
   overlay.setAttribute('role', 'presentation');
   var sheet = el('div', 'gt-side-panel-sheet player-track-modal-sheet');
   sheet.setAttribute('role', 'dialog');
@@ -217,34 +217,53 @@ function openSidePanel(opts) {
   }
 
   options.forEach(function (o) {
-    var on = multi
-      ? !!o.checked
-      : ((opts.selectedId != null && o.id === opts.selectedId) || !!o.selected);
+    var isIconToggle = !!(o.iconFn || o.labelFn);
+    var on = isIconToggle
+      ? !!o.active
+      : multi
+        ? !!o.checked
+        : ((opts.selectedId != null && o.id === opts.selectedId) || !!o.selected);
     var btn = el('button', 'player-menu-option' + (on ? ' player-menu-option--active' : ''));
     btn.type = 'button';
     btn.tabIndex = 0;
-    btn.setAttribute('role', multi ? 'checkbox' : 'radio');
+    btn.setAttribute('role', isIconToggle ? 'checkbox' : multi ? 'checkbox' : 'radio');
     btn.setAttribute('aria-checked', on ? 'true' : 'false');
     btn.setAttribute('data-option-id', String(o.id));
+
+    // Optional leading icon slot (no trailing check control for icon-toggle rows).
+    var iconSpan = null;
+    if (o.leadingIcon) {
+      iconSpan = el('span', 'player-menu-option-icon');
+      iconSpan.innerHTML = o.leadingIcon;
+      btn.appendChild(iconSpan);
+    }
 
     var label = el('span', 'player-menu-option-label');
     label.textContent = o.label != null ? String(o.label) : String(o.id);
     btn.appendChild(label);
 
-    // control: 24px radio (single) or checkbox (multi). Glyph revealed on
-    // checked via transform/opacity only (Chrome53-safe, no layout).
-    var control = el('span', 'player-menu-option-check' +
-      (multi ? ' player-menu-option-check--checkbox' : ''));
-    btn.appendChild(control);
+    // Trailing check control — omitted for icon-toggle rows (icon is the indicator).
+    if (!isIconToggle) {
+      var control = el('span', 'player-menu-option-check' +
+        (multi ? ' player-menu-option-check--checkbox' : ''));
+      btn.appendChild(control);
+    }
 
     var rowRec = { btn: btn, o: o };
     rows.push(rowRec);
 
     btn.addEventListener('click', function () {
-      if (multi) {
+      if (isIconToggle) {
+        // In-place toggle — panel stays open; icon + label update.
         var now = btn.getAttribute('aria-checked') !== 'true';
         paintRow(rowRec, now);
+        if (iconSpan && o.iconFn) iconSpan.innerHTML = o.iconFn(now);
+        if (o.labelFn) label.textContent = o.labelFn(now);
         if (typeof opts.onToggle === 'function') opts.onToggle(o.id, o, now);
+      } else if (multi) {
+        var nowChecked = btn.getAttribute('aria-checked') !== 'true';
+        paintRow(rowRec, nowChecked);
+        if (typeof opts.onToggle === 'function') opts.onToggle(o.id, o, nowChecked);
       } else {
         teardown();
         if (typeof opts.onPick === 'function') opts.onPick(o.id, o);

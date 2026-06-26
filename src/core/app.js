@@ -15,6 +15,7 @@ import { runVersionGate } from '../platform/versionGate.js';
 import { resolveNetworkPrefs } from '../settings/networkPrefs.js';
 import { initResourceMonitor, isPerfEnabled, mark, startSampling } from '../perf/resourceMonitor.js';
 import { initPerfHud } from '../perf/perfHud.js';
+import { initFocusDebug, isFocusDebugEnabled } from '../ui/focusDebug.js';
 import { tvLog, initTvDebug } from '../utils/tvDebug.js';
 import { logStartupBuild, parseChromiumMajor } from './startupBuildLog.js';
 import { getWebOsPlatformMajor, isWebOs4Tv } from '../playback/hlsPolicy.js';
@@ -77,6 +78,8 @@ function startApp(platformMajor) {
       initPerfHud();
     }, 0);
   }
+  // Always init so the Blue remote key can toggle the overlay at runtime.
+  setTimeout(function () { initFocusDebug(root); }, 0);
 
   register('provider-picker', providerPickerScreen);
   // The 'pairing' route is the per-provider auth entry: Jellyfin shows its own

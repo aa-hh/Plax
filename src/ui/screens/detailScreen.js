@@ -35,7 +35,8 @@ import { focusFirst, attachFocusNav } from '../focus.js';
 import {
   watchlistBookmarkButtonHtml,
   supportsWatchlistBookmark,
-  wireWatchlistBookmark
+  wireWatchlistBookmark,
+  openWatchlistPickerForItem
 } from '../components/watchlistBookmark.js';
 import {
   buildUltraBlurColorGradient,
@@ -48,7 +49,14 @@ import {
 } from '../resumeChoice.js';
 import { prefetchDetailItems, abortPrefetch } from '../../core/idlePrefetch.js';
 import { getThumbUrl } from '../../backends/index.js';
-import { subtitlesIconSvg, qualityIconSvg, starIconSvg } from '../icons/navIcons.js';
+import { subtitlesIconSvg, qualityIconSvg, moreOptionsIconSvg, bookmarkIconSvg, starIconSvg } from '../icons/navIcons.js';
+import {
+  findWatchlistsContainingItem,
+  ensureDefaultWatchlist,
+  addItemToWatchlist,
+  removeItemFromWatchlist
+} from '../../watchlists/store.js';
+import { canUseWatchlists } from '../../watchlists/access.js';
 
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
@@ -227,7 +235,7 @@ function detailScreen(root, params, navigate) {
       var avatar = url
         ? '<img class="detail-cast-avatar-img" data-cast-idx="' + i + '" alt="" />'
         : '<span class="detail-cast-avatar-fallback">' + escapeHtml(castInitials(r.tag)) + '</span>';
-      return '<div class="detail-cast-card">' +
+      return '<div class="detail-cast-card" tabindex="0" data-nav-up=".detail-primary-actions .btn" data-nav-down="#detail-rails .media-card">' +
         '<div class="detail-cast-avatar">' + avatar + '</div>' +
         '<span class="detail-cast-name">' + escapeHtml(r.tag || '') + '</span>' +
         (r.role ? '<span class="detail-cast-role">' + escapeHtml(r.role) + '</span>' : '') +
@@ -877,32 +885,68 @@ function detailScreen(root, params, navigate) {
       (item.viewOffset ? 'Resume from ' + formatTimeOffset(item) : 'Play') + '</button>' +
       iconActionButtonHtml('btn-subtitles', 'Subtitles', subtitlesIconSvg()) +
       iconActionButtonHtml('btn-quality', 'Quality', qualityIconSvg()) +
-      buildWatchlistActionHtml(item) +
-      '</div>' +
-      '<div class="detail-secondary-actions" data-focus-zone="detail-secondary-actions">' +
-      '<button class="btn btn-outline btn--sm" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn btn-outline btn--sm" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
+      iconActionButtonHtml('btn-more-options', 'More', moreOptionsIconSvg()) +
       '</div>';
+  }
+
+  function openMoreOptionsPanel(item) {
+    var options = [];
+    var status = getWatchStatus(item);
+    options.push({
+      id: status === 'watched' ? 'mark-unwatched' : 'mark-watched',
+      label: status === 'watched' ? 'Mark as Unwatched' : 'Mark as Watched'
+    });
+
+    if (supportsWatchlistBookmark(item)) {
+      var user = getState().activeHomeUser || getState().user;
+      var inWl = canUseWatchlists(user) &&
+        findWatchlistsContainingItem(user, item.ratingKey).length > 0;
+      options.push({
+        id: 'watchlist',
+        active: inWl,
+        label: inWl ? 'Remove from Watchlist' : 'Add to Watchlist',
+        leadingIcon: bookmarkIconSvg(inWl),
+        iconFn: function (active) { return bookmarkIconSvg(active); },
+        labelFn: function (active) { return active ? 'Remove from Watchlist' : 'Add to Watchlist'; }
+      });
+    }
+
+    openSidePanel({
+      title: item.title,
+      options: options,
+      onPick: function (id) {
+        if (id === 'mark-watched') {
+          applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
+        } else if (id === 'mark-unwatched') {
+          applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
+        }
+      },
+      onToggle: function (id, o, nowActive) {
+        if (id !== 'watchlist') return;
+        var user = getState().activeHomeUser || getState().user;
+        if (nowActive) {
+          var wl = ensureDefaultWatchlist(user);
+          addItemToWatchlist(user, wl.id, item);
+        } else {
+          var containing = findWatchlistsContainingItem(user, item.ratingKey);
+          for (var i = 0; i < containing.length; i++) {
+            removeItemFromWatchlist(user, containing[i].id, item.ratingKey);
+          }
+        }
+      }
+    });
   }
 
   function wirePlaybackActions(item) {
     screen.querySelector('#btn-start').addEventListener('click', function () {
       offerResumeChoiceOrPlay(0);
     });
-    var btnWatched = screen.querySelector('#btn-mark-watched');
-    var btnUnwatched = screen.querySelector('#btn-mark-unwatched');
-    if (btnWatched) {
-      btnWatched.addEventListener('click', function () {
-        applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
+    var btnMoreOptions = screen.querySelector('#btn-more-options');
+    if (btnMoreOptions) {
+      btnMoreOptions.addEventListener('click', function () {
+        openMoreOptionsPanel(item);
       });
     }
-    if (btnUnwatched) {
-      btnUnwatched.addEventListener('click', function () {
-        applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
-      });
-    }
-    refreshWatchButtons(item);
-    if (supportsWatchlistBookmark(item)) wireWatchlistBookmark(screen, item);
   }
 
   function renderEpisodeDetail(item) {
@@ -942,6 +986,7 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-layout detail-layout--episode-v2">' +
       '<div class="detail-episode-v2-panel">' +
       buildDetailTopBar(buildEpisodeBreadcrumbTrail(item)) +
+      '<div class="detail-episode-v2-hero">' +
       '<div class="detail-episode-v2-art-wrap">' +
       '<img class="detail-episode-v2-art" id="detail-episode-art" alt="" />' +
       progressHtml +
@@ -957,8 +1002,9 @@ function detailScreen(root, params, navigate) {
       (ratingHtml ? '<p class="detail-episode-line detail-episode-rating">' + ratingHtml + '</p>' : '') +
       (item.summary ? '<p class="detail-episode-summary">' + escapeHtml(item.summary) + '</p>' : '') +
       buildCreditsRowHtml(item) +
-      '</div>' +
       buildPlaybackActionsHtml(item) +
+      '</div>' +
+      '</div>' +
       '<div id="detail-up-next"></div>' +
       buildCastRailHtml(item) +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
@@ -1227,13 +1273,19 @@ function detailScreen(root, params, navigate) {
         return;
       }
       items.forEach(function (ep) {
-        currentGrid.appendChild(createMediaCard(ep, function (selected, routeParams) {
+        var card = createMediaCard(ep, function (selected, routeParams) {
           var route = routeParams || { ratingKey: selected.ratingKey };
           route.seasonKey = seasonKey;
           route.showKey = showKey || '';
           route.parentDetail = activeDetailRoute;
           navigate('detail', route);
-        }, { layout: 'episode' }));
+        }, { layout: 'episode' });
+        // Up from any episode card → primary action row (Play button).
+        // Geometry alone fails here because far-right cards share no horizontal
+        // overlap with the action buttons, triggering MISALIGN_PENALTY on all
+        // candidates and producing a diagonal jump to "More actions".
+        card.setAttribute('data-nav-up', '.detail-primary-actions .btn');
+        currentGrid.appendChild(card);
       });
       hydrateRowWindow(currentGrid, { start: 0, count: items.length });
     }).catch(function () {
@@ -1261,8 +1313,6 @@ function detailScreen(root, params, navigate) {
       topBar = buildDetailTopBar(buildSeriesBreadcrumbTrail(item));
     }
 
-    var watchlistInActions = item.type === 'season' ? buildWatchlistActionHtml(item) : '';
-
     var detailInfoHtml =
       '<div class="detail-info">' +
       '<h1 class="screen-title">' + escapeHtml(item.title) + '</h1>' +
@@ -1270,15 +1320,12 @@ function detailScreen(root, params, navigate) {
       '<p class="detail-summary">' + escapeHtml(item.summary || '') + '</p>' +
       '<div class="detail-primary-actions" data-focus-zone="detail-primary-actions" data-cols="3">' +
       '<button class="btn btn-primary" id="btn-start" tabindex="0">' + (item.viewOffset ? 'Resume' : 'Play') + '</button>' +
-      watchlistInActions +
-      '<button class="btn" id="btn-more-actions" tabindex="0">More actions</button>' +
+      iconActionButtonHtml('btn-more-actions', 'More', moreOptionsIconSvg()) +
       '</div>' +
       '<div class="detail-actions detail-actions-secondary hidden" id="detail-actions-secondary" ' +
-      'data-focus-zone="detail-secondary-actions" data-cols="5">' +
+      'data-focus-zone="detail-secondary-actions" data-cols="3">' +
       '<button class="btn" id="btn-play" tabindex="0">Play from start</button>' +
       '<button class="btn" id="btn-resume" tabindex="0"' + (item.viewOffset ? '' : ' disabled') + '>Resume</button>' +
-      '<button class="btn btn-outline btn--sm" id="btn-mark-watched" tabindex="0">Mark watched</button>' +
-      '<button class="btn btn-outline btn--sm" id="btn-mark-unwatched" tabindex="0">Mark unwatched</button>' +
       '<button class="btn" id="btn-refresh" tabindex="0">Refresh metadata</button>' +
       '</div>' +
       '<div class="detail-disclosure" id="direct-play-disclosure" data-focus-zone="detail-disclosure" hidden>' +
@@ -1372,8 +1419,7 @@ function detailScreen(root, params, navigate) {
     var btnMoreActions = screen.querySelector('#btn-more-actions');
     if (btnMoreActions) {
       btnMoreActions.addEventListener('click', function () {
-        var panel = screen.querySelector('#detail-actions-secondary');
-        if (panel) panel.classList.toggle('hidden');
+        openMoreOptionsPanel(item);
       });
     }
     var btnDirectPlayToggle = screen.querySelector('#btn-directplay-toggle');
@@ -1388,30 +1434,6 @@ function detailScreen(root, params, navigate) {
       pendingRefreshMessage = null;
     } else if (isRefreshing) {
       setRefreshMessage('Refresh requested. Scanning…', false);
-    }
-
-    var canSetWatch = item.type === 'movie' || item.type === 'episode';
-    var btnWatched = screen.querySelector('#btn-mark-watched');
-    var btnUnwatched = screen.querySelector('#btn-mark-unwatched');
-    if (!canSetWatch) {
-      if (btnWatched) btnWatched.style.display = 'none';
-      if (btnUnwatched) btnUnwatched.style.display = 'none';
-    } else {
-      if (btnWatched) {
-        btnWatched.addEventListener('click', function () {
-          applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
-        });
-      }
-      if (btnUnwatched) {
-        btnUnwatched.addEventListener('click', function () {
-          applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
-        });
-      }
-      refreshWatchButtons(item);
-    }
-
-    if (supportsWatchlistBookmark(item)) {
-      wireWatchlistBookmark(screen, item);
     }
 
     var playBtn = screen.querySelector('#btn-start');
