@@ -487,6 +487,75 @@ function buildSubtitleTranscodeStartUrl(server, session, track, playbackMode) {
   };
 }
 
+/**
+ * Mint (and cache) a fresh transcode-session id used ONLY for subtitle
+ * extraction — never the direct-play session. PMS denies subtitle transcode
+ * on a session already committed to directPlay=1 ("session lacking permission
+ * to transcode", confirmed in PMS server log). The official Plex-for-LG client
+ * uses a SEPARATE session with directPlay=0, which PMS accepts as a transcode
+ * session. Cached on the session object so retries reuse the same id.
+ */
+function dedicatedSubtitleSessionId(session) {
+  if (!session) return null;
+  if (session.subtitleTranscodeSessionId) return session.subtitleTranscodeSessionId;
+  var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  var id = '';
+  for (var i = 0; i < 24; i += 1) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  session.subtitleTranscodeSessionId = id;
+  return id;
+}
+
+/**
+ * Byte-matches the OFFICIAL Plex-for-LG subtitle request captured in the PMS
+ * server log (House of the Dragon S3E1 on a B8, alongside our failing calls):
+ *   GET /video/:/transcode/universal/subtitles
+ *       ?protocol=dash&directPlay=0&directStream=1&directStreamAudio=0
+ *       &session=<DEDICATED>&subtitles=auto&Accept-Language=en …
+ *
+ * The crux is a DEDICATED session (not the direct-play one) + directPlay=0, so
+ * PMS treats it as a transcode session that HAS transcode permission and serves
+ * the embedded sub. The video keeps direct-playing untouched (its own session)
+ * → HDR/Dolby Vision preserved. Identity/token go in headers (clean query) to
+ * avoid this PMS build's 400 on identity-in-query.
+ */
+function buildDedicatedSubtitleSessionUrl(server, session, track, playbackMode) {
+  if (!server || !session) return null;
+  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
+  if (!mediaPath) return null;
+  var subSession = dedicatedSubtitleSessionId(session);
+  var params = {
+    hasMDE: '1',
+    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    protocol: 'dash',
+    fastSeek: '1',
+    directPlay: '0',
+    directStream: '1',
+    subtitleSize: '75',
+    audioBoost: '100',
+    location: plexLocationForServer(server),
+    addDebugOverlay: '0',
+    autoAdjustQuality: '0',
+    directStreamAudio: '0',
+    autoAdjustSubtitle: '1',
+    mediaBufferSize: '102400',
+    session: subSession,
+    subtitles: 'auto',
+    'Accept-Language': 'en'
+  };
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/video/:/transcode/universal/subtitles' + (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session, 'text/vtt, text/srt, */*;q=0.1') }
+  };
+}
+
 function subtitleFetchHeaders(server, session, accept, tokenOverride) {
   var headers = plexHeaders({
     Accept: accept || 'text/srt, text/vtt, text/plain;q=0.9, */*;q=0.1'
@@ -635,6 +704,16 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   // subs are real files fetched faster via /library/streams, so only prepend this
   // for embedded tracks.
   if (resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack)) {
+    // PRIMARY: dedicated transcode session (directPlay=0) — the shape the
+    // official Plex-for-LG client uses, verified in the PMS server log. PMS
+    // denies subtitle transcode on the direct-play session ("session lacking
+    // permission to transcode"), so this separate session is what actually
+    // serves the embedded sub while the video direct-plays untouched.
+    pushSubtitleAttempt(
+      attempts,
+      'subtitles-dedicated-session',
+      buildDedicatedSubtitleSessionUrl(server, session, resolvedTrack, playbackMode)
+    );
     pushSubtitleAttempt(
       attempts,
       'subtitles-start',

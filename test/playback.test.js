@@ -406,13 +406,20 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   };
   var attempts = buildSubtitleFetchPlan(server, session, track);
   assert.ok(attempts.length >= 4);
-  // PRIMARY: the official /subtitles/:/transcode/universal/start endpoint (embedded).
-  assert.equal(attempts[0].label, 'subtitles-start');
-  assert.ok(attempts[0].url.indexOf('/subtitles/:/transcode/universal/start') >= 0);
-  assert.ok(attempts[0].url.indexOf('Accept=') < 0, 'Accept must be a header, not a query param');
-  assert.equal(attempts[0].init.headers.Accept, 'application/json');
-  assert.ok(attempts[0].url.indexOf('directPlay=1') >= 0);
-  assert.ok(attempts[0].url.indexOf('subtitles=sidecar') >= 0);
+  // PRIMARY: the official dedicated-session endpoint (directPlay=0, separate
+  // transcode session) — the shape the official Plex-for-LG client uses.
+  assert.equal(attempts[0].label, 'subtitles-dedicated-session');
+  assert.ok(attempts[0].url.indexOf('/video/:/transcode/universal/subtitles') >= 0);
+  assert.ok(attempts[0].url.indexOf('directPlay=0') >= 0);
+  assert.ok(attempts[0].url.indexOf('subtitles=auto') >= 0);
+  // SECONDARY: the /subtitles/:/transcode/universal/start endpoint (embedded).
+  var startAttempt = attempts.filter(function (a) { return a.label === 'subtitles-start'; })[0];
+  assert.ok(startAttempt);
+  assert.ok(startAttempt.url.indexOf('/subtitles/:/transcode/universal/start') >= 0);
+  assert.ok(startAttempt.url.indexOf('Accept=') < 0, 'Accept must be a header, not a query param');
+  assert.equal(startAttempt.init.headers.Accept, 'application/json');
+  assert.ok(startAttempt.url.indexOf('directPlay=1') >= 0);
+  assert.ok(startAttempt.url.indexOf('subtitles=sidecar') >= 0);
   var streamEmbedded = attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0];
   assert.ok(streamEmbedded);
   assert.ok(streamEmbedded.url.indexOf('/library/streams/1893985.srt') >= 0);
@@ -515,11 +522,12 @@ test('buildSubtitleFetchPlan deprioritizes stream fetch on wan', function () {
   var plan = buildSubtitleFetchPlan(server, session, track, {
     playbackMode: 'transcode-hls'
   });
-  // For embedded subs the proven endpoints lead: subtitles-start then
-  // stream-embedded (extracted on demand), BEFORE the universal attempts —
-  // even on wan, because stream-embedded is the one that actually returns cues.
-  assert.equal(plan[0].label, 'subtitles-start');
-  assert.equal(plan[1].label, 'stream-embedded');
+  // For embedded subs the proven endpoints lead: the dedicated transcode
+  // session, then subtitles-start, then stream-embedded (extracted on demand),
+  // BEFORE the universal attempts — even on wan.
+  assert.equal(plan[0].label, 'subtitles-dedicated-session');
+  assert.equal(plan[1].label, 'subtitles-start');
+  assert.equal(plan[2].label, 'stream-embedded');
   var streamEmbedded = plan.filter(function (a) { return a.label === 'stream-embedded'; })[0];
   assert.ok(streamEmbedded);
   assert.ok(plan.indexOf(streamEmbedded) < plan.findIndex(function (a) {
@@ -792,7 +800,8 @@ test('buildSubtitleFetchPlan includes part path only when metadata path missing'
     partIndex: 0
   };
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
-  assert.equal(attempts[0].label, 'subtitles-start');
+  assert.equal(attempts[0].label, 'subtitles-dedicated-session');
+  assert.ok(attempts.filter(function (a) { return a.label === 'subtitles-start'; })[0]);
   assert.ok(attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0]);
   assert.equal(
     attempts.some(function (a) { return a.label.indexOf('universal-part-') === 0; }),
