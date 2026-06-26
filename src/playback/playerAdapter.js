@@ -46,6 +46,10 @@ var bufferingShown = false;
 /** True while the user has explicitly paused. Blocks the rebuffer watchdog so a
  *  deliberate pause never triggers a buffering overlay or fallback restart. */
 var userPaused = false;
+/** True from resume() until the first playing/canplay event. Chrome 53 fires a
+ *  spurious `waiting` during the pause→play decoder-pipeline reactivation window;
+ *  this flag suppresses it so the overlay doesn't appear on a healthy resume. */
+var resuming = false;
 var scrobbled = false;
 var lastTimelineMs = -1;
 var lastKnownPositionMs = 0;
@@ -405,16 +409,14 @@ function shouldUseMseHls(url, mode) {
    *
    * webOS 4 (2018 B8/C8/E8) native HLS rejects Plex's transcoded variant
    * playlists even after we patch in a CODECS attribute. hls.js handles the
-   * playlist + segment fetch directly via MSE for that fallback path. */
+   * playlist + segment fetch directly via MSE for that fallback path.
+   *
+   * Browser/dev and the simulator have no native HLS → hls.js. On a real TV the
+   * version decision is the matrix-driven isWebOs4Tv() (single source of truth),
+   * so webOS 4 → hls.js and webOS 5+ → native HLS, backend-neutral. */
   if (isSimulatorRuntime()) return true;
-  if (!identity) return true;
-  if (identity.product === PMS_PRODUCT) {
-    var major = parseInt(String(identity.platformVersion || '').split('.')[0], 10);
-    var isB8c8e8 = /OLED\d{2}[BCEW]8/i.test(String(identity.model || ''));
-    if (major === 4 || isB8c8e8) return true;
-    return false;
-  }
-  return true;
+  if (!identity || identity.product !== PMS_PRODUCT) return true;
+  return isWebOs4Tv();
 }
 
 function clearNativeVideoSources() {
@@ -580,6 +582,10 @@ function notifyBuffering(show) {
   // waiting/stalled on a paused element as its buffer drains, which previously
   // tripped a fallback restart a second after pausing.
   if (show && userPaused) return;
+  // Chrome 53 fires a spurious `waiting` during the pause→play decoder-pipeline
+  // reactivation window. Suppress it until the first playing/canplay confirms
+  // the pipeline is actually producing frames.
+  if (show && resuming) return;
   if (!rebufferWatchdog.notifyBuffering(show)) return;
   bufferingShown = show;
   if (onBufferingCb) onBufferingCb(show);
@@ -772,6 +778,11 @@ function attachPlaybackEvents() {
   videoEl.addEventListener('canplay', function () {
     notifyBuffering(false);
     logPlaybackLifecycle('canplay');
+  });
+  videoEl.addEventListener('timeupdate', function () {
+    // First real frame advance after resume() closes the spurious-wait suppression
+    // window. Kept lightweight: a no-op on every subsequent tick.
+    if (resuming) resuming = false;
   });
   videoEl.addEventListener('canplaythrough', function () {
     notifyBuffering(false);
@@ -1002,10 +1013,14 @@ function promiseWithTimeout(promise, timeoutMs, message) {
   });
 }
 
+var SUBTITLE_EXTRACT_MAX_RETRIES = 20;
+var SUBTITLE_EXTRACT_RETRY_MS = 1500;
+
 function loadClientSubtitleFromUrls(urls, offsetMs) {
   var attempts = normalizeSubtitleFetchAttempts(urls);
   if (!attempts.length) return Promise.reject(new Error('No subtitle URL'));
   var index = 0;
+  var extractRetries = 0;
   function tryNext(lastErr) {
     if (index >= attempts.length) {
       return Promise.reject(lastErr || new Error('No subtitle URL'));
@@ -1013,38 +1028,93 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
     var entry = attempts[index];
     var url = entry.url;
     var label = entry.label;
-    var attempt = index + 1;
-    index += 1;
     console.info(
-      '[subtitles] fetch ' + attempt + '/' + attempts.length + ' (' + label + ')',
+      '[subtitles] fetch ' + (index + 1) + '/' + attempts.length + ' (' + label + ')',
       redactPlexUrl(url)
     );
+    var isStartLabel = label === 'subtitles-start' || label === 'subtitles-start-owner';
+    if (isStartLabel) {
+      tvError('subtitles', 'url', {
+        label: label,
+        url: redactPlexUrl(url),
+        accept: (entry.init && entry.init.headers && entry.init.headers.Accept) || null
+      });
+    }
     var fetchOptions = Object.assign({ timeout: SUBTITLE_FETCH_TIMEOUT_MS }, entry.init || {});
     return promiseWithTimeout(
       fetchSubtitleTextWithManifestFollow(url, fetchOptions),
       fetchOptions.timeout,
       'Request timeout'
     ).then(function (text) {
+      // subtitles-start / subtitles-start-owner return a JSON manifest (extraction
+      // trigger), not SRT. Treat any 200 as "trigger sent" and immediately move to
+      // the stream-embedded poll.
+      if (isStartLabel) {
+        tvError('subtitles', 'start-triggered', {
+          label: label,
+          bytes: text ? String(text).length : 0,
+          head: text ? String(text).slice(0, 60).replace(/\s+/g, ' ') : ''
+        });
+        extractRetries = 0;
+        // Skip any remaining start-label attempts — jump directly to stream-embedded.
+        while (index < attempts.length) {
+          var nextLabel = attempts[index] && attempts[index].label;
+          if (nextLabel === 'subtitles-start' || nextLabel === 'subtitles-start-owner') {
+            index++;
+          } else {
+            break;
+          }
+        }
+        return tryNext();
+      }
       applySrtText(text, offsetMs);
+      var cueCount = activeTextTrack && activeTextTrack.cues ? activeTextTrack.cues.length : 0;
+      tvError('subtitles', 'fetched', {
+        label: label, cues: cueCount, bytes: text ? String(text).length : 0,
+        head: text ? String(text).slice(0, 40).replace(/\s+/g, ' ') : ''
+      });
       if (!hasClientSubtitlesLoaded()) {
         var parseErr = new Error('Subtitle file had no parseable cues');
         parseErr.body = text;
         return Promise.reject(parseErr);
       }
     }).catch(function (err) {
-      if (index < attempts.length && (shouldRetrySubtitleFetch(err) || !err.status)) {
-        var detail = err.body ? ' — ' + String(err.body).slice(0, 120) : '';
-        var failKind = err.status
-          ? 'HTTP ' + err.status
-          : (err.message === 'Request timeout' ? 'timeout' : 'parse failure');
-        console.warn(
-          '[subtitles] ' + failKind + ' on (' + label + '), trying fallback' + detail
-        );
-        return tryNext(err);
+      tvError('subtitles', 'attempt-fail', {
+        label: label, status: err && err.status, msg: err && err.message, retry: extractRetries
+      });
+      // Log Plex rejection bodies for 400/501 — empty body is logged too so we know.
+      if (err && err.status && (err.status === 400 || err.status === 501)) {
+        tvError('subtitles', isStartLabel ? 'start-fail-body' : 'fail-body', {
+          label: label,
+          status: err.status,
+          body: err.body
+            ? String(err.body).replace(/\s+/g, ' ').slice(0, 400)
+            : '(empty)'
+        });
       }
-      var failDetail = err.body ? ' — ' + String(err.body).slice(0, 120) : '';
-      console.warn('[subtitles] failed on (' + label + ')', err.message + failDetail);
-      return Promise.reject(err);
+      // Plex 501s /library/streams while it EXTRACTS an embedded sub on demand.
+      // Retry the SAME url with backoff — it then returns the full SRT (verified:
+      // a prior extraction yielded 1068 cues from this exact endpoint). Keeps the
+      // video on direct play (no transcode), so HDR/Dolby stay intact.
+      if (err && err.status === 501 && extractRetries < SUBTITLE_EXTRACT_MAX_RETRIES) {
+        extractRetries += 1;
+        console.info('[subtitles] extracting (' + label + '), retry ' + extractRetries);
+        return new Promise(function (resolve) {
+          setTimeout(resolve, SUBTITLE_EXTRACT_RETRY_MS);
+        }).then(function () { return tryNext(err); });
+      }
+      extractRetries = 0;
+      index += 1;
+      // 401/403 → auth problem, more attempts won't help.
+      if (err && err.status && !shouldRetrySubtitleFetch(err)) {
+        console.warn('[subtitles] failed on (' + label + ')', err.message);
+        return Promise.reject(err);
+      }
+      if (index >= attempts.length) {
+        console.warn('[subtitles] failed on (' + label + ')', err && err.message);
+        return Promise.reject(err);
+      }
+      return tryNext(err);
     });
   }
   return tryNext();
@@ -1133,6 +1203,7 @@ function play(url, session, options) {
     url: compactPlaybackUrl(url)
   });
   userPaused = false;
+  resuming = false;
   rebufferWatchdog.resetEpisode();
   videoEl.classList.remove('hidden');
   keepScreenOn(true);
@@ -1235,6 +1306,7 @@ function pause() {
 
 function resume() {
   userPaused = false;
+  resuming = true;
   if (videoEl) videoEl.play();
   startProgressSync();
   syncTimeline('playing', true);
@@ -1251,6 +1323,7 @@ function stop(options) {
 
   stopProgressSync();
   userPaused = false;
+  resuming = false;
   rebufferWatchdog.resetEpisode();
   cancelInitialPlayingTimelineSync();
   cancelPendingSeek();

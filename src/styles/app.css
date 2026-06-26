@@ -1541,7 +1541,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .browsing-hub-brand__mark svg { display: block; width: 100%; height: 100%; }
 /* Full wordmark hidden until the rail expands (mirrors nav-item label reveal) */
 .browsing-hub-brand__wordmark { display: none; margin-left: 2px; }
-.browsing-hub-brand__wordmark svg { display: block; width: auto; height: 30px; }
+.browsing-hub-brand__wordmark svg { display: block; width: auto; height: 40px; }
 .browsing-hub-nav-host--peek .browsing-hub-brand__wordmark,
 .browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark { display: block; }
 .browsing-hub-nav-host--peek .browsing-hub-brand__mark,

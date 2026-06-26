@@ -298,7 +298,7 @@ test('upgradeStrategyForTextSubtitles promotes direct to direct-stream when subs
 });
 
 test('resolvePlaybackStrategy no longer upgrades auto direct for text subs', async function () {
-  var mod = await import('../src/playback/sessionController.js');
+  var mod = await import('../src/backends/plex/playback.js');
   assert.equal(
     mod.resolvePlaybackStrategy({ quality: 'auto', subtitleStreamId: 5, subtitleBurnIn: false }),
     'direct'
@@ -406,8 +406,23 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   };
   var attempts = buildSubtitleFetchPlan(server, session, track);
   assert.ok(attempts.length >= 4);
-  assert.equal(attempts[0].label, 'stream-embedded');
-  assert.ok(attempts[0].url.indexOf('/library/streams/1893985.srt') >= 0);
+  // PRIMARY: the official dedicated-session endpoint (directPlay=0, separate
+  // transcode session) — the shape the official Plex-for-LG client uses.
+  assert.equal(attempts[0].label, 'subtitles-dedicated-session');
+  assert.ok(attempts[0].url.indexOf('/video/:/transcode/universal/subtitles') >= 0);
+  assert.ok(attempts[0].url.indexOf('directPlay=0') >= 0);
+  assert.ok(attempts[0].url.indexOf('subtitles=auto') >= 0);
+  // SECONDARY: the /subtitles/:/transcode/universal/start endpoint (embedded).
+  var startAttempt = attempts.filter(function (a) { return a.label === 'subtitles-start'; })[0];
+  assert.ok(startAttempt);
+  assert.ok(startAttempt.url.indexOf('/subtitles/:/transcode/universal/start') >= 0);
+  assert.ok(startAttempt.url.indexOf('Accept=') < 0, 'Accept must be a header, not a query param');
+  assert.equal(startAttempt.init.headers.Accept, 'application/json');
+  assert.ok(startAttempt.url.indexOf('directPlay=1') >= 0);
+  assert.ok(startAttempt.url.indexOf('subtitles=sidecar') >= 0);
+  var streamEmbedded = attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0];
+  assert.ok(streamEmbedded);
+  assert.ok(streamEmbedded.url.indexOf('/library/streams/1893985.srt') >= 0);
   var metaAuto = attempts.filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
   assert.ok(metaAuto);
   assert.ok(metaAuto.url.indexOf('subtitles=auto') >= 0);
@@ -507,10 +522,15 @@ test('buildSubtitleFetchPlan deprioritizes stream fetch on wan', function () {
   var plan = buildSubtitleFetchPlan(server, session, track, {
     playbackMode: 'transcode-hls'
   });
-  assert.equal(plan[0].label, 'universal-metadata-auto');
+  // For embedded subs the proven endpoints lead: the dedicated transcode
+  // session, then subtitles-start, then stream-embedded (extracted on demand),
+  // BEFORE the universal attempts — even on wan.
+  assert.equal(plan[0].label, 'subtitles-dedicated-session');
+  assert.equal(plan[1].label, 'subtitles-start');
+  assert.equal(plan[2].label, 'stream-embedded');
   var streamEmbedded = plan.filter(function (a) { return a.label === 'stream-embedded'; })[0];
   assert.ok(streamEmbedded);
-  assert.ok(plan.indexOf(streamEmbedded) > plan.findIndex(function (a) {
+  assert.ok(plan.indexOf(streamEmbedded) < plan.findIndex(function (a) {
     return a.label === 'universal-metadata-auto';
   }));
 });
@@ -700,11 +720,16 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     assert.ok(decision);
     var q = new URL(decision.url).searchParams;
     assert.equal(q.get('path'), '/library/metadata/33622');
+    // Dedicated transcode session: directPlay=0 so PMS creates a transcode
+    // session WITH transcode permission (the direct-play session is denied).
     assert.equal(q.get('directPlay'), '0');
-    // directStream is start.m3u8-only now; decision mirrors plex-for-kodi shape.
-    assert.equal(q.get('directStream'), null);
+    // subtitles=auto WITHOUT subtitleStreamID — stream pre-selected via PUT.
+    assert.equal(q.get('subtitles'), 'auto');
+    assert.equal(q.get('subtitleStreamID'), null);
+    // Session must be the dedicated subtitle session, NOT the direct-play one.
+    assert.equal(q.get('session'), session.subtitleTranscodeSessionId);
+    assert.notEqual(q.get('session'), 'plax-1779812905191');
     assert.equal(q.get('X-Plex-Client-Profile-Name'), 'Generic');
-    assert.equal(q.get('subtitles'), null);
     assert.equal(q.get('copyts'), null);
     assert.equal(q.get('audioBoost'), null);
     assert.equal(q.get('X-Plex-Audio-Stream'), null);
@@ -748,14 +773,16 @@ test('prepareClientSubtitlePlayback adopts server resourceSession for subtitle f
     };
     var track = { id: 1894444, codec: 'srt', delivery: 'embedded' };
     await prepareClientSubtitlePlayback(server, session, track, 'direct');
-    assert.equal(session.transcodeSessionId, 'plex-sub-session-42');
-    var metaAuto = buildSubtitleFetchPlan(server, session, track, {
+    // Prime adopts the resourceSession PMS minted as the dedicated subtitle session.
+    assert.equal(session.subtitleTranscodeSessionId, 'plex-sub-session-42');
+    var dedicated = buildSubtitleFetchPlan(server, session, track, {
       playbackMode: 'direct'
-    }).filter(function (a) { return a.label === 'universal-metadata-auto'; })[0];
-    assert.ok(metaAuto);
-    assert.ok(metaAuto.url.indexOf('transcodeSessionId=plex-sub-session-42') >= 0);
+    }).filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0];
+    assert.ok(dedicated);
+    // The subtitle fetch keys off the exact session PMS is extracting against.
+    assert.ok(dedicated.url.indexOf('session=plex-sub-session-42') >= 0);
     assert.equal(
-      metaAuto.init.headers['X-Plex-Session-Identifier'],
+      dedicated.init.headers['X-Plex-Session-Identifier'],
       'plax-1779812905191'
     );
   } finally {
@@ -778,7 +805,9 @@ test('buildSubtitleFetchPlan includes part path only when metadata path missing'
     partIndex: 0
   };
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
-  assert.equal(attempts[0].label, 'stream-embedded');
+  assert.equal(attempts[0].label, 'subtitles-dedicated-session');
+  assert.ok(attempts.filter(function (a) { return a.label === 'subtitles-start'; })[0]);
+  assert.ok(attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0]);
   assert.equal(
     attempts.some(function (a) { return a.label.indexOf('universal-part-') === 0; }),
     false

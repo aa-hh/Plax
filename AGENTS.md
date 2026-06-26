@@ -46,6 +46,14 @@ shifts.
 pipeline and relaunches the app automatically. App ID is `com.plax`. See memory
 `xplay-deploy-to-b8` for IP/device setup and troubleshooting.
 
+**`webOSTV.js` must ship in every build.** It comes from the `webostvjs` dependency,
+is copied into `dist` by `build/rollup.config.js`, and provides the `webOS` global.
+Without it the real TV silently misdetects as a browser and webOS4 playback breaks
+(see [src/platform/AGENTS.md](src/platform/AGENTS.md)). `scripts/package-ipk.cjs`
+refuses to package without it; `tvpush.sh` must keep building via `npm run package`
+(not bare `npm run build` or `ares-package`) so that guard runs. Both are enforced by
+`test/package-assets.test.js`. Memory `webostvjs-missing-dep-misdetect`.
+
 ## Top-level layout
 
 | Path | What |

@@ -12,14 +12,16 @@ import {
   WEBOS_HLS_TRANSCODE_FMP4_PROFILE_EXTRA
 } from '../src/playback/hlsPolicy.js';
 import {
+  createSession,
+  resolveStreamUrl
+} from '../src/playback/sessionController.js';
+import {
   buildDirectPlayUrl,
   buildPlaybackUrl,
   buildDecisionRequestParams,
-  createSession,
   resolvePlaybackStrategy,
-  resolveStreamUrl,
   buildFirstDecisionUrl
-} from '../src/playback/sessionController.js';
+} from '../src/backends/plex/playback.js';
 
 var mockServer = {
   connectionUri: 'https://plex.example.com:32400',
@@ -179,6 +181,7 @@ test('buildPlaybackUrl simulator Plex Web adds webOS HLS profile extra', functio
     }
   };
   setPlexDeviceInfo({ modelName: 'WEBOS26_SIMULATOR', version: '26.0.0' });
+  setState({ deviceInfo: { versionMajor: 26, model: 'WEBOS26_SIMULATOR' } });
 
   var remote = {
     connectionUri: 'http://185.203.56.20:17054',
@@ -761,7 +764,7 @@ test('buildDecisionRequestParams sets subtitles=none on webOS 5+ when no subtitl
   assert.equal(q.subtitles, 'none');
 });
 
-test('buildFirstDecisionUrl on webOS 4 uses capability probe flags', function () {
+test('buildFirstDecisionUrl stays optimistic (directPlay=1) for direct-stream on webOS 4', function () {
   globalThis.PalmSystem = { identifier: 'com.webos.app.plax' };
   globalThis.webOS = {
     platform: { tv: true },
@@ -770,11 +773,14 @@ test('buildFirstDecisionUrl on webOS 4 uses capability probe flags', function ()
     }
   };
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  setState({ deviceInfo: { versionMajor: 4, model: 'OLED55B8LLA' } });
 
+  // webOS 4 strips directStream from the decision, so directPlay=0 would mean a
+  // FULL transcode (re-encode), not a remux — needlessly transcoding a
+  // direct-playable file. Stay optimistic (directPlay=1).
   var session = baseSession({ playbackStrategy: 'direct-stream' });
   var q = parseQuery(buildFirstDecisionUrl(mockServer, partKey, session, 'hls'));
   assert.equal(q.directPlay, '1');
-  // directStream/directStreamAudio no longer sent on the decision (start.m3u8 only).
   assert.equal(q.directStream, undefined);
   assert.equal(q.directStreamAudio, undefined);
   assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
@@ -808,6 +814,7 @@ test('buildPlaybackUrl uses resourceSession from decision on start URL', functio
     }
   };
   setPlexDeviceInfo({ modelName: 'OLED55B8LLA', version: '4.4.0' });
+  setState({ deviceInfo: { versionMajor: 4, model: 'OLED55B8LLA' } });
 
   var session = baseSession({
     playbackStrategy: 'transcode',

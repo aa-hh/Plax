@@ -43,6 +43,7 @@
     "rollup-plugin-postcss": "^4.0.2"
   },
   "dependencies": {
-    "hls.js": "^1.6.16"
+    "hls.js": "^1.6.16",
+    "webostvjs": "^1.2.12"
   }
 }

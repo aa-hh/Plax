@@ -121,6 +121,19 @@ function getServerToken(server) {
   return (server && server.accessToken) || getToken();
 }
 
+/**
+ * Returns the owner/admin auth token if a managed home user is active and
+ * the owner token is stored separately. Returns null if the current session
+ * is already the owner (no escalation needed).
+ */
+function getOwnerToken() {
+  var s = getState();
+  if (!s.ownerAuthToken) return null;
+  var currentToken = getToken();
+  if (s.ownerAuthToken === currentToken) return null;
+  return s.ownerAuthToken;
+}
+
 function getImageUrl(server, path, opts) {
   if (!path) return '';
   opts = opts || {};
@@ -181,5 +194,6 @@ export {
   getImageUrl,
   mapPlexHttpError,
   getServerToken,
+  getOwnerToken,
   redactPlexUrl
 };

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { normalizePlexPath, summarizeTranscodeUrl } from '../src/playback/plexPaths.js';
-import { buildPlaybackUrl } from '../src/playback/sessionController.js';
+import { buildPlaybackUrl } from '../src/backends/plex/playback.js';
 import { resolveSessionPartPath } from '../src/playback/tracks/subtitleTracks.js';
 
 var mockServer = {

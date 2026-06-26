@@ -30,6 +30,7 @@ import {
 import { searchHubs } from '../../plex/search.js';
 import { loadHomeFeedPhased } from '../../plex/recommendations/homeFeed.js';
 import { getThumbUrl, getArtUrl } from '../../plex/client.js';
+import { resolveStreamUrl, buildSubtitlePlan } from './playback.js';
 
 var plexBackend = {
   id: 'plex',
@@ -66,7 +67,11 @@ var plexBackend = {
 
   // images
   getThumbUrl: getThumbUrl,
-  getArtUrl: getArtUrl
+  getArtUrl: getArtUrl,
+
+  // playback
+  resolveStreamUrl: resolveStreamUrl,
+  buildSubtitlePlan: buildSubtitlePlan
 };
 
 export { plexBackend };

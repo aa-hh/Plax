@@ -8,7 +8,7 @@ import { getState } from '../../core/store.js';
 import { fetchJson, buildQuery } from '../../utils/fetch.js';
 import { VERSION } from '../../plex/clientIdentity.js';
 
-var CLIENT_NAME = 'XPlay';
+var CLIENT_NAME = 'Plax';
 
 /** Stable per-install device id — reuses the app clientId (persisted as plax_clientId). */
 function getDeviceId() {

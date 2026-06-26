@@ -1,6 +1,7 @@
 import { isGraphicalSubtitle } from '../capabilityProbe.js';
-import { serverUrl, plexHeaders, getServerToken } from '../../plex/client.js';
+import { serverUrl, plexHeaders, getServerToken, getOwnerToken } from '../../plex/client.js';
 import { fetchText, buildQuery } from '../../utils/fetch.js';
+import { tvError } from '../../utils/tvDebug.js';
 import { buildAudioTranscodeParam } from './audioTracks.js';
 import { collectStreamsFromMedia } from './streamUtils.js';
 import { normalizePlexPath } from '../plexPaths.js';
@@ -8,6 +9,7 @@ import {
   buildMinimalDecisionParams,
   buildUniversalDecisionUrl
 } from '../transcodeDecision.js';
+import { buildWebOsClientProfileExtra } from '../deviceProfile.js';
 
 /** @typedef {'graphical'|'embedded'|'sidecar'|'onDemand'} SubtitleDelivery */
 
@@ -240,12 +242,23 @@ function selectPartSubtitleStream(server, session) {
     method: 'PUT',
     headers: plexHeaders(),
     timeout: 15000
+  }).then(function () {
+    tvError('subtitles', 'part-select', {
+      partId: partId,
+      subtitleStreamId: session.subtitleStreamId,
+      ok: true
+    });
   }).catch(function (err) {
-    if (err && err.status) {
-      console.warn('[subtitles] PUT /library/parts/' + partId + ' HTTP ' + err.status);
-      return;
-    }
-    console.warn('[subtitles] stream selection failed:', err.message);
+    tvError('subtitles', 'part-select', {
+      partId: partId,
+      subtitleStreamId: session.subtitleStreamId,
+      ok: false,
+      status: err && err.status,
+      msg: err && err.message,
+      body: err && err.body
+        ? String(err.body).replace(/\s+/g, ' ').slice(0, 200)
+        : ''
+    });
   });
 }
 
@@ -320,11 +333,19 @@ function buildUniversalTranscodeQuery(server, session, mediaPath, track, playbac
     params.directStreamAudio = '1';
   }
   if (decisionEndpoint) {
+    // directPlay=1: PMS evaluates the video as direct-play (which it approves),
+    // and in doing so evaluates the subtitleStreamID → creates resourceSession
+    // with decision=copy. directPlay=0 + subtitle-only profile returns size=0.
+    params.directPlay = '1';
     params.fastSeek = '1';
     params.autoAdjustQuality = '0';
     params.mediaBufferSize = '102400';
-    // Mirror the playback decision: PMS's MDE 400s without a client profile.
     params['X-Plex-Client-Profile-Name'] = 'Generic';
+    // Full capability profile (same as the main video decision) so PMS can
+    // match a direct-play video profile, evaluate subtitle delivery, and
+    // return a non-null resourceSession. A subtitle-only profile caused PMS to
+    // return directPlayDecisionCode=3000 / size=0 / resourceSession=null.
+    params['X-Plex-Client-Profile-Extra'] = buildWebOsClientProfileExtra();
   } else {
     params.subtitles = options.subtitles || 'sidecar';
     if (!subtitleEndpoint) params.fastSeek = '1';
@@ -385,15 +406,225 @@ function buildUniversalSubtitleUrl(server, session, mediaPath, track, playbackMo
   );
 }
 
-function subtitleFetchHeaders(server, session, accept) {
+/**
+ * Plex's dedicated subtitle-conversion endpoint, captured verbatim from the
+ * official Plex-for-LG client (PMS log, House of the Dragon S3E1 on a B8):
+ *   GET /subtitles/:/transcode/universal/start
+ *       ?directPlay=1&directStream=1&directStreamAudio=1&protocol=http&copyts=1
+ *       &subtitles=sidecar&offset=<sec>&session=<playbackSession>&path=<metadata>…
+ *
+ * The video DIRECT-PLAYS (directPlay=1 → HDR/Dolby untouched, NO remux/transcode);
+ * Plex converts the part's selected EMBEDDED subtitle (selected via the /library/
+ * parts PUT) to text from `offset` onward. This is the ONLY shape that serves an
+ * embedded sub during direct play — the /video/:/transcode/universal/subtitles
+ * endpoint 400s for embedded streams (verified on-device + probe-subs.sh).
+ */
+function subtitleResolutionParam(session) {
+  var version = session && session.version;
+  if (!version) return null;
+  if (version.width && version.height) {
+    return String(version.width) + 'x' + String(version.height);
+  }
+  var res = String(version.videoResolution || '').toLowerCase();
+  if (res.indexOf('4k') >= 0 || res.indexOf('2160') >= 0) return '3840x2160';
+  if (res.indexOf('1080') >= 0) return '1920x1080';
+  if (res.indexOf('720') >= 0) return '1280x720';
+  return null;
+}
+
+function buildSubtitleTranscodeStartUrl(server, session, track, playbackMode) {
+  if (!server || !session || session.subtitleStreamId == null) return null;
+  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
+  if (!mediaPath) return null;
+  var params = {
+    // Byte-matches the official Plex-for-LG /subtitles/:/transcode/universal/start
+    // request (captured from PMS logs). Accept: application/json goes in HEADERS
+    // (subtitleFetchHeaders) — NOT the query; PMS 400s unknown query keys.
+    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    protocol: 'http',
+    fastSeek: '1',
+    directPlay: '1',
+    directStream: '1',
+    directStreamAudio: '1',
+    hasMDE: '1',
+    mediaBufferSize: '50000',
+    subtitles: 'sidecar',
+    subtitleSize: '75',
+    autoAdjustSubtitle: '1',
+    videoQuality: '100',
+    audioBoost: '100',
+    copyts: '1',
+    location: plexLocationForServer(server),
+    // PMS returns 400 with no capability context. Profile params are capability
+    // declarations (not identity), safe in the query even though X-Plex-Token
+    // and device identity must stay in headers (see comment below).
+    'X-Plex-Client-Profile-Name': 'Generic',
+    'X-Plex-Client-Profile-Extra': buildWebOsClientProfileExtra()
+  };
+  // PMS needs to know which stream to extract. Include the stream ID explicitly
+  // alongside the prior PUT /library/parts selection.
+  if (session.subtitleStreamId != null) {
+    params.subtitleStreamID = String(session.subtitleStreamId);
+  }
+  var resolution = subtitleResolutionParam(session);
+  if (resolution) params.videoResolution = resolution;
+  var sessionId = resolvePlaybackSessionId(session);
+  if (sessionId) params.session = sessionId;
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  // CRITICAL: this PMS build 400s universal "start" URLs that carry the X-Plex-*
+  // identity in the QUERY (memory webos4-directplay-subtitle-and-mkv). The official
+  // Plex-for-LG client passes identity + token in HEADERS with a clean query. So do
+  // NOT use serverUrl() (it appends plexClientQuery to the URL) — build a bare query
+  // and send identity/token via subtitleFetchHeaders.
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/subtitles/:/transcode/universal/start' + (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session, 'application/json') }
+  };
+}
+
+/**
+ * Mint (and cache) a fresh transcode-session id used ONLY for subtitle
+ * extraction — never the direct-play session. PMS denies subtitle transcode
+ * on a session already committed to directPlay=1 ("session lacking permission
+ * to transcode", confirmed in PMS server log). The official Plex-for-LG client
+ * uses a SEPARATE session with directPlay=0, which PMS accepts as a transcode
+ * session. Cached on the session object so retries reuse the same id.
+ */
+function dedicatedSubtitleSessionId(session) {
+  if (!session) return null;
+  if (session.subtitleTranscodeSessionId) return session.subtitleTranscodeSessionId;
+  var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  var id = '';
+  for (var i = 0; i < 24; i += 1) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  session.subtitleTranscodeSessionId = id;
+  return id;
+}
+
+/**
+ * Byte-matches the OFFICIAL Plex-for-LG subtitle request captured in the PMS
+ * server log (House of the Dragon S3E1 on a B8, alongside our failing calls):
+ *   GET /video/:/transcode/universal/subtitles
+ *       ?protocol=dash&directPlay=0&directStream=1&directStreamAudio=0
+ *       &session=<DEDICATED>&subtitles=auto&Accept-Language=en …
+ *
+ * The crux is a DEDICATED session (not the direct-play one) + directPlay=0, so
+ * PMS treats it as a transcode session that HAS transcode permission and serves
+ * the embedded sub. The video keeps direct-playing untouched (its own session)
+ * → HDR/Dolby Vision preserved. Identity/token go in headers (clean query) to
+ * avoid this PMS build's 400 on identity-in-query.
+ */
+/**
+ * Register the dedicated subtitle session as a TRANSCODE session (directPlay=0)
+ * before fetching the sub. PMS only extracts an embedded sub against a session
+ * that has transcode permission; a fresh, never-transcoded session id is unknown
+ * to PMS and 400s on /subtitles. A directPlay=0 decision makes PMS create the
+ * transcode session (and begin extracting the selected subtitle) without
+ * touching the separate direct-play session the video streams from.
+ */
+function buildDedicatedSubtitleDecisionUrl(server, session, track, playbackMode) {
+  if (!server || !session || session.subtitleStreamId == null) return null;
+  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
+  if (!mediaPath) return null;
+  var subSession = dedicatedSubtitleSessionId(session);
+  var params = {
+    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    hasMDE: '1',
+    directPlay: '0',
+    directStream: '1',
+    directStreamAudio: '1',
+    protocol: 'dash',
+    // subtitles=auto WITHOUT subtitleStreamID — the stream was already selected
+    // via PUT /library/parts. Combining both triggers PMS's "invalid subtitle
+    // setting 'auto'" rejection (seen in the server log).
+    subtitles: 'auto',
+    autoAdjustQuality: '0',
+    mediaBufferSize: '102400',
+    location: plexLocationForServer(server),
+    session: subSession,
+    'X-Plex-Client-Profile-Name': 'Generic',
+    'X-Plex-Client-Profile-Extra': buildWebOsClientProfileExtra()
+  };
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/video/:/transcode/universal/decision' + (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session, 'application/xml') }
+  };
+}
+
+function buildDedicatedSubtitleSessionUrl(server, session, track, playbackMode) {
+  if (!server || !session) return null;
+  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
+  if (!mediaPath) return null;
+  var subSession = dedicatedSubtitleSessionId(session);
+  var params = {
+    hasMDE: '1',
+    path: resolveTranscodeMediaPath(server, mediaPath, playbackMode) || mediaPath,
+    mediaIndex: session.mediaIndex != null ? session.mediaIndex : 0,
+    partIndex: session.partIndex != null ? session.partIndex : 0,
+    protocol: 'dash',
+    fastSeek: '1',
+    directPlay: '0',
+    directStream: '1',
+    subtitleSize: '75',
+    audioBoost: '100',
+    location: plexLocationForServer(server),
+    addDebugOverlay: '0',
+    autoAdjustQuality: '0',
+    directStreamAudio: '0',
+    autoAdjustSubtitle: '1',
+    mediaBufferSize: '102400',
+    session: subSession,
+    subtitles: 'auto',
+    'Accept-Language': 'en'
+  };
+  var offsetSec = offsetSecondsForPlex(session);
+  if (offsetSec > 0) params.offset = String(offsetSec);
+  var query = buildQuery(params);
+  return {
+    url: server.connectionUri.replace(/\/$/, '') +
+      '/video/:/transcode/universal/subtitles' + (query ? '?' + query : ''),
+    init: { headers: subtitleFetchHeaders(server, session, 'text/vtt, text/srt, */*;q=0.1') }
+  };
+}
+
+function subtitleFetchHeaders(server, session, accept, tokenOverride) {
   var headers = plexHeaders({
     Accept: accept || 'text/srt, text/vtt, text/plain;q=0.9, */*;q=0.1'
   });
-  var token = getServerToken(server);
+  var token = tokenOverride || getServerToken(server);
   var clientSessionId = resolvePlaybackSessionId(session);
   if (token) headers['X-Plex-Token'] = token;
   if (clientSessionId) headers['X-Plex-Session-Identifier'] = clientSessionId;
   return headers;
+}
+
+/**
+ * Clone a subtitles-start request substituting the owner/admin token.
+ * Used as a fallback when the managed user token gets a 400 permission denial:
+ * the official Plex-for-LG app appears to use the admin token for PMS API calls
+ * even when a managed profile is active, allowing the extraction to proceed.
+ */
+function buildSubtitleTranscodeStartUrlWithOwnerToken(server, session, track, playbackMode) {
+  var ownerToken = getOwnerToken();
+  if (!ownerToken) return null;
+  var base = buildSubtitleTranscodeStartUrl(server, session, track, playbackMode);
+  if (!base) return null;
+  return {
+    url: base.url,
+    init: { headers: subtitleFetchHeaders(server, session, 'application/json', ownerToken) }
+  };
 }
 
 function buildUniversalSubtitleRequest(server, session, mediaPath, track, playbackMode, options) {
@@ -440,20 +671,39 @@ function primeDirectPlaySubtitleSession(server, session, track, playbackMode) {
   if (playbackMode !== 'direct') {
     return Promise.resolve();
   }
-  var mediaPath = resolveSessionMetadataPath(session) || resolveSessionPartPath(session);
-  var request = buildUniversalDecisionRequest(
-    server, session, mediaPath, track, playbackMode,
-    { subtitles: 'auto', omitSubtitleStreamId: true }
-  );
+  // Register a DEDICATED transcode session (directPlay=0) — NOT the direct-play
+  // session. PMS denies subtitle transcode on the direct-play session and 400s
+  // an unknown fresh session id on /subtitles. This decision makes PMS create
+  // the transcode session and begin extracting the selected embedded sub, while
+  // the video keeps direct-playing on its own session (HDR/DoVi preserved).
+  var request = buildDedicatedSubtitleDecisionUrl(server, session, track, playbackMode);
   if (!request) return Promise.resolve();
+  tvError('subtitles', 'prime-decision-req', {
+    url: String(request.url).replace(/X-Plex-Token=[^&]+/gi, 'X-Plex-Token=[redacted]'),
+    subtitleStreamId: session && session.subtitleStreamId,
+    subtitleSession: session && session.subtitleTranscodeSessionId
+  });
   return fetchText(
     request.url,
     Object.assign({ timeout: 15000 }, request.init || {})
   ).then(function (body) {
     var resourceSession = extractDecisionResourceSession(body);
-    if (resourceSession && session) session.transcodeSessionId = resourceSession;
+    tvError('subtitles', 'prime-decision', {
+      resourceSession: resourceSession,
+      subtitleSession: session && session.subtitleTranscodeSessionId,
+      bodyHead: body ? String(body).replace(/\s+/g, ' ').slice(0, 200) : '(empty)'
+    });
+    // Adopt the resourceSession PMS minted (if it differs) so the subtitle fetch
+    // and stream poll key off the exact session PMS is extracting against.
+    if (resourceSession && session) session.subtitleTranscodeSessionId = resourceSession;
   }).catch(function (err) {
-    console.warn('[subtitles] decision prime failed:', err.message);
+    tvError('subtitles', 'prime-decision-fail', {
+      msg: err && err.message,
+      status: err && err.status,
+      body: err && err.body
+        ? String(err.body).replace(/\s+/g, ' ').slice(0, 300)
+        : ''
+    });
   });
 }
 
@@ -488,6 +738,48 @@ function buildSubtitleFetchPlan(server, session, track, options) {
   var resolvedTrack = track || null;
   var playbackMode = options.playbackMode || 'direct';
   var preferUniversalFirst = plexLocationForServer(server) === 'wan';
+
+  // PRIMARY for EMBEDDED subs: the official Plex-for-LG endpoint — serves the
+  // embedded sub while the video direct-plays (HDR preserved). Sidecar/external
+  // subs are real files fetched faster via /library/streams, so only prepend this
+  // for embedded tracks.
+  if (resolvedTrack && !isSidecarSubtitleTrack(resolvedTrack)) {
+    // PRIMARY: dedicated transcode session (directPlay=0) — the shape the
+    // official Plex-for-LG client uses, verified in the PMS server log. PMS
+    // denies subtitle transcode on the direct-play session ("session lacking
+    // permission to transcode"), so this separate session is what actually
+    // serves the embedded sub while the video direct-plays untouched.
+    pushSubtitleAttempt(
+      attempts,
+      'subtitles-dedicated-session',
+      buildDedicatedSubtitleSessionUrl(server, session, resolvedTrack, playbackMode)
+    );
+    pushSubtitleAttempt(
+      attempts,
+      'subtitles-start',
+      buildSubtitleTranscodeStartUrl(server, session, resolvedTrack, playbackMode)
+    );
+    // Managed Plex Home profiles lack transcoding permission for the extraction
+    // endpoint (/subtitles/:/transcode/universal/start). The official Plex-for-LG
+    // app appears to use the owner/admin token for PMS API calls even when a
+    // managed profile is shown, allowing the extraction to proceed. Try the same
+    // call with the owner token as a fallback so Plax behaves identically.
+    pushSubtitleAttempt(
+      attempts,
+      'subtitles-start-owner',
+      buildSubtitleTranscodeStartUrlWithOwnerToken(server, session, resolvedTrack, playbackMode)
+    );
+    // /library/streams serves the embedded sub once Plex has extracted it (501
+    // until ready → retried by loadClientSubtitleFromUrls). Prioritise it even on
+    // WAN — it's the proven working endpoint (returned 1068 cues once extracted).
+    if (!isAdvancedSubtitleCodec(resolvedTrack)) {
+      pushSubtitleAttempt(
+        attempts,
+        'stream-embedded',
+        buildStreamKeySubtitleUrl(server, resolvedTrack)
+      );
+    }
+  }
 
   if (!preferUniversalFirst &&
       isSidecarSubtitleTrack(resolvedTrack) && !isAdvancedSubtitleCodec(resolvedTrack)) {

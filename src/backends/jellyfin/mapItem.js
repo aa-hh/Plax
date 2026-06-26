@@ -75,6 +75,10 @@ function mapStreams(mediaStreams) {
       default: !!s.IsDefault,
       forced: !!s.IsForced,
       external: !!s.IsExternal,
+      // Both `id` and `index` carry Jellyfin's MediaStream Index. The shared
+      // parseAudioStreams/parseSubtitleStreams select a track by `id`; without it,
+      // every Jellyfin track collapses to `undefined` and selection is impossible.
+      id: s.Index,
       index: s.Index,
       _tag: 'Stream'
     };
@@ -258,4 +262,4 @@ function mapItem(raw, server) {
   };
 }
 
-export { mapItem, ticksToMs, TYPE_MAP };
+export { mapItem, mapStreams, ticksToMs, TYPE_MAP };

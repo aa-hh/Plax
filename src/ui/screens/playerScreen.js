@@ -1,5 +1,5 @@
 import { getState } from '../../core/store.js';
-import { getMetadata } from '../../backends/index.js';
+import { getMetadata, getBackend } from '../../backends/index.js';
 import { createSession, resolveStreamUrl } from '../../playback/sessionController.js';
 import * as player from '../../playback/playerFactory.js';
 import * as queue from '../../playback/playbackQueue.js';
@@ -21,8 +21,6 @@ import {
   isDirectPlaybackMode,
   shouldBurnInSubtitle,
   isAdvancedSubtitleCodec,
-  buildSubtitleFetchPlan,
-  prepareClientSubtitlePlayback,
   parseTranscodeSessionFromUrl,
   subtitleDisplayTitle,
   subtitleMenuOptionLabel
@@ -164,9 +162,10 @@ var ICON_PAUSE =
   '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
   '<path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>' +
   '</svg>';
+// Android TV Design Kit "stop" (filled square) — node 8677:41596 (Icon / 03).
 var ICON_STOP =
-  '<svg class="player-control-icon" viewBox="0 0 12 12" aria-hidden="true">' +
-  '<path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M10 2H2V10H10V2ZM0 0V12H12V0H0Z"/>' +
+  '<svg class="player-control-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path fill="currentColor" d="M6 6h12v12H6z"/>' +
   '</svg>';
 var ICON_CHEVRON_LEFT =
   '<svg class="player-menu-chevron-icon" viewBox="0 0 24 24" aria-hidden="true">' +
@@ -390,6 +389,12 @@ function playerScreen(root, params, navigate) {
   var overlayHideTimer = null;
   var overlayHideAfterFirstFrame = false;
   var firstFrameWaiters = [];
+  // Latch: the first-frame event fires once per play and drains the waiter list.
+  // chainPlaybackReady consumes that event, so a later waitForFirstFrame() (e.g.
+  // scheduleDeferredClientSubtitle) would park forever waiting for an event that
+  // already passed. This flag lets a late waiter resolve immediately. Reset on
+  // each new play attempt (playUrl).
+  var firstFrameSeen = false;
   var clientSubtitleDeferTimer = null;
   var seekCommitTimer = null;
   var seekCommitPendingMs = null;
@@ -536,6 +541,7 @@ function playerScreen(root, params, navigate) {
   }
 
   function resolveFirstFrameWaiters() {
+    firstFrameSeen = true;
     var waiters = firstFrameWaiters;
     firstFrameWaiters = [];
     waiters.forEach(function (resolve) {
@@ -544,6 +550,9 @@ function playerScreen(root, params, navigate) {
   }
 
   function waitForFirstFrame() {
+    // If the first frame already fired for this play, resolve immediately —
+    // otherwise a waiter registered after the event would never resolve.
+    if (firstFrameSeen) return Promise.resolve();
     return new Promise(function (resolve) {
       firstFrameWaiters.push(resolve);
     });
@@ -1143,13 +1152,21 @@ function playerScreen(root, params, navigate) {
     var track = selectedTextSubtitleTrack();
     if (!canUseClientSubtitles(playbackMode, track)) return Promise.resolve();
     var subtitleSession = Object.assign({}, session, {
-      playbackOffsetMs: restartOffsetMs()
+      playbackOffsetMs: restartOffsetMs(),
+      // buildSubtitlePlan reads the mode off the session; the live screen mode
+      // (e.g. 'direct-stream' after a subtitle remux) decides which Plex subtitle
+      // URLs are built. Without it the plan defaults to 'direct' → wrong URLs → no cues.
+      playbackMode: playbackMode
     });
-    return prepareClientSubtitlePlayback(server, subtitleSession, track, playbackMode)
+    var plan = getBackend().buildSubtitlePlan(server, subtitleSession, track);
+    var prep = plan && plan.prepare ? plan.prepare() : Promise.resolve();
+    return prep
       .then(function () {
-        var subtitleAttempts = buildSubtitleFetchPlan(server, subtitleSession, track, {
-          playbackMode: playbackMode
-        });
+        // attempts() is evaluated AFTER prepare() so Plex's URLs include the
+        // session id prepare() primed onto the session (else: no subtitle).
+        var subtitleAttempts = plan && typeof plan.attempts === 'function'
+          ? plan.attempts()
+          : ((plan && plan.attempts) || []);
         if (!subtitleAttempts.length) {
           return Promise.reject(new Error('Could not build subtitle URL'));
         }
@@ -1162,31 +1179,33 @@ function playerScreen(root, params, navigate) {
       syncSubtitleDelayControls();
       console.warn('Client subtitles failed:', err.message);
       var detail = err && err.message ? ' (' + err.message + ')' : '';
+      // Client-side fetch only works for EXTERNAL/sidecar subs (real files served
+      // by /library/streams). EMBEDDED subs can't be fetched as text on Plex —
+      // universal/subtitles needs to extract from a live transcoder session and
+      // returns 400 even when one exists (verified on-device + via probe-subs.sh).
+      // The only way an embedded sub reaches the screen is burned into the stream.
+      // So on any client-fetch failure, fall back to burn-in — unless the quality
+      // is strict direct-play-only (no transcode allowed), or the server returned HTTP 400
+      // (permission denied for managed profiles without transcode rights).
       if (isStrictDirectPlay()) {
         setPlayerMessage(
-          'Subtitles unavailable in Original quality' + detail +
-            '. Switch to Original quality for embedded subtitles, or pick image subtitles (burn-in).'
+          'Embedded subtitles need transcoding' + detail +
+            ', which "Direct play only" disallows. Use an external subtitle or allow transcoding.'
         );
         return Promise.resolve();
       }
-      if (playbackMode === 'direct-stream') {
+      // HTTP 400 = server refused subtitle extraction (no transcode permission on this
+      // account/profile). A burn-in restart also requires transcoding and will fail the
+      // same way — keep the video on direct play and show a clear explanation.
+      if (err && err.status === 400) {
         setPlayerMessage(
-          'Subtitles could not be loaded' + detail + '. Playback continues without subtitles.'
+          'Subtitles unavailable — server refused extraction. ' +
+            'Check Plex Home transcoding permissions if using a managed profile.'
         );
         return Promise.resolve();
       }
-      if (playbackMode === 'transcode-hls' || playbackMode === 'transcode-http') {
-        setPlayerMessage('Client subtitles unavailable' + detail + ' — burning subtitles into the stream…');
-        return restartPlaybackAt(restartOffsetMs(), null, 'subtitle-burn');
-      }
-      if (isDirectPlaybackMode(playbackMode)) {
-        setPlayerMessage(
-          'Subtitles unavailable' + detail + '. Playback continues without subtitles.'
-        );
-        return Promise.resolve();
-      }
-      setPlayerMessage('Subtitles unavailable' + detail + '.');
-      return Promise.resolve();
+      setPlayerMessage('Burning subtitle into the stream' + detail + '…');
+      return restartPlaybackAt(restartOffsetMs(), null, 'subtitle-burn');
     });
   }
 
@@ -1757,6 +1776,9 @@ function playerScreen(root, params, navigate) {
 
   function playUrl(result, offset, playbackSession) {
     playbackSession = playbackSession || session;
+    // New play attempt → a fresh first-frame is coming; clear the latch so
+    // waitForFirstFrame() parks for the real event, not the previous play's.
+    firstFrameSeen = false;
     playbackMode = result.mode || 'unknown';
     tvLog('player', 'playUrl', {
       mode: playbackMode,
