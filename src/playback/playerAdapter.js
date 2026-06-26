@@ -1032,8 +1032,13 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       '[subtitles] fetch ' + (index + 1) + '/' + attempts.length + ' (' + label + ')',
       redactPlexUrl(url)
     );
-    if (label === 'subtitles-start') {
-      tvError('subtitles', 'url', { label: label, url: decodeURIComponent(redactPlexUrl(url)) });
+    var isStartLabel = label === 'subtitles-start' || label === 'subtitles-start-owner';
+    if (isStartLabel) {
+      tvError('subtitles', 'url', {
+        label: label,
+        url: redactPlexUrl(url),
+        accept: (entry.init && entry.init.headers && entry.init.headers.Accept) || null
+      });
     }
     var fetchOptions = Object.assign({ timeout: SUBTITLE_FETCH_TIMEOUT_MS }, entry.init || {});
     return promiseWithTimeout(
@@ -1041,15 +1046,25 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       fetchOptions.timeout,
       'Request timeout'
     ).then(function (text) {
-      // subtitles-start returns a JSON manifest (extraction trigger), not SRT.
-      // Treat any 200 as "trigger sent" and immediately move to stream-embedded poll.
-      if (label === 'subtitles-start') {
+      // subtitles-start / subtitles-start-owner return a JSON manifest (extraction
+      // trigger), not SRT. Treat any 200 as "trigger sent" and immediately move to
+      // the stream-embedded poll.
+      if (isStartLabel) {
         tvError('subtitles', 'start-triggered', {
+          label: label,
           bytes: text ? String(text).length : 0,
           head: text ? String(text).slice(0, 60).replace(/\s+/g, ' ') : ''
         });
         extractRetries = 0;
-        index += 1;
+        // Skip any remaining start-label attempts — jump directly to stream-embedded.
+        while (index < attempts.length) {
+          var nextLabel = attempts[index] && attempts[index].label;
+          if (nextLabel === 'subtitles-start' || nextLabel === 'subtitles-start-owner') {
+            index++;
+          } else {
+            break;
+          }
+        }
         return tryNext();
       }
       applySrtText(text, offsetMs);
@@ -1067,10 +1082,14 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       tvError('subtitles', 'attempt-fail', {
         label: label, status: err && err.status, msg: err && err.message, retry: extractRetries
       });
-      // Log Plex's rejection reason for the extraction trigger so we can diagnose 400s.
-      if (label === 'subtitles-start' && err && err.body) {
-        tvError('subtitles', 'start-fail-body', {
-          body: String(err.body).replace(/\s+/g, ' ').slice(0, 400)
+      // Log Plex rejection bodies for 400/501 — empty body is logged too so we know.
+      if (err && err.status && (err.status === 400 || err.status === 501)) {
+        tvError('subtitles', isStartLabel ? 'start-fail-body' : 'fail-body', {
+          label: label,
+          status: err.status,
+          body: err.body
+            ? String(err.body).replace(/\s+/g, ' ').slice(0, 400)
+            : '(empty)'
         });
       }
       // Plex 501s /library/streams while it EXTRACTS an embedded sub on demand.

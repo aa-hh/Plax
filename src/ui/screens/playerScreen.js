@@ -1185,11 +1185,22 @@ function playerScreen(root, params, navigate) {
       // returns 400 even when one exists (verified on-device + via probe-subs.sh).
       // The only way an embedded sub reaches the screen is burned into the stream.
       // So on any client-fetch failure, fall back to burn-in — unless the quality
-      // is strict direct-play-only (no transcode allowed), where we can only report.
+      // is strict direct-play-only (no transcode allowed), or the server returned HTTP 400
+      // (permission denied for managed profiles without transcode rights).
       if (isStrictDirectPlay()) {
         setPlayerMessage(
           'Embedded subtitles need transcoding' + detail +
             ', which "Direct play only" disallows. Use an external subtitle or allow transcoding.'
+        );
+        return Promise.resolve();
+      }
+      // HTTP 400 = server refused subtitle extraction (no transcode permission on this
+      // account/profile). A burn-in restart also requires transcoding and will fail the
+      // same way — keep the video on direct play and show a clear explanation.
+      if (err && err.status === 400) {
+        setPlayerMessage(
+          'Subtitles unavailable — server refused extraction. ' +
+            'Check Plex Home transcoding permissions if using a managed profile.'
         );
         return Promise.resolve();
       }

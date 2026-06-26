@@ -409,6 +409,10 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   // PRIMARY: the official /subtitles/:/transcode/universal/start endpoint (embedded).
   assert.equal(attempts[0].label, 'subtitles-start');
   assert.ok(attempts[0].url.indexOf('/subtitles/:/transcode/universal/start') >= 0);
+  assert.ok(attempts[0].url.indexOf('Accept=') < 0, 'Accept must be a header, not a query param');
+  assert.equal(attempts[0].init.headers.Accept, 'application/json');
+  assert.ok(attempts[0].url.indexOf('directPlay=1') >= 0);
+  assert.ok(attempts[0].url.indexOf('subtitles=sidecar') >= 0);
   var streamEmbedded = attempts.filter(function (a) { return a.label === 'stream-embedded'; })[0];
   assert.ok(streamEmbedded);
   assert.ok(streamEmbedded.url.indexOf('/library/streams/1893985.srt') >= 0);
