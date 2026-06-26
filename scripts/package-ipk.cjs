@@ -16,6 +16,24 @@ if (!fs.existsSync(dist)) {
 
 if (!fs.existsSync(out)) fs.mkdirSync(out, { recursive: true });
 
+// @webos-tools/cli 3.2.4 calls require('rimraf') as a function but pins rimraf 6.x
+// (named exports only) → "rimraf is not a function". scripts/ensure-webos-cli-rimraf
+// pins a nested rimraf 3.x to shadow it, but that runs only on `postinstall` and a
+// later `npm install <anything>` can prune the --no-save copy. Re-assert it here so
+// packaging is self-healing regardless of what touched node_modules since install.
+function ensureCompatibleRimraf() {
+  var cliRoot = path.join(__dirname, '..', 'node_modules', '@webos-tools/cli');
+  if (!fs.existsSync(cliRoot)) return;
+  var rimrafPkg = path.join(cliRoot, 'node_modules', 'rimraf', 'package.json');
+  if (fs.existsSync(rimrafPkg)) {
+    var version = '';
+    try { version = JSON.parse(fs.readFileSync(rimrafPkg, 'utf8')).version || ''; } catch (e) { /* refetch */ }
+    if (version.startsWith('2.') || version.startsWith('3.')) return; // already compatible
+  }
+  console.log('Repairing @webos-tools/cli rimraf pin (was pruned since install)…');
+  execSync('node ' + JSON.stringify(path.join(__dirname, 'ensure-webos-cli-rimraf.cjs')), { stdio: 'inherit' });
+}
+
 function resolveAresPackageCommand() {
   if (process.platform === 'win32') {
     if (fs.existsSync(localAresPackage + '.cmd')) {
@@ -69,6 +87,7 @@ function cleanupStaging() {
 
 var aresPackageCmd = resolveAresPackageCommand();
 try {
+  ensureCompatibleRimraf();
   prepareStaging();
   execSync(aresPackageCmd + ' -o "' + out + '" "' + staging + '"', { stdio: 'inherit' });
   cleanupStaging();
