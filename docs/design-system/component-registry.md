@@ -732,6 +732,21 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
 - **Account / Profiles / Forget (current, grouped-card form):** Account card carries a **"Switch server"** `createSettingsActionRow` (→ `server-picker {_from:'settings'}`, non-destructive cross-provider jump) + the build-stamped App-version info row. The Profiles card's **"Switch profile"** action is provider-aware (`jellyfin-users` vs `profile-picker`) and the Plex Home roster only fetches for Plex. The footer card holds the destructive **"Forget server"** action row (`gt-settings-item--destructive`): removes **only the current saved link** (`removeSavedLink` keyed by `'plex:'+clientId` or `'jf:'+serverId`) + `clearActiveSession()`, then routes to `server-picker` if other links remain, else `provider-picker`. See [Server picker](#server-picker-cross-provider-saved-link-chooser).
 - **✅ Drift resolved 2026-06-26:** the 2026-06-23 code/registry drift (live screen was still the flat `.settings-row` layout) is **closed** — the grouped-card redesign was ported onto current `main` (`controls.js` `createSettings*` factories adapted to the current `openSidePanel` API; `.gt-settings-*` CSS with flex `gap`→margin for Chrome53; `networkSettings.js`/`playbackSettings.js` taken from the branch; screen rewritten as grouped cards preserving Switch/Forget server + Jellyfin awareness). Source branch `feat/settings-redesign` retired.
 
+### Splash screen  📐 reference (2026-06-26)
+
+- **Status:** 📐 reference — app-specific; no Figma kit component. Spec is the task brief.
+- **Code:** `src/ui/splashScreen.js` (`createSplash()`) · CSS `.splash-screen` / `.splash-screen--out` / `.splash-logo` in `src/styles/app.css` (end of file).
+- **Anatomy:**
+  ```
+  .splash-screen   ← position:fixed inset:0 background:#000 z-index:9999
+    .splash-logo   ← 440px wide, color:#fff, contains plaxWordmarkSvg() inline SVG
+  ```
+- **Behaviour:** injected into `document.body` synchronously in `startApp()` before the first `navigate()` call. Dismissed (fade-out 0.4s opacity transition, then DOM removal) via `onFirstMount()` callback in `src/core/router.js` — fires once after the first screen factory returns (line after `entry.instance = routes[...](host, ...)` in `render()`). One-shot: `firstMountCallback` is nulled on first invocation.
+- **Logo:** `plaxWordmarkSvg()` from `src/ui/brand/plaxLogo.js` — the full "plax" wordmark SVG (viewBox 216×100, `currentColor` letters + purple→blue gradient right-arm on the "x"). Host element is `color:#fff` so the wordmark renders white on black.
+- **Chrome53 notes:** uses `-webkit-` flex prefixes; `transition: opacity` on a `position:fixed` element is supported on Chromium 53. No `inset` shorthand (explicit `top/right/bottom/left: 0`).
+
+---
+
 ### Status badges  (app-specific — audited 2026-06-19)
 
 - **Status:** ✅ app convention (no direct kit component; nearest = Tag `4212:27233`)
