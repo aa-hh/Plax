@@ -248,6 +248,25 @@ function jellyfinUserPickerScreen(root, params, navigate) {
     return order.map(function (id) { return byId[id]; });
   }
 
+  // Wait for all <img> elements inside container to load or error, then signal.
+  // Cap at 1.5 s so a slow/missing avatar never holds the splash indefinitely.
+  function signalAfterImages(container) {
+    var imgs = container.querySelectorAll('img');
+    var pending = imgs.length;
+    if (!pending) { signalReady(); return; }
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; signalReady(); } }, 1500);
+    function settle() {
+      pending--;
+      if (pending <= 0 && !done) { done = true; clearTimeout(timer); signalReady(); }
+    }
+    Array.prototype.forEach.call(imgs, function (img) {
+      if (img.complete) { settle(); return; }
+      img.addEventListener('load', settle);
+      img.addEventListener('error', settle);
+    });
+  }
+
   function load() {
     if (!baseUrl) {
       setStatus('No Jellyfin server configured. Sign in again.', true);
@@ -264,16 +283,16 @@ function jellyfinUserPickerScreen(root, params, navigate) {
         // No public users and no cached sessions — go straight to manual sign-in.
         onOtherUser();
         render([]);
-        signalReady();
+        signalReady(); // no images to wait for
         return;
       }
       render(entries);
-      signalReady();
+      signalAfterImages(rowEl);
     }).catch(function () {
       if (destroyed) return;
       setStatus('');
       render(buildEntries([], sessions));
-      signalReady();
+      signalAfterImages(rowEl);
     });
   }
 

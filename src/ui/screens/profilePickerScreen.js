@@ -645,6 +645,23 @@ function profilePickerScreen(root, params, navigate) {
     });
   }
 
+  function signalAfterImages(container) {
+    var imgs = container.querySelectorAll('img');
+    var pending = imgs.length;
+    if (!pending) { signalReady(); return; }
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; signalReady(); } }, 1500);
+    function settle() {
+      pending--;
+      if (pending <= 0 && !done) { done = true; clearTimeout(timer); signalReady(); }
+    }
+    Array.prototype.forEach.call(imgs, function (img) {
+      if (img.complete) { settle(); return; }
+      img.addEventListener('load', settle);
+      img.addEventListener('error', settle);
+    });
+  }
+
   function loadProfiles() {
     setProfileLoading(true);
     rowEl.innerHTML = '';
@@ -678,7 +695,7 @@ function profilePickerScreen(root, params, navigate) {
           return;
         }
         renderProfiles(homeUsers);
-        signalReady();
+        signalAfterImages(rowEl);
       }).catch(function (err) {
         clearTimeout(loadTimeout);
         setProfileLoading(false);
