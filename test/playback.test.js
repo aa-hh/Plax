@@ -712,7 +712,9 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
     assert.ok(decision);
     var q = new URL(decision.url).searchParams;
     assert.equal(q.get('path'), '/library/metadata/33622');
-    assert.equal(q.get('directPlay'), '0');
+    // directPlay=1: PMS can match the video profile and return a non-null resourceSession.
+    // directPlay=0 + subtitle-only profile returns size=0/resourceSession=null.
+    assert.equal(q.get('directPlay'), '1');
     // directStream is start.m3u8-only now; decision mirrors plex-for-kodi shape.
     assert.equal(q.get('directStream'), null);
     assert.equal(q.get('X-Plex-Client-Profile-Name'), 'Generic');
