@@ -9,7 +9,8 @@
  * in some webOS sandboxes, and quota errors must not interrupt rendering.
  */
 
-var AVATAR_KEY_PREFIX = 'plax_avatar_';
+// v2: resized to 120px JPEG before storage (v1 stored full-size, was slow to decode)
+var AVATAR_KEY_PREFIX = 'plax_avatar2_';
 
 /**
  * Returns the cached dataURL for userId, or null if not cached.
@@ -76,23 +77,35 @@ function evictAvatarsNotIn(userIds) {
  * @param {string} userId
  * @param {string} url
  */
+// Size avatars are resized to before storing. Keeps dataURLs small (~8–15 KB)
+// so localStorage reads and browser decode are fast on warm cache.
+var CACHE_SIZE = 120;
+
 function fetchAndCacheAvatar(userId, url) {
   if (!userId || !url) return;
-  // Skip if already cached
   if (getCachedAvatar(userId)) return;
   fetch(url).then(function (response) {
     if (!response.ok) return null;
     return response.blob();
   }).then(function (blob) {
     if (!blob) return;
-    var reader = new FileReader();
-    reader.onload = function () {
-      setCachedAvatar(userId, reader.result);
+    // Draw into a small canvas before storing so the cached dataURL is
+    // ~10x smaller than the raw server image (120px JPEG vs 300px source).
+    var objectUrl = URL.createObjectURL(blob);
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = CACHE_SIZE;
+        canvas.height = CACHE_SIZE;
+        canvas.getContext('2d').drawImage(img, 0, 0, CACHE_SIZE, CACHE_SIZE);
+        setCachedAvatar(userId, canvas.toDataURL('image/jpeg', 0.85));
+      } catch (e) { /* ignore: canvas tainted or unavailable */ }
+      URL.revokeObjectURL(objectUrl);
     };
-    reader.readAsDataURL(blob);
-  }).catch(function () {
-    // network or FileReader error — ignore
-  });
+    img.onerror = function () { URL.revokeObjectURL(objectUrl); };
+    img.src = objectUrl;
+  }).catch(function () {});
 }
 
 export { getCachedAvatar, setCachedAvatar, evictAvatarsNotIn, fetchAndCacheAvatar };
