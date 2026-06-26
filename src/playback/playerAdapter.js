@@ -1046,10 +1046,25 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
       fetchOptions.timeout,
       'Request timeout'
     ).then(function (text) {
-      // subtitles-start / subtitles-start-owner return a JSON manifest (extraction
-      // trigger), not SRT. Treat any 200 as "trigger sent" and immediately move to
-      // the stream-embedded poll.
+      // /subtitles/:/transcode/universal/start can return EITHER the SRT body
+      // directly (Approach A — a captured official-client 200 was 39 KB of SRT)
+      // OR a JSON manifest (extraction trigger). If the body parses into cues,
+      // use it. Only if it's a manifest/empty do we treat it as a trigger and
+      // fall through to the stream-embedded poll.
       if (isStartLabel) {
+        var looksLikeManifest = !text || /^\s*[{[]/.test(String(text));
+        if (!looksLikeManifest) {
+          applySrtText(text, offsetMs);
+          if (hasClientSubtitlesLoaded()) {
+            var startCues = activeTextTrack && activeTextTrack.cues
+              ? activeTextTrack.cues.length : 0;
+            tvError('subtitles', 'fetched', {
+              label: label, cues: startCues, bytes: String(text).length,
+              head: String(text).slice(0, 40).replace(/\s+/g, ' ')
+            });
+            return;
+          }
+        }
         tvError('subtitles', 'start-triggered', {
           label: label,
           bytes: text ? String(text).length : 0,

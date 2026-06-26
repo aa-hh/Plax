@@ -521,6 +521,28 @@ function settingsScreen(root, params, navigate) {
     }
   }));
 
+  // TEMP A/B hack: choose embedded-subtitle extraction strategy for on-device
+  // comparison. OFF = Approach A (PUT part-select → directPlay=1 /start, no
+  // subtitleStreamID). ON = Approach B (fresh directPlay=0 transcode session).
+  // Read by getSubtitleExtractMode() in subtitleTracks.js. Remove once decided.
+  function isDedicatedSubMode() {
+    try { return localStorage.getItem('plax_sub_extract_mode') === 'dedicated-session'; }
+    catch (e) { return false; }
+  }
+  devCard.body.appendChild(createSettingsSwitchRow({
+    label: 'Subtitle extract: dedicated session (B)',
+    sublabel: 'OFF = PUT+sidecar /start (A). ON = directPlay=0 dedicated session (B). Re-open the player to apply.',
+    on: isDedicatedSubMode(),
+    onToggle: function (on) {
+      try {
+        if (on) localStorage.setItem('plax_sub_extract_mode', 'dedicated-session');
+        else localStorage.setItem('plax_sub_extract_mode', 'sidecar-start');
+      } catch (e) { /* storage blocked */ }
+      setStatus('Subtitle extract = ' + (on ? 'dedicated session (B)' : 'PUT+sidecar /start (A)') +
+        ' — re-open the player to apply.', false);
+    }
+  }));
+
   var perfExporting = false;
   var perfTraceRow = createSettingsActionRow({
     label: 'Send perf trace to log',
