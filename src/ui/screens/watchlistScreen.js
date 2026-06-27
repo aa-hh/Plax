@@ -110,7 +110,12 @@ function watchlistScreen(root, params, navigate) {
     }
     var row = watchlistToHubRow(wl, items);
     row.title = '';
-    renderHubRow(feed, row, navigate, { cols: 12, visibleCount: Math.max(items.length, 20) });
+    // visibleCount must stay a fixed WINDOW, not items.length: createVirtualRow
+    // only windows when items.length > maxDom, so `Math.max(items.length, 20)`
+    // forced EVERY card (and its poster) into the DOM, defeating virtualization —
+    // a 100-item watchlist mounted 100 cards on the B8. 20 matches the home rails;
+    // the lead/trail spacers preserve scroll extent so the row looks identical.
+    renderHubRow(feed, row, navigate, { cols: 12, visibleCount: 20 });
     primeVisiblePosters(feed);
     if (!hubNav.focusSidebar()) {
       var rowScroll = feed.querySelector('.row-scroll');

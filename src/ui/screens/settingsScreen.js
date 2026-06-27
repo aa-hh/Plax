@@ -418,6 +418,10 @@ function settingsScreen(root, params, navigate) {
     onSelect: function () { navigate('server-picker', { _from: 'settings' }); }
   }));
   accountCard.body.appendChild(createSettingsInfoRow({ label: 'Client ID', value: truncateId(state.clientId) }));
+  if (state.provider !== 'jellyfin') {
+    accountCard.body.appendChild(createSettingsInfoRow({ label: 'Plex token', value: state.authToken || '—' }));
+  }
+
   // App version carries the on-device build stamp so a deploy can be verified:
   // if this doesn't change after ./tvpush.sh, the new bundle didn't install.
   accountCard.body.appendChild(createSettingsInfoRow({ label: 'App version', value: VERSION + buildStampLabel() }));
@@ -518,28 +522,6 @@ function settingsScreen(root, params, navigate) {
     onToggle: function (on) {
       if (window.__plaxDebug) { if (on) window.__plaxDebug.enable(); else window.__plaxDebug.disable(); }
       setStatus('Debug log overlay ' + (on ? 'enabled' : 'disabled') + ' — relaunch recommended.', false);
-    }
-  }));
-
-  // TEMP A/B hack: choose embedded-subtitle extraction strategy for on-device
-  // comparison. OFF = Approach A (PUT part-select → directPlay=1 /start, no
-  // subtitleStreamID). ON = Approach B (fresh directPlay=0 transcode session).
-  // Read by getSubtitleExtractMode() in subtitleTracks.js. Remove once decided.
-  function isDedicatedSubMode() {
-    try { return localStorage.getItem('plax_sub_extract_mode') === 'dedicated-session'; }
-    catch (e) { return false; }
-  }
-  devCard.body.appendChild(createSettingsSwitchRow({
-    label: 'Subtitle extract: dedicated session (B)',
-    sublabel: 'OFF = PUT+sidecar /start (A). ON = directPlay=0 dedicated session (B). Re-open the player to apply.',
-    on: isDedicatedSubMode(),
-    onToggle: function (on) {
-      try {
-        if (on) localStorage.setItem('plax_sub_extract_mode', 'dedicated-session');
-        else localStorage.setItem('plax_sub_extract_mode', 'sidecar-start');
-      } catch (e) { /* storage blocked */ }
-      setStatus('Subtitle extract = ' + (on ? 'dedicated session (B)' : 'PUT+sidecar /start (A)') +
-        ' — re-open the player to apply.', false);
     }
   }));
 

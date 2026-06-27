@@ -339,6 +339,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - `gap` **12px** = kit ✅ (icon→label `margin-left: var(--space-3)`; was `--space-4`/16px).
   - container `min-height: var(--target-min)` = **52px** — ratified deviation from kit 48. `--target-min` is the global 10-foot focus/hit floor used app-wide; kept ≥48 rather than pinned to 48 for d-pad target consistency. Container is `display:flex; align-items:center` so glyph/label center within the 52px row.
   - expand/collapse via JS classes ✅ (Chrome53-correct, NO `:focus-within`).
+  - **width-expand animation (perf, 2026-06-27):** the eased `width 180ms` slide is applied ONLY on the overlay screens (`.screen-home` / `.library-screen`), where the absolute rail reflows just its own ~8 items. On the in-flow screens (search/settings/detail/watchlist) the rail snaps open with NO transition — animating `width` there reflowed the heavy main-content sibling every frame (the "laggy sidebar on entry" stutter). Visual: smooth slide on home/library, instant snap elsewhere; anatomy unchanged. `refreshHubNavIcons` now rewrites only the watchlist glyph SVG (the sole shape that changes with active state) and only on an actual flip, gated by `data-icon-filled`.
 - **Contract (unchanged):** nav order Home · Library · Search · Settings (Media / Search / System sections in `browsingHubNav.js`).
 - **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host`; CSS-only change, 600/600 tests pass.
 

@@ -411,20 +411,25 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   // and NO subtitleStreamID (stream selected server-side via PUT /library/parts).
   assert.equal(attempts[0].label, 'subtitles-start');
   assert.ok(attempts[0].url.indexOf('/subtitles/:/transcode/universal/start') >= 0);
-  // Byte-matched to the official 200: Accept/Accept-Language ARE in the query.
-  assert.ok(attempts[0].url.indexOf('Accept=application%2Fjson') >= 0);
+  // Official Plex-for-LG includes Accept=application/json&Accept-Language=en-GB in the /start
+  // query (PMS-log-verified 2026-06-27 07:56:40). These are sent in the query AND in headers.
+  assert.ok(attempts[0].url.indexOf('Accept=application%2Fjson') >= 0, 'Accept must be in query');
+  assert.ok(attempts[0].url.indexOf('Accept-Language=en-GB') >= 0, 'Accept-Language must be in query');
   assert.ok(attempts[0].url.indexOf('directPlay=1') >= 0);
   assert.ok(attempts[0].url.indexOf('subtitles=sidecar') >= 0);
   assert.ok(attempts[0].url.indexOf('subtitleStreamID=') < 0,
     'subtitleStreamID must NOT be on the transcode start (PMS 400s it)');
-  // CRITICAL: the official /start sends NO client profile — re-sending it 400s us.
+  // Profile MUST be in request headers, NOT in the URL (PMS 400s unknown query keys).
+  // PMS's TranscodeUniversalRequest reads profile from headers to "adapt profile with
+  // augmentation data" — without it, 400s in 1ms (proven by on-device PMS logs).
   assert.ok(attempts[0].url.indexOf('X-Plex-Client-Profile-Extra') < 0,
-    'client profile must NOT be on /start');
-  assert.ok(attempts[0].url.indexOf('X-Plex-Client-Profile-Name') < 0);
-  // Approach B is still available as a fallback even in default mode.
-  var dedicated = attempts.filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0];
-  assert.ok(dedicated);
-  assert.ok(dedicated.url.indexOf('/video/:/transcode/universal/subtitles') >= 0);
+    'profile-extra must NOT be in /start URL');
+  assert.ok(attempts[0].url.indexOf('X-Plex-Client-Profile-Name') < 0,
+    'profile-name must NOT be in /start URL');
+  assert.equal(attempts[0].init.headers['X-Plex-Client-Profile-Name'], 'Generic',
+    'profile-name must be in /start headers');
+  assert.ok(attempts[0].init.headers['X-Plex-Client-Profile-Extra'].indexOf('type=subtitleProfile') >= 0,
+    'profile-extra with subtitle target must be in /start headers');
   // /library/streams/{id}.srt (stream-embedded) is NOT used for embedded subs —
   // they have no key, so PMS 501s forever. The sidecar comes from /start.
   assert.equal(attempts.some(function (a) { return a.label === 'stream-embedded'; }), false);
@@ -478,6 +483,44 @@ test('buildSubtitleFetchPlan tries stream then metadata for embedded text subs',
   assert.equal(attempts.filter(function (a) { return a.label === 'stream-embedded'; }).length, 0);
 });
 
+test('buildSubtitleFetchPlan key-first: pre-extracted embedded sub fetches /library/streams before the slow /subtitles/start', function () {
+  // An embedded sub that PMS already demuxed to its server-side cache carries a
+  // `key`. /library/streams/{key}.srt returns it in 2-5s — no ~88s extraction. This
+  // is why the official app is "sometimes fast". The keyless case (no `key`) has no
+  // such cache and must fall through to /subtitles/start.
+  var server = {
+    connectionUri: 'http://plex.local:32400',
+    accessToken: 'tok',
+    activeConnection: { local: true, uri: 'http://plex.local:32400' }
+  };
+  var session = {
+    item: { key: '/library/metadata/999', ratingKey: '999' },
+    version: { partKey: '/library/parts/abc/video.mkv' },
+    subtitleStreamId: 1893985,
+    mediaIndex: 0,
+    partIndex: 0
+  };
+  var keyedTrack = {
+    id: 1893985,
+    codec: 'srt',
+    format: 'srt',
+    graphical: false,
+    delivery: 'embedded',
+    key: '/library/streams/1893985'
+  };
+  var keyed = buildSubtitleFetchPlan(server, session, keyedTrack);
+  assert.equal(keyed[0].label, 'stream-key', 'pre-extracted embedded sub fetches the cached stream first');
+  assert.ok(keyed[0].url.indexOf('/library/streams/1893985') >= 0);
+  assert.equal(keyed[1].label, 'subtitles-start', '/subtitles/start stays as the fallback');
+
+  // Keyless embedded sub: no server cache → straight to /subtitles/start, never a
+  // stream fetch (a keyless id 501s forever — "not a sidecar subtitle").
+  var keylessTrack = Object.assign({}, keyedTrack, { key: null });
+  var keyless = buildSubtitleFetchPlan(server, session, keylessTrack);
+  assert.equal(keyless[0].label, 'subtitles-start');
+  assert.equal(keyless.some(function (a) { return a.label === 'stream-key'; }), false);
+});
+
 test('buildSubtitleFetchPlan HLS primary uses same transcode session and protocol=hls', function () {
   var server = {
     connectionUri: 'http://plex.local:32400',
@@ -527,11 +570,8 @@ test('buildSubtitleFetchPlan deprioritizes stream fetch on wan', function () {
   var plan = buildSubtitleFetchPlan(server, session, track, {
     playbackMode: 'transcode-hls'
   });
-  // For embedded subs the proven endpoint leads (Approach A default): subtitles-start,
-  // then the dedicated-session fallback — BEFORE the universal attempts, even on wan.
-  // No stream-embedded (embedded subs have no key → permanent 501).
+  // subtitles-start leads, then universal attempts. No stream-embedded (permanent 501).
   assert.equal(plan[0].label, 'subtitles-start');
-  assert.equal(plan[1].label, 'subtitles-dedicated-session');
   assert.equal(plan.some(function (a) { return a.label === 'stream-embedded'; }), false);
   assert.ok(plan.findIndex(function (a) { return a.label === 'subtitles-start'; }) <
     plan.findIndex(function (a) { return a.label === 'universal-metadata-auto'; }));
@@ -640,7 +680,10 @@ test('resolveSubtitleSessionId returns PMS transcode session only', function () 
   assert.equal(resolveSubtitleSessionId({ sessionId: 'plax-1' }), null);
 });
 
-test('prepareClientSubtitlePlayback on HLS remux selects part only (no decision prime)', async function () {
+test('prepareClientSubtitlePlayback performs PUT part-select to register the embedded stream', async function () {
+  // prepareClientSubtitlePlayback selects the subtitle stream server-side via PUT
+  // so PMS knows which embedded track to extract when /subtitles/start fires.
+  // The video decision already carries subtitles=sidecar — no separate decision needed.
   var savedFetch = globalThis.fetch;
   var calls = [];
   globalThis.fetch = function (url, init) {
@@ -668,25 +711,26 @@ test('prepareClientSubtitlePlayback on HLS remux selects part only (no decision 
       { id: 5, codec: 'srt', delivery: 'embedded' },
       'direct-stream'
     );
-    assert.equal(calls.filter(function (call) {
-      return call.url.indexOf('/video/:/transcode/universal/decision') >= 0;
-    }).length, 0);
     var partPut = calls.filter(function (call) {
       return call.method === 'PUT' && call.url.indexOf('/library/parts/42') >= 0;
     })[0];
-    assert.ok(partPut);
+    assert.ok(partPut, 'must PUT /library/parts to select the embedded sub stream');
     assert.ok(partPut.url.indexOf('subtitleStreamID=5') >= 0);
+    var decisionCall = calls.filter(function (call) {
+      return call.url.indexOf('/video/:/transcode/universal/decision') >= 0;
+    })[0];
+    assert.equal(decisionCall, undefined, 'no separate decision call — video decision already carries subtitles=sidecar');
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;
   }
 });
 
-test('HAR regression: subtitle prime mirrors playback decision shape', async function () {
+test('prepareClientSubtitlePlayback on remote server performs PUT part-select', async function () {
   var savedFetch = globalThis.fetch;
   var calls = [];
   globalThis.fetch = function (url, init) {
-    calls.push({ url: String(url), init: init || {} });
+    calls.push({ url: String(url), init: init || {}, method: (init && init.method) || 'GET' });
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -716,48 +760,30 @@ test('HAR regression: subtitle prime mirrors playback decision shape', async fun
       { id: 1894444, codec: 'srt', delivery: 'embedded' },
       'direct'
     );
-    var decision = calls.filter(function (call) {
-      return call.url.indexOf('/video/:/transcode/universal/decision') >= 0;
+    var partPut = calls.filter(function (c) {
+      return c.method === 'PUT' && c.url.indexOf('/library/parts/231208') >= 0;
     })[0];
-    assert.ok(decision);
-    var q = new URL(decision.url).searchParams;
-    assert.equal(q.get('path'), '/library/metadata/33622');
-    // Default Approach A prime: byte-matched to the official decision —
-    // directPlay=1, protocol=hls, subtitles=sidecar, NO subtitleStreamID, and a
-    // DEDICATED session (NOT the video direct-play session), NO client profile.
-    assert.equal(q.get('directPlay'), '1');
-    assert.equal(q.get('protocol'), 'hls');
-    assert.equal(q.get('subtitles'), 'sidecar');
-    assert.equal(q.get('subtitleStreamID'), null);
-    assert.equal(q.get('session'), session.subtitleTranscodeSessionId);
-    assert.notEqual(q.get('session'), 'plax-1779812905191');
-    assert.equal(q.get('X-Plex-Client-Profile-Name'), null);
-    assert.equal(q.get('X-Plex-Client-Profile-Extra'), null);
-    assert.equal(q.get('copyts'), null);
-    // Official decision carries audioBoost=100 / subtitleSize=75 / videoQuality=100.
-    assert.equal(q.get('audioBoost'), '100');
-    assert.equal(q.get('X-Plex-Audio-Stream'), null);
-    assert.equal(q.get('X-Plex-Client-Identifier'), null);
-    assert.equal(q.get('X-Plex-Token'), null);
-    assert.equal(q.get('X-Plex-Session-Identifier'), null);
-    assert.equal(decision.init.headers.Accept, 'application/xml');
-    assert.equal(decision.init.headers['X-Plex-Token'], 'tok');
-    assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'plax-1779812905191');
+    assert.ok(partPut, 'must PUT /library/parts to select the embedded sub stream');
+    assert.ok(partPut.url.indexOf('subtitleStreamID=1894444') >= 0);
+    var decisionCall = calls.filter(function (c) {
+      return c.url.indexOf('/video/:/transcode/universal/decision') >= 0;
+    })[0];
+    assert.equal(decisionCall, undefined, 'no separate decision call needed');
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;
   }
 });
 
-test('prepareClientSubtitlePlayback adopts server resourceSession for subtitle fetches', async function () {
+test('prepareClientSubtitlePlayback resolves after PUT part-select completes', async function () {
   var savedFetch = globalThis.fetch;
-  globalThis.fetch = function () {
+  var putDone = false;
+  globalThis.fetch = function (url, init) {
+    if ((init && init.method) === 'PUT') putDone = true;
     return Promise.resolve({
       ok: true,
       status: 200,
-      text: function () {
-        return '<MediaContainer resourceSession="plex-sub-session-42"/>';
-      },
+      text: function () { return '<MediaContainer/>'; },
       headers: { get: function () { return 'application/xml'; } }
     });
   };
@@ -777,18 +803,9 @@ test('prepareClientSubtitlePlayback adopts server resourceSession for subtitle f
     };
     var track = { id: 1894444, codec: 'srt', delivery: 'embedded' };
     await prepareClientSubtitlePlayback(server, session, track, 'direct');
-    // Prime adopts the resourceSession PMS minted as the dedicated subtitle session.
-    assert.equal(session.subtitleTranscodeSessionId, 'plex-sub-session-42');
-    var dedicated = buildSubtitleFetchPlan(server, session, track, {
-      playbackMode: 'direct'
-    }).filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0];
-    assert.ok(dedicated);
-    // The subtitle fetch keys off the exact session PMS is extracting against.
-    assert.ok(dedicated.url.indexOf('session=plex-sub-session-42') >= 0);
-    assert.equal(
-      dedicated.init.headers['X-Plex-Session-Identifier'],
-      'plax-1779812905191'
-    );
+    assert.ok(putDone, 'PUT part-select must be called');
+    var plan = buildSubtitleFetchPlan(server, session, track, { playbackMode: 'direct' });
+    assert.equal(plan[0].label, 'subtitles-start');
   } finally {
     if (savedFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = savedFetch;
@@ -810,7 +827,6 @@ test('buildSubtitleFetchPlan includes part path only when metadata path missing'
   };
   var attempts = buildSubtitleFetchPlan(server, session, { id: 2, codec: 'srt', delivery: 'embedded' });
   assert.equal(attempts[0].label, 'subtitles-start');
-  assert.ok(attempts.filter(function (a) { return a.label === 'subtitles-dedicated-session'; })[0]);
   assert.equal(
     attempts.some(function (a) { return a.label.indexOf('universal-part-') === 0; }),
     false

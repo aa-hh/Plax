@@ -245,10 +245,6 @@ function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrid
     directStream: '1',
     directStreamAudio: '1',
     mediaBufferSize: '102400',
-    'X-Plex-Client-Profile-Name': 'Generic',
-    'X-Plex-Client-Profile-Extra': buildWebOsClientProfileExtra(deviceInfo, {
-      strategy: session.playbackStrategy || 'direct'
-    }),
     location: plexLocationForServer(server)
   }, flagOverrides || {}));
   assignDecisionSessionParams(params, session);
@@ -270,11 +266,18 @@ function buildMinimalDecisionRequestParams(server, partKey, session, flagOverrid
   Object.assign(params, buildAudioTranscodeParam(session.audioStreamId));
   if (session.subtitleStreamId != null && session.subtitleBurnIn !== true) {
     // We render text subs client-side (SRT TextTrack pipeline). On webOS 4 the
-    // minimal "Generic" profile declares no SubtitleProfiles, so subtitles=auto
-    // makes PMS burn the sub in → full transcode → Direct Play disabled. Tell it
-    // subtitles=none so it direct-plays/streams the video untouched; we fetch
-    // the SRT sidecar ourselves. webOS 5+ keeps the soft-mux (auto) path.
-    params.subtitles = isWebOs4Tv() ? 'none' : 'auto';
+    // official Plex-for-LG app sends subtitles=sidecar on the PLAYBACK decision
+    // (PMS-server-log verified 2026-06-27, session vtyws…): the video still comes
+    // back decision="direct play" (HDR untouched), AND the same session is then
+    // accepted by /subtitles/:/transcode/universal/start to extract the embedded
+    // SRT as a sidecar. The values we used before both fail the sidecar /start:
+    //   - subtitles=none registers the session for NO subs → /start 400s on the
+    //     mismatch (PMS "Found session GUID … in session start" then 400; this was
+    //     the root cause of the whole embedded-sub saga).
+    //   - subtitles=auto burns (Generic profile declares no SubtitleProfiles).
+    // sidecar is the one value that keeps direct play AND enables client-rendered
+    // text extraction off the SAME session. webOS 5+ keeps the soft-mux (auto) path.
+    params.subtitles = isWebOs4Tv() ? 'sidecar' : 'auto';
   } else if (session.subtitleStreamId != null && session.subtitleBurnIn === true) {
     Object.assign(params, buildSubtitleTranscodeParams(
       session.subtitleStreamId,
@@ -316,12 +319,23 @@ function buildDecisionParams(server, partKey, session, protocol) {
 }
 
 function buildDecisionHeaders(server, session) {
-  var clientSessionId = session &&
-    (session.playbackSessionId || session.sessionId) || null;
   var headers = plexHeaders({ Accept: 'application/xml' });
   var token = getServerToken(server);
   if (token) headers['X-Plex-Token'] = token;
-  if (clientSessionId) headers['X-Plex-Session-Identifier'] = clientSessionId;
+  // X-Plex-Session-Identifier must be the CLIENT ID (not the playback session GUID).
+  // Official Plex-for-LG sends clientId in BOTH the decision and /subtitles/start,
+  // so PMS can match the session when /subtitles/start fires. If we send the session
+  // GUID here and then clientId in /subtitles/start, PMS sees a mismatch and 400s
+  // in 1ms — confirmed from PMS log + TV log comparison (session kyuaodh vs client ID).
+  headers['X-Plex-Session-Identifier'] = headers['X-Plex-Client-Identifier'];
+  // Profile MUST arrive in request headers, not URL query. PMS caches the profile
+  // in the session only when it comes via headers — if it's only in the query it's
+  // consumed for that single decision but not stored, so /subtitles/start 400s.
+  headers['X-Plex-Client-Profile-Name'] = 'Generic';
+  headers['X-Plex-Client-Profile-Extra'] = buildWebOsClientProfileExtra(
+    getState().deviceInfo || {},
+    { strategy: (session && session.playbackStrategy) || 'direct' }
+  );
   return headers;
 }
 

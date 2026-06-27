@@ -46,12 +46,15 @@ test('direct-play profile declares soft-text subtitle codecs', function () {
   assert.ok(profiles[0].indexOf('webvtt') >= 0);
 });
 
-test('subtitle profile declares soft-text codecs', function () {
+test('subtitle profile declares soft-text codecs and srt transcode target', function () {
   var caps = getDeviceCapabilities(uhdDevice);
   var subs = buildSubtitleProfiles(caps);
-  assert.equal(subs.length, 1);
+  assert.equal(subs.length, 2);
   assert.ok(subs[0].indexOf('type=subtitleProfile') >= 0);
   assert.ok(subs[0].indexOf('codec=srt,ass,ssa,subrip,webvtt') >= 0);
+  // PMS requires this to allow /subtitles/:/transcode/universal/start (sidecar extraction)
+  assert.ok(subs[1].indexOf('add-transcode-target(type=subtitleProfile') >= 0);
+  assert.ok(subs[1].indexOf('subtitleCodec=srt') >= 0);
 });
 
 test('DV device adds mp4-only direct-play profile', function () {
@@ -89,22 +92,24 @@ test('codec profiles use Plex name/value limitation grammar', function () {
   var caps = getDeviceCapabilities(uhdDevice);
   var profiles = buildCodecProfiles(caps, uhdDevice);
   var joined = profiles.join('+');
-  // New grammar — name/value pairs, not videoResolution/maxVideoBitrate.
-  assert.ok(joined.indexOf('scope=videoCodec&codec=h264&name=video.bitrate&value=50000') >= 0);
-  assert.ok(joined.indexOf('scope=videoCodec&codec=hevc&name=video.bitrate&value=60000') >= 0);
-  assert.ok(joined.indexOf('codec=h264&name=video.level&value=42') >= 0);
-  assert.ok(joined.indexOf('codec=hevc&name=video.bitDepth&value=10') >= 0);
-  assert.ok(joined.indexOf('codec=*&name=audio.channels&value=6') >= 0);
+  // Current Plex MDE grammar — scopeName + type + replace (matches Plex Web).
+  assert.ok(joined.indexOf('scope=videoCodec&scopeName=h264&type=upperBound&name=video.bitrate&value=50000&replace=true') >= 0);
+  assert.ok(joined.indexOf('scope=videoCodec&scopeName=hevc&type=upperBound&name=video.bitrate&value=60000&replace=true') >= 0);
+  assert.ok(joined.indexOf('scopeName=h264&type=upperBound&name=video.level&value=42&replace=true') >= 0);
+  assert.ok(joined.indexOf('scopeName=hevc&type=upperBound&name=video.bitDepth&value=10&replace=true') >= 0);
+  assert.ok(joined.indexOf('scopeName=*&type=upperBound&name=audio.channels&value=6&replace=true') >= 0);
   // Must NOT use the old malformed grammar.
   assert.equal(joined.indexOf('videoResolution'), -1);
   assert.equal(joined.indexOf('maxVideoBitrate'), -1);
+  // Must NOT use the legacy codec= form (silently ignored by modern PMS).
+  assert.equal(joined.indexOf('&codec='), -1);
 });
 
 test('bitrate limitations alias returns the video.bitrate subset (UHD ceilings)', function () {
   var limits = buildBitrateLimitations(uhdDevice);
   var joined = limits.join('+');
-  assert.ok(joined.indexOf('codec=h264&name=video.bitrate&value=50000') >= 0);
-  assert.ok(joined.indexOf('codec=hevc&name=video.bitrate&value=60000') >= 0);
+  assert.ok(joined.indexOf('scopeName=h264&type=upperBound&name=video.bitrate&value=50000&replace=true') >= 0);
+  assert.ok(joined.indexOf('scopeName=hevc&type=upperBound&name=video.bitrate&value=60000&replace=true') >= 0);
   // alias only emits video.bitrate, nothing else.
   assert.equal(joined.indexOf('video.level'), -1);
   assert.equal(joined.indexOf('audio.channels'), -1);

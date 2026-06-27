@@ -28,9 +28,7 @@ var DECISION_QUERY_KEYS = [
   'offset',
   'maxVideoBitrate',
   'videoResolution',
-  'protocol',
-  'X-Plex-Client-Profile-Name',
-  'X-Plex-Client-Profile-Extra'
+  'protocol'
 ];
 
 function buildMinimalDecisionParams(fullParams, metadataPath) {
