@@ -1,0 +1,163 @@
+# XPlay user-flow manifest — declarative source of truth for the Figma board.
+#
+# Apply changes by editing this file then running:
+#   node docs/design-system/flow/sync.mjs mermaid            # regenerate flow.mmd
+#   node docs/design-system/flow/sync.mjs render --changed   # re-render changed screens
+#   node docs/design-system/flow/sync.mjs plan               # show diff vs Figma
+#   node docs/design-system/flow/sync.mjs apply              # run the diff via use_figma
+#
+# Schema:
+#   sections[]: { key, title, pos:[x,y], size:[w,h], grid?:{originX,originY,colGap,rowGap} }
+#   nodes[]:    { key, section, label, kind, screen?, pos?:[x,y]|at?:[row,col], size?:[w,h], figmaName }
+#                 kind = screen | ref | hub | note
+#                 pos = absolute (section-relative); at = grid cell — pick one
+#   edges[]:    { from, to, label?, style?: solid|dashed, color?: blue|gray }
+#
+# `figmaName` is used ONCE during adoption to match the existing live frame; after that
+# the frame is identified by its stamped shared-plugin-data key.
+
+figmaFileKey: WI3ps729HoHyWQKfEG3XSH
+
+sections:
+  - key: s1
+    title: "§1 · Onboarding & Server Selection"
+    pos: [120, 120]
+    size: [3320, 2010]
+  - key: s2
+    title: "§2 · Browsing Hub"
+    pos: [120, 2310]
+    size: [2440, 960]
+  - key: s3
+    title: "§3 · Detail"
+    pos: [120, 3390]
+    size: [2440, 880]
+  - key: s4
+    title: "§4 · Player"
+    pos: [120, 4360]
+    size: [3300, 964]
+
+# Standard sizes (referenced by node entries):
+#   screen frame: 460 wide × 287 tall (18px label + 10px gap + 259px image)
+#   ref/hub node: 340×220 (default), 320×150 (settings chip), 240×180 (watchlist note)
+
+nodes:
+  # ── §1 Onboarding & Server Selection ──────────────────────────────────────
+  - { key: provider-picker, section: s1, label: "Provider picker",
+      kind: screen, screen: provider-picker,
+      pos: [280, 692], figmaName: "Provider picker" }
+  - { key: plex-pairing, section: s1, label: "Plex pairing",
+      kind: screen, screen: plex-pairing,
+      pos: [920, 432], figmaName: "Plex pairing" }
+  - { key: jf-login-url, section: s1, label: "Jellyfin login · server URL",
+      kind: screen, screen: jf-login-url,
+      pos: [920, 952], figmaName: "Jellyfin login · server URL" }
+  - { key: jf-login-quickconnect, section: s1, label: "Jellyfin · Quick Connect",
+      kind: screen, screen: jf-login-quickconnect,
+      pos: [1600, 792], figmaName: "Jellyfin · Quick Connect" }
+  - { key: jf-login-password, section: s1, label: "Jellyfin · password",
+      kind: screen, screen: jf-login-password,
+      pos: [1600, 1112], figmaName: "Jellyfin · password" }
+  - { key: server-picker-launch, section: s1, label: "Server picker (launch)",
+      kind: screen, screen: server-picker-launch,
+      pos: [920, 1452], figmaName: "Server picker (launch)" }
+  - { key: server-picker-settings, section: s1, label: "Server picker (from Settings)",
+      kind: screen, screen: server-picker-settings,
+      pos: [920, 1712], figmaName: "Server picker (from Settings)" }
+  - { key: s1-home, section: s1, label: "HOME",
+      kind: ref, sublabel: "→ Profile / Who's-watching → (collapsed tail)",
+      pos: [2840, 760], size: [360, 220], figmaName: "node:HOME" }
+  - { key: s1-settings, section: s1, label: "Settings",
+      kind: hub, sublabel: "Switch server · Forget server",
+      pos: [280, 1490], size: [320, 150], figmaName: "node:Settings" }
+
+  # ── §2 Browsing Hub ───────────────────────────────────────────────────────
+  - { key: globalnav, section: s2, label: "Global Nav Hub (Sidebar)",
+      kind: hub, items: ["Home", "Library", "Search", "Watchlist", "Settings"],
+      pos: [60, 250], size: [180, 500], figmaName: "node:GlobalNav" }
+  - { key: home, section: s2, label: "Home",
+      kind: screen, screen: home,
+      pos: [320, 220], figmaName: "Home" }
+  - { key: library, section: s2, label: "Library",
+      kind: screen, screen: library,
+      pos: [860, 220], figmaName: "Library" }
+  - { key: search, section: s2, label: "Search",
+      kind: screen, screen: search,
+      pos: [320, 560], figmaName: "Search" }
+  - { key: settings, section: s2, label: "Settings",
+      kind: screen, screen: settings,
+      pos: [860, 560], figmaName: "Settings" }
+  - { key: watchlist, section: s2, label: "Watchlist",
+      kind: note, sublabel: "(same layout as Library grid — curated shelf)",
+      pos: [1400, 400], size: [240, 180], figmaName: "Watchlist" }
+  - { key: detail-ref, section: s2, label: "→ Detail screen",
+      kind: ref, sublabel: "(see §3 · Detail)\nMovie · Show · Season · Episode",
+      pos: [1960, 350], size: [340, 220], figmaName: "node:Detail→§3" }
+
+  # ── §3 Detail ─────────────────────────────────────────────────────────────
+  - { key: detail-movie, section: s3, label: "Movie detail",
+      kind: screen, screen: detail-movie,
+      pos: [60, 180], figmaName: "Movie detail" }
+  - { key: detail-show, section: s3, label: "Show detail",
+      kind: screen, screen: detail-show,
+      pos: [600, 180], figmaName: "Show detail" }
+  - { key: detail-season, section: s3, label: "Season detail",
+      kind: screen, screen: detail-season,
+      pos: [1140, 180], figmaName: "Season detail" }
+  - { key: detail-episode, section: s3, label: "Episode detail",
+      kind: screen, screen: detail-episode,
+      pos: [1680, 180], figmaName: "Episode detail" }
+  - { key: player-ref, section: s3, label: "→ Player",
+      kind: ref, sublabel: "(see §4 · Player)\n6 key states: loading · playing · paused · seeking · track drawer · skip/up-next",
+      pos: [60, 580], size: [340, 200], figmaName: "node:Player→§4" }
+
+  # ── §4 Player (placeholders; real renders later) ──────────────────────────
+  - { key: player-loading, section: s4, label: "Loading / first frame",
+      kind: screen, pos: [60, 170], figmaName: "Loading / first frame" }
+  - { key: player-playing, section: s4, label: "Playing + transport",
+      kind: screen, pos: [580, 170], figmaName: "Playing + transport" }
+  - { key: player-paused, section: s4, label: "Paused",
+      kind: screen, pos: [1100, 170], figmaName: "Paused" }
+  - { key: player-seeking, section: s4, label: "Seeking / scrub",
+      kind: screen, pos: [60, 530], figmaName: "Seeking / scrub" }
+  - { key: player-track-drawer, section: s4, label: "Track selector drawer",
+      kind: screen, pos: [580, 530], figmaName: "Track selector drawer" }
+  - { key: player-up-next, section: s4, label: "Skip / Up Next",
+      kind: screen, pos: [1100, 530], figmaName: "Skip / Up Next" }
+
+edges:
+  # §1 — onboarding/auth/server-selection flow → HOME
+  - { from: provider-picker, to: plex-pairing,         label: "choose Plex" }
+  - { from: provider-picker, to: jf-login-url,         label: "choose Jellyfin" }
+  - { from: plex-pairing,    to: s1-home,              label: "signed in" }
+  - { from: jf-login-url,    to: jf-login-quickconnect, label: "Quick Connect" }
+  - { from: jf-login-url,    to: jf-login-password,    label: "use password" }
+  - { from: jf-login-quickconnect, to: s1-home,        label: "approved" }
+  - { from: jf-login-password, to: s1-home,            label: "signed in" }
+  - { from: plex-pairing,    to: provider-picker,      label: "Use a different service", style: dashed }
+  - { from: server-picker-launch, to: s1-home,         label: "select link" }
+  - { from: server-picker-launch, to: provider-picker, label: "Add a new server", style: dashed }
+  - { from: s1-settings,     to: server-picker-settings, label: "Switch server" }
+  - { from: server-picker-settings, to: s1-home,       label: "select link" }
+  - { from: server-picker-settings, to: s1-settings,   label: "Back", style: dashed }
+
+  # §2 — sidebar nav + card→detail
+  - { from: globalnav, to: home,      label: "nav tap" }
+  - { from: globalnav, to: library,   label: "nav tap" }
+  - { from: globalnav, to: search,    label: "nav tap" }
+  - { from: globalnav, to: settings,  label: "nav tap" }
+  - { from: globalnav, to: watchlist, label: "nav tap" }
+  - { from: home,    to: detail-ref,  label: "card tap" }
+  - { from: library, to: detail-ref,  label: "card tap" }
+  - { from: search,  to: detail-ref,  label: "card tap" }
+
+  # §3 — every detail variant → Player
+  - { from: detail-movie,   to: player-ref, label: "Play" }
+  - { from: detail-show,    to: player-ref, label: "Play" }
+  - { from: detail-season,  to: player-ref, label: "Play" }
+  - { from: detail-episode, to: player-ref, label: "Play" }
+
+  # §4 — player state transitions (current board's labels)
+  - { from: player-loading,      to: player-playing,      label: "buffered" }
+  - { from: player-playing,      to: player-paused,       label: "pause" }
+  - { from: player-seeking,      to: player-track-drawer, label: "scrub" }
+  - { from: player-track-drawer, to: player-up-next,      label: "track btn" }

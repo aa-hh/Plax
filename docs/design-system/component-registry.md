@@ -973,11 +973,12 @@ Protocol sections, and by the `.claude/hooks/design-protocol*.sh` hooks.
 
 ### Living user-flow reference
 
-**Figma:** https://www.figma.com/design/WI3ps729HoHyWQKfEG3XSH/XPlay-%E2%80%94-App-User-Flow-Reference  
-**Inventory + update instructions:** `docs/design-system/user-flow.md`  
-**Thumbnails:** `docs/design-system/flow/thumbnails/*.png` (rendered by the harness in `docs/design-system/flow/harness/`)
+**Figma:** https://www.figma.com/design/WI3ps729HoHyWQKfEG3XSH/XPlay-%E2%80%94-App-User-Flow-Reference
+**Source of truth:** `docs/design-system/flow/flow.yaml` (manifest) → reconciled into Figma by `docs/design-system/flow/sync.mjs`.
+**Mermaid preview:** `docs/design-system/flow/flow.mmd` (generated; renders in GitHub).
+**Workflow + inventory:** `docs/design-system/user-flow.md`.
 
-When a flow or screen changes: re-render the matching screen(s) via the harness → upload the new PNG to the matching Figma `img` node (node IDs in `user-flow.md`) → update arrows/labels if the transition changed.
+When a flow or screen changes: edit `flow.yaml` → `sync.mjs mermaid` → `sync.mjs render <screen>` if needed → `sync.mjs scan` + `plan` + `apply` (idempotent diff against the live board). Identity survives via per-node shared-plugin-data stamps (`xplayflow:key`) — `flow.lock.json` is a fast cache.
 
 **⚠️ This file is untracked-prone — commit it.** It has been lost twice to branch
 operations while uncommitted (2026-06-19 reduced to one entry; reconciled back

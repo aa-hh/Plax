@@ -1,0 +1,131 @@
+{
+  "sections": {
+    "s1": {
+      "figmaNodeId": "15:2",
+      "hash": "4385a55d"
+    },
+    "s2": {
+      "figmaNodeId": "28:2",
+      "hash": "b56da3ed"
+    },
+    "s3": {
+      "figmaNodeId": "33:21",
+      "hash": "cb756ff"
+    },
+    "s4": {
+      "figmaNodeId": "38:10",
+      "hash": "943cc09b"
+    }
+  },
+  "nodes": {
+    "s1-home": {
+      "figmaNodeId": "15:8",
+      "hash": "175b5f07"
+    },
+    "s1-settings": {
+      "figmaNodeId": "15:11",
+      "hash": "d2063eb8"
+    },
+    "provider-picker": {
+      "figmaNodeId": "15:14",
+      "hash": "9b1f3993"
+    },
+    "plex-pairing": {
+      "figmaNodeId": "15:17",
+      "hash": "f4881d5a"
+    },
+    "jf-login-url": {
+      "figmaNodeId": "15:20",
+      "hash": "3ebeb535"
+    },
+    "jf-login-quickconnect": {
+      "figmaNodeId": "15:23",
+      "hash": "1e1d9c6d"
+    },
+    "jf-login-password": {
+      "figmaNodeId": "15:26",
+      "hash": "f2b888d2"
+    },
+    "server-picker-launch": {
+      "figmaNodeId": "15:29",
+      "hash": "34492c21"
+    },
+    "server-picker-settings": {
+      "figmaNodeId": "15:32",
+      "hash": "5ef8e690"
+    },
+    "globalnav": {
+      "figmaNodeId": "28:5",
+      "hash": "73fc27fd"
+    },
+    "home": {
+      "figmaNodeId": "28:12",
+      "hash": "1df253d8"
+    },
+    "library": {
+      "figmaNodeId": "28:15",
+      "hash": "3cc15577"
+    },
+    "search": {
+      "figmaNodeId": "28:18",
+      "hash": "97fe01b"
+    },
+    "settings": {
+      "figmaNodeId": "28:21",
+      "hash": "eb0ad354"
+    },
+    "detail-ref": {
+      "figmaNodeId": "28:24",
+      "hash": "9b6f32da"
+    },
+    "watchlist": {
+      "figmaNodeId": "33:16",
+      "hash": "2b26d758"
+    },
+    "detail-movie": {
+      "figmaNodeId": "33:24",
+      "hash": "4e4ce4eb"
+    },
+    "detail-show": {
+      "figmaNodeId": "33:27",
+      "hash": "49f0e15b"
+    },
+    "detail-season": {
+      "figmaNodeId": "33:30",
+      "hash": "b3c9ca69"
+    },
+    "detail-episode": {
+      "figmaNodeId": "33:33",
+      "hash": "cad1a1a2"
+    },
+    "player-ref": {
+      "figmaNodeId": "33:42",
+      "hash": "7c053d05"
+    },
+    "player-loading": {
+      "figmaNodeId": "38:13",
+      "hash": "dacf2e87"
+    },
+    "player-playing": {
+      "figmaNodeId": "38:17",
+      "hash": "346e2fde"
+    },
+    "player-paused": {
+      "figmaNodeId": "38:21",
+      "hash": "39a82af9"
+    },
+    "player-seeking": {
+      "figmaNodeId": "38:25",
+      "hash": "4b32468b"
+    },
+    "player-track-drawer": {
+      "figmaNodeId": "38:29",
+      "hash": "7b92f2df"
+    },
+    "player-up-next": {
+      "figmaNodeId": "38:33",
+      "hash": "7e7671a3"
+    }
+  },
+  "edges": {}
+}

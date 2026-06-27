@@ -1,93 +1,91 @@
 # XPlay — App User-Flow Reference
 
-**Figma file:** https://www.figma.com/design/WI3ps729HoHyWQKfEG3XSH/XPlay-%E2%80%94-App-User-Flow-Reference  
+**Figma file:** https://www.figma.com/design/WI3ps729HoHyWQKfEG3XSH/XPlay-%E2%80%94-App-User-Flow-Reference
 **fileKey:** `WI3ps729HoHyWQKfEG3XSH`
+**Source of truth:** [`flow.yaml`](flow/flow.yaml) (manifest) → reconciler keeps Figma in sync.
+**Mermaid preview:** [`flow.mmd`](flow/flow.mmd) (generated; renders in GitHub).
 
-## Keeping this current
+## Living update workflow
 
-When a user flow or screen changes:
-1. Update the matching harness entry in `docs/design-system/flow/render.mjs` (or the harness files in `harness/`).
-2. Re-render: `npx rollup -c docs/design-system/flow/harness/rollup.harness.mjs` then re-screenshot.
-3. Upload the new PNG to the matching Figma frame via `upload_assets` targeting its `img` node ID.
-4. If the transition itself changed, update the arrow/label in the matching Figma section via `use_figma`.
-
-## Board sections
-
-| Section | Figma node | Content |
-|---------|-----------|---------|
-| §1 · Onboarding & Server Selection | `15:2` | Provider picker → Plex pairing / Jellyfin login → Server picker. Three swimlanes (first-run / returning / mid-session). |
-| §2 · Browsing Hub | `28:2` | Global Nav Hub + Home, Library, Search, Watchlist, Settings. Card tap → Detail. |
-| §3 · Detail | `33:21` | 4 variants: Movie, Show, Season, Episode. Play → Player, breadcrumb nav. |
-| §4 · Player | `38:10` | 6 key states: Loading, Playing+transport, Paused, Seeking, Track drawer, Skip/Up-Next. |
-
-## Screen inventory
-
-### §1 Onboarding
-| Screen | Thumbnail | Figma img node |
-|--------|-----------|---------------|
-| Provider picker | `thumbnails/provider-picker.png` | `15:16` |
-| Plex pairing | `thumbnails/plex-pairing.png` | `15:19` |
-| Jellyfin login · URL | `thumbnails/jf-login-url.png` | `15:22` |
-| Jellyfin · Quick Connect | `thumbnails/jf-login-quickconnect.png` | `15:25` |
-| Jellyfin · password | `thumbnails/jf-login-password.png` | `15:28` |
-| Server picker (launch) | `thumbnails/server-picker-launch.png` | `15:31` |
-| Server picker (from Settings) | `thumbnails/server-picker-settings.png` | `15:34` |
-
-### §2 Browsing Hub
-| Screen | Thumbnail | Figma img node |
-|--------|-----------|---------------|
-| Home | `thumbnails/home.png` | `28:14` |
-| Library | `thumbnails/library.png` | `28:17` |
-| Search | `thumbnails/search.png` | `28:20` |
-| Settings | `thumbnails/settings.png` | `28:23` |
-
-### §3 Detail
-| Screen | Thumbnail | Figma img node |
-|--------|-----------|---------------|
-| Movie detail | `thumbnails/detail-movie.png` | `33:26` |
-| Show detail | `thumbnails/detail-show.png` | `33:29` |
-| Season detail | `thumbnails/detail-season.png` | `33:32` |
-| Episode detail | `thumbnails/detail-episode.png` | `33:35` |
-
-### §4 Player
-Player state frames are labeled dark-background placeholders. To add real thumbnails, render each state from the player overlay markup/CSS and upload to:
-
-| State | Figma img node |
-|-------|---------------|
-| Loading / first frame | `38:15` |
-| Playing + transport | `38:19` |
-| Paused | `38:23` |
-| Seeking / scrub | `38:27` |
-| Track selector drawer | `38:31` |
-| Skip / Up Next | `38:35` |
-
-## Render script
-
-`docs/design-system/flow/harness/` — real app screens + mock fixtures bundled via rollup.
+Edit `flow.yaml`, run the reconciler. It diffs the manifest against the live board and
+applies only the delta — never the whole flow.
 
 ```bash
-# Rebuild bundle (needed when src/styles/app.css or screen components change)
-npx rollup -c docs/design-system/flow/harness/rollup.harness.mjs
+# 1. Make your change in flow.yaml (add/remove/rename a node, add an edge, etc.)
+# 2. Regenerate the Mermaid preview
+node docs/design-system/flow/sync.mjs mermaid
 
-# Re-screenshot all §2/§3 screens
-HARNESS="file:///path/to/docs/design-system/flow/harness/index.html"
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-for s in home library search settings detail-movie detail-show detail-season detail-episode; do
-  "$CHROME" --headless --disable-gpu --hide-scrollbars --allow-file-access-from-files \
-    --window-size=1920,1080 --virtual-time-budget=5000 \
-    --screenshot="docs/design-system/flow/thumbnails/$s.png" \
-    "${HARNESS}?screen=${s}"
-done
+# 3. (If you added a `screen:` ref) re-render its thumbnail
+node docs/design-system/flow/sync.mjs render <screen-name>
+
+# 4. Capture the live canvas, then plan the diff:
+node docs/design-system/flow/sync.mjs scan            # prints a use_figma script
+#   paste into use_figma, save its returned JSON → /tmp/canvas.json
+node docs/design-system/flow/sync.mjs plan --canvas /tmp/canvas.json
+#   shows ops + a stamp script. Paste into use_figma, save result → /tmp/result.json
+node docs/design-system/flow/sync.mjs apply --result /tmp/result.json
 ```
 
-## Screen → component registry mapping
+## Why the manifest
+
+Before: each board update meant hand-tuned coordinates + remembered node IDs.
+That produced floating labels, crossing arrows, and required re-deriving Figma node IDs
+every time something moved.
+
+Now: `flow.yaml` is the single source of truth. The reconciler stamps every managed
+Figma node with its manifest `key` via shared-plugin-data (`xplayflow:key`), so the
+mapping is recoverable from the canvas itself — `flow.lock.json` is just a fast cache.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `flow/flow.yaml` | **Manifest** — hand-edited source of truth (sections, nodes, edges) |
+| `flow/flow.lock.json` | **Cache** — `key → { figmaNodeId, hash }` per managed node; regenerated by `apply` |
+| `flow/flow.mmd` | **Mermaid** — generated by `sync.mjs mermaid`; renders the flow in GitHub |
+| `flow/sync.mjs` | **Reconciler CLI** — `mermaid` / `scan` / `plan` / `apply` / `render` |
+| `flow/render.mjs` + `flow/harness/` | Thumbnail renderer (real screens + mock fixtures → PNG) |
+| `flow/thumbnails/*.png` | Rendered screen PNGs uploaded to Figma `img` frames |
+
+## Sections
+
+| Section | Manifest key | Figma section |
+|---|---|---|
+| §1 · Onboarding & Server Selection | `s1` | `15:2` |
+| §2 · Browsing Hub | `s2` | `28:2` |
+| §3 · Detail | `s3` | `33:21` |
+| §4 · Player | `s4` | `38:10` |
+
+Per-node `figmaNodeId`s are no longer enumerated by hand — they live in
+`flow/flow.lock.json` and are produced by the reconciler. To look one up:
+
+```bash
+jq '.nodes["provider-picker"]' docs/design-system/flow/flow.lock.json
+```
+
+## Adding a new screen
+
+1. Add a `nodes:` entry in `flow.yaml` with `kind: screen, screen: my-screen, figmaName: "My Screen"`.
+2. Add the screen's HTML harness to `flow/render.mjs` (the existing `SCREENS` array).
+3. Run `node docs/design-system/flow/sync.mjs render my-screen` to produce `thumbnails/my-screen.png`.
+4. Run the plan/apply cycle. The reconciler will create the frame, upload the thumbnail,
+   stamp the key, and update the lock.
+
+## Edge management
+
+By default edges are **unmanaged** (existing hand-drawn arrows are left alone — the
+adopt-in-place semantics of the first sync). Set `options.manageEdges: true` in
+`flow.yaml` to let the reconciler take ownership of the edge layer; it will then
+diff edges by `from>to#label` key and create/update/delete via vector ops.
+
+## Screen → component-registry mapping
 
 | Screen | Registry entry |
-|--------|---------------|
+|---|---|
 | Provider picker | Provider-picker card |
 | Server picker | Server picker (cross-provider saved-link chooser) |
 | Home | Home rail / Media card |
 | Library | Library grid / Media card |
 | Detail · Movie/Show/Season/Episode | Detail screen |
 | Settings | Settings screen |
-| Player | Player overlay (§4 placeholder — not yet in registry) |
+| Player (6 states) | Player overlay |
