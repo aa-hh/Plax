@@ -1,131 +1,347 @@
 {
   "sections": {
     "s1": {
-      "figmaNodeId": "15:2",
-      "hash": "4385a55d"
+      "figmaNodeId": "70:2",
+      "hash": "52becc9a"
     },
     "s2": {
-      "figmaNodeId": "28:2",
-      "hash": "b56da3ed"
+      "figmaNodeId": "70:4",
+      "hash": "b60177d8"
     },
     "s3": {
-      "figmaNodeId": "33:21",
-      "hash": "cb756ff"
+      "figmaNodeId": "70:6",
+      "hash": "696db632"
     },
     "s4": {
-      "figmaNodeId": "38:10",
-      "hash": "943cc09b"
+      "figmaNodeId": "70:8",
+      "hash": "f1a339e2"
+    },
+    "s5": {
+      "figmaNodeId": "70:10",
+      "hash": "5853575a"
     }
   },
   "nodes": {
-    "s1-home": {
-      "figmaNodeId": "15:8",
-      "hash": "175b5f07"
-    },
-    "s1-settings": {
-      "figmaNodeId": "15:11",
-      "hash": "d2063eb8"
-    },
     "provider-picker": {
-      "figmaNodeId": "15:14",
-      "hash": "9b1f3993"
+      "figmaNodeId": "70:12",
+      "imgFrameId": "70:14",
+      "hash": "7f774478"
     },
     "plex-pairing": {
-      "figmaNodeId": "15:17",
-      "hash": "f4881d5a"
+      "figmaNodeId": "70:15",
+      "imgFrameId": "70:17",
+      "hash": "35606af8"
     },
     "jf-login-url": {
-      "figmaNodeId": "15:20",
-      "hash": "3ebeb535"
+      "figmaNodeId": "70:18",
+      "imgFrameId": "70:20",
+      "hash": "ab6accdf"
     },
     "jf-login-quickconnect": {
-      "figmaNodeId": "15:23",
-      "hash": "1e1d9c6d"
+      "figmaNodeId": "70:21",
+      "imgFrameId": "70:23",
+      "hash": "537fa23a"
     },
     "jf-login-password": {
-      "figmaNodeId": "15:26",
-      "hash": "f2b888d2"
+      "figmaNodeId": "70:24",
+      "imgFrameId": "70:26",
+      "hash": "5fe9e09a"
+    },
+    "profile-picker": {
+      "figmaNodeId": "70:27",
+      "imgFrameId": "70:29",
+      "hash": "58fcf0f9"
+    },
+    "profile-picker-pin": {
+      "figmaNodeId": "70:30",
+      "imgFrameId": "70:32",
+      "hash": "256f1e87"
+    },
+    "jf-user-picker": {
+      "figmaNodeId": "70:33",
+      "imgFrameId": "70:35",
+      "hash": "84c2dfae"
     },
     "server-picker-launch": {
-      "figmaNodeId": "15:29",
-      "hash": "34492c21"
+      "figmaNodeId": "70:36",
+      "imgFrameId": "70:38",
+      "hash": "80e1be54"
     },
     "server-picker-settings": {
-      "figmaNodeId": "15:32",
-      "hash": "5ef8e690"
+      "figmaNodeId": "70:39",
+      "imgFrameId": "70:41",
+      "hash": "b9cfdbe2"
     },
-    "globalnav": {
-      "figmaNodeId": "28:5",
-      "hash": "73fc27fd"
+    "s1-home": {
+      "figmaNodeId": "70:42",
+      "imgFrameId": null,
+      "hash": "bf146d66"
     },
     "home": {
-      "figmaNodeId": "28:12",
-      "hash": "1df253d8"
+      "figmaNodeId": "70:45",
+      "imgFrameId": "70:47",
+      "hash": "57bca4b5"
+    },
+    "home-empty": {
+      "figmaNodeId": "70:48",
+      "imgFrameId": "70:50",
+      "hash": "b35edf39"
     },
     "library": {
-      "figmaNodeId": "28:15",
-      "hash": "3cc15577"
+      "figmaNodeId": "70:51",
+      "imgFrameId": "70:53",
+      "hash": "c102cd2d"
+    },
+    "library-filter": {
+      "figmaNodeId": "70:54",
+      "imgFrameId": "70:56",
+      "hash": "8c06016c"
     },
     "search": {
-      "figmaNodeId": "28:18",
-      "hash": "97fe01b"
+      "figmaNodeId": "70:57",
+      "imgFrameId": "70:59",
+      "hash": "2dcdcbd8"
     },
-    "settings": {
-      "figmaNodeId": "28:21",
-      "hash": "eb0ad354"
-    },
-    "detail-ref": {
-      "figmaNodeId": "28:24",
-      "hash": "9b6f32da"
+    "search-empty": {
+      "figmaNodeId": "70:60",
+      "imgFrameId": "70:62",
+      "hash": "38e427cf"
     },
     "watchlist": {
-      "figmaNodeId": "33:16",
-      "hash": "2b26d758"
+      "figmaNodeId": "70:63",
+      "imgFrameId": "70:65",
+      "hash": "2123995"
+    },
+    "settings": {
+      "figmaNodeId": "70:66",
+      "imgFrameId": "70:68",
+      "hash": "e657aeb5"
+    },
+    "detail-ref": {
+      "figmaNodeId": "70:69",
+      "imgFrameId": null,
+      "hash": "2ef38a1e"
     },
     "detail-movie": {
-      "figmaNodeId": "33:24",
-      "hash": "4e4ce4eb"
+      "figmaNodeId": "70:73",
+      "imgFrameId": "70:75",
+      "hash": "1c5cf32f"
     },
     "detail-show": {
-      "figmaNodeId": "33:27",
-      "hash": "49f0e15b"
+      "figmaNodeId": "70:76",
+      "imgFrameId": "70:78",
+      "hash": "ac9d29cf"
     },
     "detail-season": {
-      "figmaNodeId": "33:30",
-      "hash": "b3c9ca69"
+      "figmaNodeId": "70:79",
+      "imgFrameId": "70:81",
+      "hash": "4f667cf"
     },
     "detail-episode": {
-      "figmaNodeId": "33:33",
-      "hash": "cad1a1a2"
+      "figmaNodeId": "70:82",
+      "imgFrameId": "70:84",
+      "hash": "5e70f62f"
+    },
+    "detail-loading": {
+      "figmaNodeId": "70:85",
+      "imgFrameId": "70:87",
+      "hash": "aea4718f"
     },
     "player-ref": {
-      "figmaNodeId": "33:42",
-      "hash": "7c053d05"
+      "figmaNodeId": "70:88",
+      "imgFrameId": null,
+      "hash": "c0dbe4bb"
     },
     "player-loading": {
-      "figmaNodeId": "38:13",
-      "hash": "dacf2e87"
+      "figmaNodeId": "70:92",
+      "imgFrameId": "70:94",
+      "hash": "3e2d72a3"
     },
     "player-playing": {
-      "figmaNodeId": "38:17",
-      "hash": "346e2fde"
+      "figmaNodeId": "70:95",
+      "imgFrameId": "70:97",
+      "hash": "fa3c4fc3"
     },
     "player-paused": {
-      "figmaNodeId": "38:21",
-      "hash": "39a82af9"
+      "figmaNodeId": "70:98",
+      "imgFrameId": "70:100",
+      "hash": "1eab89cb"
     },
     "player-seeking": {
-      "figmaNodeId": "38:25",
-      "hash": "4b32468b"
+      "figmaNodeId": "70:101",
+      "imgFrameId": "70:103",
+      "hash": "23641e51"
     },
     "player-track-drawer": {
-      "figmaNodeId": "38:29",
-      "hash": "7b92f2df"
+      "figmaNodeId": "70:104",
+      "imgFrameId": "70:106",
+      "hash": "a8c43e13"
+    },
+    "player-skip-intro": {
+      "figmaNodeId": "70:107",
+      "imgFrameId": "70:109",
+      "hash": "29493842"
     },
     "player-up-next": {
-      "figmaNodeId": "38:33",
-      "hash": "7e7671a3"
+      "figmaNodeId": "70:110",
+      "imgFrameId": "70:112",
+      "hash": "61192f22"
+    },
+    "player-error": {
+      "figmaNodeId": "70:113",
+      "imgFrameId": "70:115",
+      "hash": "d5ed4a24"
+    },
+    "modal-text-input": {
+      "figmaNodeId": "70:116",
+      "imgFrameId": "70:118",
+      "hash": "946167f5"
+    },
+    "modal-action-dialog": {
+      "figmaNodeId": "70:119",
+      "imgFrameId": "70:121",
+      "hash": "523fa0cc"
+    },
+    "side-panel-quality": {
+      "figmaNodeId": "70:122",
+      "imgFrameId": "70:124",
+      "hash": "7db5cba2"
+    },
+    "side-panel-subtitles": {
+      "figmaNodeId": "70:125",
+      "imgFrameId": "70:127",
+      "hash": "99f4fa62"
     }
   },
-  "edges": {}
+  "edges": {
+    "provider-picker>plex-pairing#choose Plex": {
+      "hash": "a01b82f4"
+    },
+    "provider-picker>jf-login-url#choose Jellyfin": {
+      "hash": "7dd939e0"
+    },
+    "plex-pairing>profile-picker#signed in": {
+      "hash": "fb83d197"
+    },
+    "plex-pairing>provider-picker#use a different service": {
+      "hash": "1ed84370"
+    },
+    "jf-login-url>jf-login-quickconnect#connect": {
+      "hash": "db54d34a"
+    },
+    "jf-login-url>jf-login-password#use password": {
+      "hash": "856540ec"
+    },
+    "jf-login-quickconnect>jf-user-picker#approved": {
+      "hash": "2ca007c0"
+    },
+    "jf-login-quickconnect>jf-login-password#fallback": {
+      "hash": "ff6f9a4e"
+    },
+    "jf-login-password>jf-user-picker#signed in": {
+      "hash": "199298fa"
+    },
+    "profile-picker>profile-picker-pin#locked profile": {
+      "hash": "aa0ca09f"
+    },
+    "profile-picker>s1-home#select profile": {
+      "hash": "8b6341a7"
+    },
+    "profile-picker-pin>s1-home#PIN OK": {
+      "hash": "b97471ed"
+    },
+    "jf-user-picker>s1-home#select user": {
+      "hash": "244d2b46"
+    },
+    "server-picker-launch>s1-home#select link": {
+      "hash": "a7ec6372"
+    },
+    "server-picker-launch>provider-picker#add new": {
+      "hash": "b1b7cdef"
+    },
+    "server-picker-settings>s1-home#select link": {
+      "hash": "a3f1570a"
+    },
+    "server-picker-settings>provider-picker#add new": {
+      "hash": "813e157"
+    },
+    "home>detail-ref#card tap": {
+      "hash": "f6251b77"
+    },
+    "library>detail-ref#card tap": {
+      "hash": "8289d1e7"
+    },
+    "library>library-filter#filter btn": {
+      "hash": "52b6a3b1"
+    },
+    "library-filter>library#apply": {
+      "hash": "9be9c27f"
+    },
+    "search>detail-ref#card tap": {
+      "hash": "bf8813b6"
+    },
+    "search-empty>search#type query": {
+      "hash": "88022d2c"
+    },
+    "watchlist>detail-ref#card tap": {
+      "hash": "c201f173"
+    },
+    "detail-loading>detail-movie#loaded": {
+      "hash": "9d45dcdf"
+    },
+    "detail-movie>player-ref#Play": {
+      "hash": "a1ffc6eb"
+    },
+    "detail-show>detail-season#select season": {
+      "hash": "27f5d14f"
+    },
+    "detail-season>detail-episode#select episode": {
+      "hash": "bcec9f49"
+    },
+    "detail-episode>player-ref#Play": {
+      "hash": "1a2d6f92"
+    },
+    "detail-season>player-ref#Play next": {
+      "hash": "c1efd2d1"
+    },
+    "player-loading>player-playing#buffered": {
+      "hash": "36912087"
+    },
+    "player-playing>player-paused#pause": {
+      "hash": "94decfe4"
+    },
+    "player-paused>player-playing#resume": {
+      "hash": "c38e1faf"
+    },
+    "player-playing>player-seeking#scrub": {
+      "hash": "9840e82d"
+    },
+    "player-seeking>player-playing#release": {
+      "hash": "f64ec0d1"
+    },
+    "player-playing>player-track-drawer#subtitles btn": {
+      "hash": "4cfc9bba"
+    },
+    "player-track-drawer>player-playing#select / back": {
+      "hash": "f2de74fb"
+    },
+    "player-playing>player-skip-intro#intro detected": {
+      "hash": "fd26cc08"
+    },
+    "player-skip-intro>player-playing#skipped": {
+      "hash": "e0b29752"
+    },
+    "player-playing>player-up-next#near end": {
+      "hash": "8e86487a"
+    },
+    "player-up-next>player-loading#play next": {
+      "hash": "f2a5feee"
+    },
+    "player-loading>player-error#fail": {
+      "hash": "a66fc77a"
+    },
+    "player-playing>player-error#stream lost": {
+      "hash": "91e427a2"
+    }
+  }
 }

@@ -63,9 +63,19 @@ function nodeSize(n) {
   if (n.kind === 'note')   return DEFAULT_NOTE_SIZE;
   return DEFAULT_REF_SIZE;
 }
-function nodeBox(n) {
+/** Compute absolute pos for a node — uses `pos:[x,y]` if given, else `at:[row,col]` + section grid. */
+export function nodePos(n, section) {
+  if (n.pos) return n.pos;
+  if (n.at && section && section.grid) {
+    const [row, col] = n.at;
+    const g = section.grid;
+    return [g.originX + col * g.colGap, g.originY + row * g.rowGap];
+  }
+  return [0, 0];
+}
+function nodeBox(n, section) {
   const [w, h] = nodeSize(n);
-  const [x, y] = n.pos;
+  const [x, y] = nodePos(n, section);
   return { x, y, w, h, cx: x + w / 2, cy: y + h / 2 };
 }
 /** Pick endpoint sides to minimize crossings: prefer horizontal connection when |dx|>|dy|. */
@@ -73,14 +83,54 @@ function routeEdge(fromBox, toBox) {
   const dx = toBox.cx - fromBox.cx, dy = toBox.cy - fromBox.cy;
   let from, to;
   if (Math.abs(dx) >= Math.abs(dy)) {
-    // horizontal-dominant
     if (dx > 0) { from = { x: fromBox.x + fromBox.w, y: fromBox.cy }; to = { x: toBox.x, y: toBox.cy }; }
     else        { from = { x: fromBox.x,             y: fromBox.cy }; to = { x: toBox.x + toBox.w, y: toBox.cy }; }
   } else {
     if (dy > 0) { from = { x: fromBox.cx, y: fromBox.y + fromBox.h }; to = { x: toBox.cx, y: toBox.y }; }
-    else        { from = { x: fromBox.cx, y: fromBox.y }; to = { x: toBox.cx, y: toBox.y + toBox.h }; }
+    else        { from = { x: fromBox.cx, y: fromBox.y };             to = { x: toBox.cx, y: toBox.y + toBox.h }; }
   }
   return { from, to };
+}
+
+/**
+ * Build the data payload for `cmdRebuild` to ship into a use_figma script.
+ * Pure function — all coords are section-relative and ready to consume.
+ */
+function buildRebuildPayload(manifest) {
+  const sectionsByKey = manifest._sectionsByKey;
+  const sections = manifest.sections.map((s) => ({
+    key: s.key, title: s.title, pos: s.pos, size: s.size,
+  }));
+  const nodes = manifest.nodes.map((n) => {
+    const sec = sectionsByKey[n.section];
+    const [x, y] = nodePos(n, sec);
+    const [w, h] = nodeSize(n);
+    return {
+      key: n.key, section: n.section, label: n.label,
+      sublabel: n.sublabel || '', kind: n.kind,
+      x, y, w, h,
+      hasScreen: !!n.screen, screen: n.screen || null,
+      figmaName: n.figmaName || n.label,
+    };
+  });
+  // edges: pre-compute routing in node-relative coords (relative to the section's origin)
+  const nodesByKey = Object.fromEntries(nodes.map((n) => [n.key, n]));
+  const edges = manifest.edges.map((e) => {
+    const fromN = nodesByKey[e.from], toN = nodesByKey[e.to];
+    if (!fromN || !toN) return null;
+    // edges only render when both endpoints are in the same section (cross-section uses ref nodes)
+    if (fromN.section !== toN.section) return null;
+    const route = routeEdge(
+      { x: fromN.x, y: fromN.y, w: fromN.w, h: fromN.h, cx: fromN.x + fromN.w / 2, cy: fromN.y + fromN.h / 2 },
+      { x: toN.x,   y: toN.y,   w: toN.w,   h: toN.h,   cx: toN.x + toN.w / 2,     cy: toN.y + toN.h / 2 },
+    );
+    return {
+      key: e.key, section: fromN.section,
+      from: route.from, to: route.to,
+      label: e.label || '', style: e.style || 'solid',
+    };
+  }).filter(Boolean);
+  return { sections, nodes, edges };
 }
 
 // ── content hashing — used to detect changes for incremental sync ────────────
@@ -311,6 +361,161 @@ async function cmdRender() {
   process.exit(r.status || 0);
 }
 
+function cmdRebuild() {
+  const m = loadManifest();
+  const payload = buildRebuildPayload(m);
+  // Output a self-contained use_figma script that:
+  //   1. wipes currentPage of all children
+  //   2. creates each section + nodes (frames) at their absolute positions
+  //   3. draws all edges (vector + arrowhead) with labels
+  //   4. stamps every section + node with its manifest key
+  //   5. returns { sections:{key→id}, nodes:{key→id}, edges:{key→id} }
+  // The returned IDs are piped to `node sync.mjs apply --result <file>` to seed flow.lock.json.
+  const script = `
+const NS = ${JSON.stringify(NAMESPACE)};
+const PAYLOAD = ${JSON.stringify(payload)};
+const PAGE = figma.currentPage;
+
+await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+await figma.loadFontAsync({ family: 'Inter', style: 'Semi Bold' });
+await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
+
+// 1. WIPE current page
+for (const child of [...PAGE.children]) child.remove();
+
+const out = { sections: {}, nodes: {}, edges: {} };
+
+function text(parent, chars, x, y, size, weight, color, w) {
+  const t = figma.createText();
+  t.fontName = { family: 'Inter', style: weight === 700 ? 'Bold' : (weight === 600 ? 'Semi Bold' : 'Regular') };
+  t.characters = chars;
+  t.fontSize = size;
+  t.fills = [{ type: 'SOLID', color }];
+  if (w) { t.textAutoResize = 'HEIGHT'; t.resize(w, 20); }
+  t.x = x; t.y = y;
+  parent.appendChild(t);
+  return t;
+}
+
+const W = { r: 1, g: 1, b: 1 };
+const DIM = { r: 0.6, g: 0.6, b: 0.62 };
+const ACCENT = { r: 0.659, g: 0.780, b: 0.980 };
+const SECTION_BG = { r: 0.055, g: 0.063, b: 0.078 };
+const CARD_BG = { r: 0.10, g: 0.10, b: 0.12 };
+const IMG_BG = { r: 0.13, g: 0.13, b: 0.145 };
+
+// 2. SECTIONS
+const sectionById = {};
+for (const s of PAYLOAD.sections) {
+  const sec = figma.createSection();
+  sec.name = s.title;
+  sec.x = s.pos[0]; sec.y = s.pos[1];
+  sec.resizeWithoutConstraints(s.size[0], s.size[1]);
+  sec.fills = [{ type: 'SOLID', color: SECTION_BG }];
+  sec.setSharedPluginData(NS, 'key', s.key);
+  text(sec, s.title, 60, 60, 32, 700, W);
+  sectionById[s.key] = sec;
+  out.sections[s.key] = sec.id;
+}
+
+// 3. NODES (frames)
+const nodeById = {};
+for (const n of PAYLOAD.nodes) {
+  const sec = sectionById[n.section];
+  const outer = figma.createFrame();
+  outer.name = n.figmaName;
+  outer.x = n.x; outer.y = n.y;
+  outer.resize(n.w, n.h);
+  outer.fills = [];
+  outer.clipsContent = false;
+  outer.setSharedPluginData(NS, 'key', n.key);
+  sec.appendChild(outer);
+
+  // Label above
+  text(outer, n.label, 2, 0, 18, 600, W);
+
+  // Body
+  if (n.kind === 'screen') {
+    // Image frame the thumbnail uploads into (must be named "img" so upload_assets can target it by name).
+    const img = figma.createFrame();
+    img.name = 'img';
+    img.x = 0; img.y = 28;
+    img.resize(n.w, n.h - 28);
+    img.cornerRadius = 6;
+    img.fills = [{ type: 'SOLID', color: IMG_BG }];
+    outer.appendChild(img);
+    // Track the img-frame ID separately so upload_assets can target it.
+    out.nodes[n.key] = { frameId: outer.id, imgFrameId: img.id };
+  } else {
+    // ref/hub/note: simple labeled card
+    const body = figma.createFrame();
+    body.name = 'body';
+    body.x = 0; body.y = 28;
+    body.resize(n.w, n.h - 28);
+    body.cornerRadius = 8;
+    body.fills = [{ type: 'SOLID', color: CARD_BG }];
+    body.strokes = [{ type: 'SOLID', color: ACCENT }];
+    body.strokeWeight = 1.5;
+    body.dashPattern = [6, 4];
+    outer.appendChild(body);
+    if (n.sublabel) text(body, n.sublabel, 20, 18, 13, 400, DIM, n.w - 40);
+    out.nodes[n.key] = { frameId: outer.id };
+  }
+  nodeById[n.key] = outer;
+}
+
+// 4. EDGES (vectors with arrowhead + label)
+for (const e of PAYLOAD.edges) {
+  const sec = sectionById[e.section];
+  const v = figma.createVector();
+  await v.setVectorNetworkAsync({
+    vertices: [
+      { x: e.from.x, y: e.from.y, strokeCap: 'NONE' },
+      { x: e.to.x,   y: e.to.y,   strokeCap: 'ARROW_LINES' },
+    ],
+    segments: [{ start: 0, end: 1 }],
+    regions: [],
+  });
+  v.strokes = [{ type: 'SOLID', color: ACCENT, opacity: e.style === 'dashed' ? 0.55 : 1 }];
+  v.strokeWeight = 2;
+  if (e.style === 'dashed') v.dashPattern = [8, 6];
+  v.fills = [];
+  v.name = 'edge:' + e.key;
+  v.setSharedPluginData(NS, 'key', e.key);
+  sec.appendChild(v);
+
+  if (e.label) {
+    const mx = (e.from.x + e.to.x) / 2;
+    const my = (e.from.y + e.to.y) / 2;
+    const lblWidth = e.label.length * 7 + 16;
+    // Pill background for label readability against arrows
+    const bg = figma.createFrame();
+    bg.name = 'edge-label-bg';
+    bg.resize(lblWidth, 22);
+    bg.x = mx - lblWidth / 2; bg.y = my - 11;
+    bg.cornerRadius = 11;
+    bg.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }];
+    bg.strokes = [{ type: 'SOLID', color: { r: 0.22, g: 0.24, b: 0.26 } }];
+    bg.strokeWeight = 1;
+    sec.appendChild(bg);
+    const lbl = figma.createText();
+    lbl.fontName = { family: 'Inter', style: 'Regular' };
+    lbl.characters = e.label;
+    lbl.fontSize = 11;
+    lbl.fills = [{ type: 'SOLID', color: { r: 0.85, g: 0.85, b: 0.86 } }];
+    lbl.textAlignHorizontal = 'CENTER';
+    lbl.resize(lblWidth, 14);
+    lbl.x = mx - lblWidth / 2; lbl.y = my - 7;
+    sec.appendChild(lbl);
+  }
+  out.edges[e.key] = v.id;
+}
+
+return out;
+`.trim();
+  console.log(script);
+}
+
 if (isMain) {
   switch (cmd) {
     case 'mermaid': cmdMermaid(); break;
@@ -318,8 +523,9 @@ if (isMain) {
     case 'plan':    cmdPlan(); break;
     case 'apply':   cmdApply(); break;
     case 'render':  cmdRender(); break;
+    case 'rebuild': cmdRebuild(); break;
     default:
-      console.log('usage: node sync.mjs <mermaid|scan|plan|apply|render>');
+      console.log('usage: node sync.mjs <mermaid|scan|plan|apply|render|rebuild>');
       console.log('  mermaid                          regen flow.mmd');
       console.log('  scan                             print a use_figma script to capture the live canvas');
       console.log('  plan [--canvas <file>]           diff manifest vs lock(+canvas) → ops + use_figma stamp script');

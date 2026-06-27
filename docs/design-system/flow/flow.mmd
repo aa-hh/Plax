@@ -5,30 +5,35 @@ flowchart LR
     direction LR
     provider_picker["Provider picker"]
     plex_pairing["Plex pairing"]
-    jf_login_url["Jellyfin login · server URL"]
+    jf_login_url["Jellyfin · server URL"]
     jf_login_quickconnect["Jellyfin · Quick Connect"]
     jf_login_password["Jellyfin · password"]
+    profile_picker["Plex profile picker"]
+    profile_picker_pin["Profile PIN entry"]
+    jf_user_picker["Jellyfin user picker"]
     server_picker_launch["Server picker (launch)"]
     server_picker_settings["Server picker (from Settings)"]
-    s1_home>"HOME"]
-    s1_settings(("Settings"))
+    s1_home>"→ HOME"]
   end
   subgraph s2["§2 · Browsing Hub"]
     direction LR
-    globalnav(("Global Nav Hub (Sidebar)"))
     home["Home"]
-    library["Library"]
-    search["Search"]
+    home_empty["Home (empty)"]
+    library["Library grid"]
+    library_filter["Library filter open"]
+    search["Search · results"]
+    search_empty["Search · empty"]
+    watchlist["Watchlist"]
     settings["Settings"]
-    watchlist>"Watchlist"]
-    detail_ref>"→ Detail screen"]
+    detail_ref>"→ Detail"]
   end
   subgraph s3["§3 · Detail"]
     direction LR
-    detail_movie["Movie detail"]
-    detail_show["Show detail"]
-    detail_season["Season detail"]
-    detail_episode["Episode detail"]
+    detail_movie["Detail · Movie"]
+    detail_show["Detail · Show"]
+    detail_season["Detail · Season"]
+    detail_episode["Detail · Episode"]
+    detail_loading["Detail · loading"]
     player_ref>"→ Player"]
   end
   subgraph s4["§4 · Player"]
@@ -38,35 +43,58 @@ flowchart LR
     player_paused["Paused"]
     player_seeking["Seeking / scrub"]
     player_track_drawer["Track selector drawer"]
-    player_up_next["Skip / Up Next"]
+    player_skip_intro["Skip Intro prompt"]
+    player_up_next["Up Next prompt"]
+    player_error["Playback error"]
+  end
+  subgraph s5["§5 · Modals & Overlays"]
+    direction LR
+    modal_text_input["Text input modal"]
+    modal_action_dialog["Confirm action dialog"]
+    side_panel_quality["Side panel · Quality"]
+    side_panel_subtitles["Side panel · Subtitles"]
   end
 
   provider_picker -->|choose Plex| plex_pairing
   provider_picker -->|choose Jellyfin| jf_login_url
-  plex_pairing -->|signed in| s1_home
-  jf_login_url -->|Quick Connect| jf_login_quickconnect
+  plex_pairing -->|signed in| profile_picker
+  plex_pairing -..->|use a different service| provider_picker
+  jf_login_url -->|connect| jf_login_quickconnect
   jf_login_url -->|use password| jf_login_password
-  jf_login_quickconnect -->|approved| s1_home
-  jf_login_password -->|signed in| s1_home
-  plex_pairing -..->|Use a different service| provider_picker
+  jf_login_quickconnect -->|approved| jf_user_picker
+  jf_login_quickconnect -..->|fallback| jf_login_password
+  jf_login_password -->|signed in| jf_user_picker
+  profile_picker -->|locked profile| profile_picker_pin
+  profile_picker -->|select profile| s1_home
+  profile_picker_pin -->|PIN OK| s1_home
+  jf_user_picker -->|select user| s1_home
   server_picker_launch -->|select link| s1_home
-  server_picker_launch -..->|Add a new server| provider_picker
-  s1_settings -->|Switch server| server_picker_settings
+  server_picker_launch -..->|add new| provider_picker
   server_picker_settings -->|select link| s1_home
-  server_picker_settings -..->|Back| s1_settings
-  globalnav -->|nav tap| home
-  globalnav -->|nav tap| library
-  globalnav -->|nav tap| search
-  globalnav -->|nav tap| settings
-  globalnav -->|nav tap| watchlist
+  server_picker_settings -..->|add new| provider_picker
   home -->|card tap| detail_ref
   library -->|card tap| detail_ref
+  library -->|filter btn| library_filter
+  library_filter -..->|apply| library
   search -->|card tap| detail_ref
+  search_empty -..->|type query| search
+  watchlist -->|card tap| detail_ref
+  detail_loading -..->|loaded| detail_movie
   detail_movie -->|Play| player_ref
-  detail_show -->|Play| player_ref
-  detail_season -->|Play| player_ref
+  detail_show -->|select season| detail_season
+  detail_season -->|select episode| detail_episode
   detail_episode -->|Play| player_ref
+  detail_season -->|Play next| player_ref
   player_loading -->|buffered| player_playing
   player_playing -->|pause| player_paused
-  player_seeking -->|scrub| player_track_drawer
-  player_track_drawer -->|track btn| player_up_next
+  player_paused -->|resume| player_playing
+  player_playing -->|scrub| player_seeking
+  player_seeking -->|release| player_playing
+  player_playing -->|subtitles btn| player_track_drawer
+  player_track_drawer -..->|select / back| player_playing
+  player_playing -..->|intro detected| player_skip_intro
+  player_skip_intro -->|skipped| player_playing
+  player_playing -..->|near end| player_up_next
+  player_up_next -->|play next| player_loading
+  player_loading -..->|fail| player_error
+  player_playing -..->|stream lost| player_error
