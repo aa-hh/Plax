@@ -844,6 +844,32 @@ function applySrtText(srtText, offsetMs) {
   activeTextTrack = track;
 }
 
+// Number of complete cues already rendered from the current progressive stream.
+// Reset per load so a new subtitle selection starts from zero.
+var progressiveCueCount = 0;
+function resetProgressiveSubtitle() { progressiveCueCount = 0; }
+
+// Render whatever complete cues have arrived so far from a streaming SRT body.
+// Returns true if new cues were applied. Only acts on real SRT/VTT/ASS text — a
+// manifest or JSON head means this isn't the sidecar body, so we leave it for the
+// normal manifest-follow / fall-through logic.
+function applySrtTextProgressive(textSoFar, offsetMs) {
+  var raw = String(textSoFar || '');
+  if (!raw) return false;
+  var headChar = raw.replace(/^﻿/, '').charAt(0);
+  if (headChar === '#' || headChar === '{' || headChar === '[') return false;
+  // Only parse up to the last completed cue block so a half-received trailing cue
+  // is never rendered with a truncated timestamp or text.
+  var boundary = Math.max(raw.lastIndexOf('\n\n'), raw.lastIndexOf('\r\n\r\n'));
+  if (boundary < 0) return false;
+  var complete = raw.slice(0, boundary);
+  var arrows = (complete.match(/-->/g) || []).length;
+  if (arrows <= progressiveCueCount) return false;
+  applySrtText(complete, offsetMs);
+  progressiveCueCount = arrows;
+  return true;
+}
+
 function hasClientSubtitlesLoaded() {
   return !!activeTextTrack;
 }
@@ -857,6 +883,16 @@ function normalizeSubtitleFetchAttempts(urls) {
 }
 
 var SUBTITLE_FETCH_TIMEOUT_MS = 20000;
+// /subtitles/:/transcode/universal/start holds the connection while PMS extracts
+// the embedded sub — a captured official 200 took ~60s to return the full SRT.
+// Give the start/sidecar fetch a much longer ceiling so we don't kill it early.
+var SUBTITLE_START_TIMEOUT_MS = 120000;
+
+// The currently active subtitle XHR (if any). Tracked so loadClientSubtitleFromUrls
+// can abort a previous in-flight extraction before starting a new one — otherwise
+// the second subtitle-start hits PMS while the first extraction is still running,
+// PMS resets the connection, and the new request gets "Failed to fetch".
+var activeSubtitleXhr = null;
 
 function xhrSubtitleText(url, options, originalErr) {
   if (typeof XMLHttpRequest === 'undefined') {
@@ -864,6 +900,7 @@ function xhrSubtitleText(url, options, originalErr) {
   }
   return new Promise(function (resolve, reject) {
     var xhr = new XMLHttpRequest();
+    activeSubtitleXhr = xhr;
     var timeoutMs = options && options.timeout > 0
       ? options.timeout
       : SUBTITLE_FETCH_TIMEOUT_MS;
@@ -871,6 +908,7 @@ function xhrSubtitleText(url, options, originalErr) {
     function finish(err, text) {
       if (done) return;
       done = true;
+      if (activeSubtitleXhr === xhr) activeSubtitleXhr = null;
       if (err) {
         reject(err);
         return;
@@ -898,6 +936,16 @@ function xhrSubtitleText(url, options, originalErr) {
     Object.keys(headers).forEach(function (key) {
       try { xhr.setRequestHeader(key, headers[key]); } catch (e) { /* forbidden header */ }
     });
+    // Progressive delivery: when PMS flushes the SRT body in timestamp order while it
+    // extracts, xhr.responseText grows during LOADING. Surface it so the caller can
+    // render the early cues (the ones needed first) without waiting for the whole
+    // ~88s extraction. Harmless if PMS buffers — onprogress just fires once at the end.
+    if (options && typeof options.onProgress === 'function') {
+      xhr.onprogress = function () {
+        if (done) return;
+        try { options.onProgress(xhr.responseText || '', xhr.status); } catch (e) { /* ignore */ }
+      };
+    }
     xhr.onload = finishWithText;
     xhr.onerror = finishWithText;
     xhr.ontimeout = function () {
@@ -1017,6 +1065,13 @@ var SUBTITLE_EXTRACT_MAX_RETRIES = 20;
 var SUBTITLE_EXTRACT_RETRY_MS = 1500;
 
 function loadClientSubtitleFromUrls(urls, offsetMs) {
+  // Abort any in-flight subtitle extraction so the new request isn't blocked
+  // by PMS still serving the previous one on the same session.
+  if (activeSubtitleXhr) {
+    activeSubtitleXhr.abort();
+    activeSubtitleXhr = null;
+  }
+  resetProgressiveSubtitle();
   var attempts = normalizeSubtitleFetchAttempts(urls);
   if (!attempts.length) return Promise.reject(new Error('No subtitle URL'));
   var index = 0;
@@ -1040,20 +1095,53 @@ function loadClientSubtitleFromUrls(urls, offsetMs) {
         accept: (entry.init && entry.init.headers && entry.init.headers.Accept) || null
       });
     }
-    var fetchOptions = Object.assign({ timeout: SUBTITLE_FETCH_TIMEOUT_MS }, entry.init || {});
+    var fetchTimeout = isStartLabel ? SUBTITLE_START_TIMEOUT_MS : SUBTITLE_FETCH_TIMEOUT_MS;
+    var fetchOptions = Object.assign({ timeout: fetchTimeout }, entry.init || {});
+    // Progressive rendering for the slow extraction paths: as PMS streams the SRT in
+    // timestamp order, show the early cues immediately instead of blocking on the full
+    // body. The earliest cues are exactly the ones playback needs first.
+    var progressiveLabel = isStartLabel || label === 'stream-key';
+    if (progressiveLabel) {
+      var progressLogged = false;
+      fetchOptions.onProgress = function (textSoFar) {
+        if (applySrtTextProgressive(textSoFar, offsetMs) && !progressLogged) {
+          progressLogged = true;
+          tvError('subtitles', 'progressive-first-cues', {
+            label: label,
+            bytes: textSoFar ? String(textSoFar).length : 0
+          });
+        }
+      };
+    }
     return promiseWithTimeout(
       fetchSubtitleTextWithManifestFollow(url, fetchOptions),
       fetchOptions.timeout,
       'Request timeout'
     ).then(function (text) {
-      // subtitles-start / subtitles-start-owner return a JSON manifest (extraction
-      // trigger), not SRT. Treat any 200 as "trigger sent" and immediately move to
-      // the stream-embedded poll.
+      // /subtitles/:/transcode/universal/start can return EITHER the SRT body
+      // directly (Approach A — a captured official-client 200 was 39 KB of SRT)
+      // OR a JSON manifest (extraction trigger). If the body parses into cues,
+      // use it. Only if it's a manifest/empty do we treat it as a trigger and
+      // fall through to the stream-embedded poll.
       if (isStartLabel) {
+        var looksLikeManifest = !text || /^\s*[{[]/.test(String(text));
+        if (!looksLikeManifest) {
+          applySrtText(text, offsetMs);
+          if (hasClientSubtitlesLoaded()) {
+            var startCues = activeTextTrack && activeTextTrack.cues
+              ? activeTextTrack.cues.length : 0;
+            tvError('subtitles', 'fetched', {
+              label: label, cues: startCues, bytes: String(text).length,
+              head: String(text).slice(0, 40).replace(/\s+/g, ' ')
+            });
+            return;
+          }
+        }
         tvError('subtitles', 'start-triggered', {
           label: label,
+          looksLikeManifest: looksLikeManifest,
           bytes: text ? String(text).length : 0,
-          head: text ? String(text).slice(0, 60).replace(/\s+/g, ' ') : ''
+          head: text ? String(text).slice(0, 120).replace(/\s+/g, ' ') : ''
         });
         extractRetries = 0;
         // Skip any remaining start-label attempts — jump directly to stream-embedded.

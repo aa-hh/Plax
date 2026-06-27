@@ -373,8 +373,19 @@ function isPlayerSeekBar(el) {
 
 // Is el inside the sidebar (browsing-hub-nav-host)?
 // Used to block vertical D-pad from jumping across the sidebar/content boundary.
+// Memoised per element: side-nav membership never changes for a node's lifetime,
+// and spatialMove() asks this of every candidate on every vertical keypress — the
+// raw .closest() walk was a DOM-root traversal per card (60+ on Home).
+var _sideNavMemo = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+function sideNavHostOf(el) {
+  if (!el || !el.closest) return null;
+  if (_sideNavMemo && _sideNavMemo.has(el)) return _sideNavMemo.get(el);
+  var host = el.closest('.browsing-hub-nav-host') || null;
+  if (_sideNavMemo) _sideNavMemo.set(el, host);
+  return host;
+}
 function isInSideNav(el) {
-  return !!(el && el.closest && el.closest('.browsing-hub-nav-host'));
+  return !!sideNavHostOf(el);
 }
 
 // The geometric move: nearest focusable in the pressed direction.
@@ -390,8 +401,16 @@ function spatialMove(container, key) {
   var aRect = rectOf(active);
   if (!aRect) return null;
 
-  var activeSideNav = isInSideNav(active);
-  var list = getFocusables(container);
+  var activeHost = sideNavHostOf(active);
+  var activeSideNav = !!activeHost;
+  // Moving UP/DOWN inside the sidebar never leaves it, so only the sidebar's
+  // own ~8 items are real candidates. Scoping the query to the host avoids
+  // measuring getBoundingClientRect() on every card on the screen (60+ on Home)
+  // just to discard them via the cross-boundary guard below — the dominant cost
+  // of the "laggy sidebar" while traversing it.
+  var scope = container;
+  if (activeSideNav && (key === ARROW_UP || key === ARROW_DOWN)) scope = activeHost;
+  var list = getFocusables(scope);
   var best = null;
   var bestScore = Infinity;
   for (var i = 0; i < list.length; i++) {

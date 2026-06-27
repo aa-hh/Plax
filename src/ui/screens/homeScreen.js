@@ -80,7 +80,10 @@ function homeScreen(root, params, navigate) {
     if (!item || !state.activeServer) return null;
     var path = (item.artPath != null ? item.artPath : null) || (item.art != null ? item.art : null);
     if (!path) return null;
-    return getArtUrl(state.activeServer, path, 960);
+    // The hero art box is ~796px wide (gt-col-5 + safe-x) and the art is cover-
+    // scaled then scrimmed, so 720px is plenty — 960px was 1.2x overscan that
+    // doubled the decode cost on the B8 for no visible gain behind the scrim.
+    return getArtUrl(state.activeServer, path, 720);
   }
 
   function ilFormatMeta(item) {
@@ -112,15 +115,28 @@ function homeScreen(root, params, navigate) {
     var next = ilSide === 'a' ? ilBackdropB : ilBackdropA;
     var curr = ilSide === 'a' ? ilBackdropA : ilBackdropB;
 
-    var img = new Image();
-    img.onload = function () {
-      if (destroyed) return;
+    // Guard the swap with the current hero token so a slow image that resolves
+    // after the user has moved on can't flash a stale backdrop, and so onerror/
+    // timeout can't wedge the crossfade.
+    var swapTok = ilHeroToken;
+    var settled = false;
+    function commit() {
+      if (settled || destroyed || swapTok !== ilHeroToken) return;
+      settled = true;
       ilCacheTouch(url);
       next.style.backgroundImage = 'url(' + url + ')';
       next.style.opacity = '1';
       curr.style.opacity = '0';
       ilSide = ilSide === 'a' ? 'b' : 'a';
-    };
+    }
+    var img = new Image();
+    img.onload = commit;
+    // A failed/slow art fetch must never leave the crossfade half-applied or
+    // block the next one — drop it silently (the previous backdrop stays).
+    img.onerror = function () { settled = true; };
+    // Hard ceiling: if neither load nor error fires (B8 can stall on a slow
+    // transcode), release the swap so a later focus can start fresh.
+    setTimeout(function () { if (!settled) settled = true; }, 6000);
     img.src = url;
   }
 
@@ -200,7 +216,7 @@ function homeScreen(root, params, navigate) {
           ilHeroTimer = null;
           if (destroyed || tok !== ilHeroToken) return;
           ilUpdateHero(card && card._plaxItem);
-        }, 420);
+        }, 500);
       }
     }
 

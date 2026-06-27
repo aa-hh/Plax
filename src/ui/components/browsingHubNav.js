@@ -61,10 +61,18 @@ function refreshHubNavIcons(host, activeHubId) {
     // collapsed-rail "keep the active label legible" CSS a stable hook.
     if (isActive) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
+    // Only the watchlist glyph changes SHAPE with active state (outline ↔
+    // filled bookmark); every other icon is identical regardless of selection,
+    // so re-parsing its SVG on each navigation is pure waste. Rewrite innerHTML
+    // only for watchlist, and only when its filled-state actually flipped.
     var kind = btn.dataset.iconKind || 'home';
+    if (kind !== 'watchlist') return;
+    var wantFilled = isActive ? '1' : '0';
+    if (btn.dataset.iconFilled === wantFilled) return;
     var iconWrap = btn.querySelector('.browsing-hub-item__icon');
     if (iconWrap) {
-      iconWrap.innerHTML = iconSvgForKind(kind, kind === 'watchlist' && isActive);
+      iconWrap.innerHTML = iconSvgForKind(kind, isActive);
+      btn.dataset.iconFilled = wantFilled;
     }
   });
 }
@@ -119,6 +127,7 @@ function appendHubButtons(navEl, items, activeId, onSelect) {
     }
 
     var filledBookmark = item.iconKind === 'watchlist' && item.id === activeId;
+    if (item.iconKind === 'watchlist') btn.dataset.iconFilled = filledBookmark ? '1' : '0';
     btn.innerHTML =
       '<span class="browsing-hub-item__icon">' + iconSvgForKind(item.iconKind, filledBookmark) + '</span>' +
       '<span class="browsing-hub-item__label">' + escapeLabel(item.label) + '</span>';

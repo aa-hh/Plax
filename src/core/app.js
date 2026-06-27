@@ -155,7 +155,12 @@ function startApp(platformMajor) {
   var splash = createSplash();
   // Fallback: if the startup screen never calls signalReady() (e.g. pairing,
   // server-picker, or any future screen not yet wired), dismiss after 3 s.
-  onFirstMount(function () { setTimeout(splash.dismiss, 3000); });
+  onFirstMount(function () {
+    setTimeout(splash.dismiss, 3000);
+    // Boot reached interactive UI — clear the IDB boot-wedge breadcrumb so the
+    // next launch knows this boot was healthy (see boot() self-heal).
+    try { localStorage.removeItem('plax_boot_idb_pending'); } catch (e) { /* ignore */ }
+  });
 
   // Plex → profile-picker, Jellyfin → jellyfin-users; both picker screens are the
   // bootstrap hosts that load libraries before Home. (Plex.tv link is once per
@@ -174,18 +179,40 @@ function boot() {
   initResourceMonitor();
   initTvDebug();
   if (isPerfEnabled()) mark('boot:init');
-  // Persistent (IndexedDB) cache wiring is OFF by default — it caused a
-  // bootstrap hang on a B8 in the wild and we can't reach the log sink to
-  // diagnose. Opt in with localStorage.plax_enable_persistent = '1' (or
-  // ?persist=1) once we trust it on the target firmware. With the wiring
-  // off, cache.remember() is identical to its pre-2026-06-17 behaviour.
-  var enablePersistent = false;
+  // Persistent (IndexedDB) cache: ON by default (2026-06-27). It makes repeat
+  // navigation network-free (posters + metadata served from disk) — the biggest
+  // cold-boot/back-nav perf win. It was previously OFF because a B8 in the wild
+  // hung at bootstrap, but the module is now hardened: it's INERT until
+  // setEnabled() (no open), the indexedDB.open() has a 2s hard ceiling, the boot
+  // path never awaits it, and probe(800) marks it unavailable on any stall.
+  //
+  // Belt-and-suspenders self-heal for any UNFORESEEN boot wedge: we drop a
+  // breadcrumb right before enabling IDB and clear it once the first screen
+  // mounts (see startApp onFirstMount). If a boot enabled IDB and never reached
+  // first paint, the next launch sees the stale breadcrumb, disables IDB, and
+  // sets a sticky flag — so a hang self-recovers after exactly one bad launch
+  // instead of bricking the app. Force on with plax_enable_persistent=1 /
+  // ?persist=1; force off with ?persist=0.
+  var enablePersistent = true;
+  var forcedOn = false;
   try {
-    if (localStorage.getItem('plax_enable_persistent') === '1') enablePersistent = true;
-    if (window.location && window.location.search &&
-        window.location.search.indexOf('persist=1') >= 0) enablePersistent = true;
-  } catch (e) { /* ignore */ }
+    var search = (window.location && window.location.search) || '';
+    if (localStorage.getItem('plax_enable_persistent') === '1') { enablePersistent = true; forcedOn = true; }
+    if (search.indexOf('persist=1') >= 0) { enablePersistent = true; forcedOn = true; }
+    if (search.indexOf('persist=0') >= 0) enablePersistent = false;
+    if (!forcedOn) {
+      // Sticky disable from a prior self-heal.
+      if (localStorage.getItem('plax_idb_disabled') === '1') enablePersistent = false;
+      // Prior IDB-enabled boot never cleared its breadcrumb → it hung. Disable
+      // now and make it sticky so we don't flap.
+      if (localStorage.getItem('plax_boot_idb_pending') === '1') {
+        enablePersistent = false;
+        try { localStorage.setItem('plax_idb_disabled', '1'); } catch (e) { /* ignore */ }
+      }
+    }
+  } catch (e) { /* ignore — no localStorage means no persistence anyway */ }
   if (enablePersistent) {
+    try { localStorage.setItem('plax_boot_idb_pending', '1'); } catch (e) { /* ignore */ }
     // Activate the module, then probe once. If the probe fails (wedged IDB
     // on webOS 4), turn it back off so EVERY consumer — cache.js and the
     // poster blob path — goes inert for the session.

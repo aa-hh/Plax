@@ -96,11 +96,21 @@ function buildDirectPlayProfiles(deviceInfo, caps) {
 /**
  * Subtitle profile — declares the soft-text codecs the client renders itself.
  * Declarative counterpart to sending subtitles=none: tells PMS not to auto-burn.
+ *
+ * The transcode-target is REQUIRED for PMS to allow /subtitles/:/transcode/universal/start
+ * (embedded sub sidecar extraction). Without it PMS checks the cached session profile and
+ * immediately 400s because it finds no subtitle transcode target. Confirmed by comparing
+ * our profile (missing) with the official Plex-for-LG augmentation data (has it) — that
+ * extra entry is why official /start → 200 but ours → 400 in 1ms (PMS bails before any
+ * metadata fetch).
  */
 function buildSubtitleProfiles(caps) {
   var entry = entryOf(caps) || entryOf(getDeviceCapabilities(null));
   var codecs = entry.subtitle.softTextCodecs.join(',');
-  return ['add-direct-play-profile(type=subtitleProfile&codec=' + codecs + ')'];
+  return [
+    'add-direct-play-profile(type=subtitleProfile&codec=' + codecs + ')',
+    'add-transcode-target(type=subtitleProfile&protocol=http&context=all&subtitleCodec=srt&container=srt)'
+  ];
 }
 
 /**
@@ -119,37 +129,37 @@ function buildCodecProfiles(caps, deviceInfo) {
 
   // Per-codec bitrate ceilings (kbps) from the matrix.
   supportedVideoCodecs(entry).forEach(function (codec) {
-    parts.push(
-      'add-limitation(scope=videoCodec&codec=' + codec +
-        '&name=video.bitrate&value=' + bitrateCeilingKbps(caps, codec, isUhd) + ')'
-    );
+    parts.push(limitation(codec, 'upperBound', 'video.bitrate',
+      bitrateCeilingKbps(caps, codec, isUhd)));
   });
 
   // h264 level ceiling.
   if (video.h264 && video.h264.maxLevel != null) {
-    parts.push(
-      'add-limitation(scope=videoCodec&codec=h264&name=video.level&value=' +
-        video.h264.maxLevel + ')'
-    );
+    parts.push(limitation('h264', 'upperBound', 'video.level', video.h264.maxLevel));
   }
 
   // hevc bit-depth ceiling.
   if (video.hevc && video.hevc.maxBitDepth != null) {
-    parts.push(
-      'add-limitation(scope=videoCodec&codec=hevc&name=video.bitDepth&value=' +
-        video.hevc.maxBitDepth + ')'
-    );
+    parts.push(limitation('hevc', 'upperBound', 'video.bitDepth', video.hevc.maxBitDepth));
   }
 
   // Max audio channels (wildcard codec scope).
   if (entry.audio && entry.audio.maxChannels != null) {
-    parts.push(
-      'add-limitation(scope=videoCodec&codec=*&name=audio.channels&value=' +
-        entry.audio.maxChannels + ')'
-    );
+    parts.push(limitation('*', 'upperBound', 'audio.channels', entry.audio.maxChannels));
   }
 
   return parts;
+}
+
+/**
+ * Build a single add-limitation directive in Plex's CURRENT MDE grammar
+ * (scopeName + type + replace), matching what Plex Web emits. The legacy
+ * `codec=<c>` form without `type`/`replace` is silently ignored by modern PMS,
+ * which let unsupported streams slip past our declared ceilings.
+ */
+function limitation(scopeName, type, name, value) {
+  return 'add-limitation(scope=videoCodec&scopeName=' + scopeName +
+    '&type=' + type + '&name=' + name + '&value=' + value + '&replace=true)';
 }
 
 /**
@@ -161,8 +171,8 @@ function buildBitrateLimitations(deviceInfo, caps) {
   var entry = entryOf(caps);
   var isUhd = !!(deviceInfo && deviceInfo.uhd);
   return supportedVideoCodecs(entry).map(function (codec) {
-    return 'add-limitation(scope=videoCodec&codec=' + codec +
-      '&name=video.bitrate&value=' + bitrateCeilingKbps(caps, codec, isUhd) + ')';
+    return limitation(codec, 'upperBound', 'video.bitrate',
+      bitrateCeilingKbps(caps, codec, isUhd));
   });
 }
 

@@ -349,6 +349,7 @@ function playerScreen(root, params, navigate) {
   var playbackPrefs = getPlaybackPrefs();
   var selectedAudioId = params.audioStreamId;
   var selectedSubtitleId = params.subtitleStreamId;
+  var subtitleLoadGen = 0;
   var subtitleOffset = params.subtitleOffset != null
     ? params.subtitleOffset
     : (playbackPrefs.subtitleOffsetMs || 0);
@@ -1151,6 +1152,9 @@ function playerScreen(root, params, navigate) {
     if (!session || selectedSubtitleId == null) return Promise.resolve();
     var track = selectedTextSubtitleTrack();
     if (!canUseClientSubtitles(playbackMode, track)) return Promise.resolve();
+    // Bump generation so any in-flight load from a previous subtitle selection
+    // doesn't clobber the new one when it eventually completes (~88s extraction).
+    var myGen = ++subtitleLoadGen;
     var subtitleSession = Object.assign({}, session, {
       playbackOffsetMs: restartOffsetMs(),
       // buildSubtitlePlan reads the mode off the session; the live screen mode
@@ -1162,6 +1166,7 @@ function playerScreen(root, params, navigate) {
     var prep = plan && plan.prepare ? plan.prepare() : Promise.resolve();
     return prep
       .then(function () {
+        if (subtitleLoadGen !== myGen) return;
         // attempts() is evaluated AFTER prepare() so Plex's URLs include the
         // session id prepare() primed onto the session (else: no subtitle).
         var subtitleAttempts = plan && typeof plan.attempts === 'function'
@@ -1170,9 +1175,14 @@ function playerScreen(root, params, navigate) {
         if (!subtitleAttempts.length) {
           return Promise.reject(new Error('Could not build subtitle URL'));
         }
+        // Embedded sub extraction: PMS runs ffmpeg, takes ~60-90s. Show a status
+        // message so the user knows to wait rather than thinking it failed.
+        setPlayerMessage('Extracting subtitle from file…');
         return player.loadClientSubtitleFromUrls(subtitleAttempts, subtitleOffset);
       }).then(function () {
       if (destroyed) return;
+      if (subtitleLoadGen !== myGen) return;
+      setPlayerMessage('');
       syncSubtitleDelayControls();
     }).catch(function (err) {
       if (destroyed) return Promise.reject(err);

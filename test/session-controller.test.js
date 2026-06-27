@@ -388,7 +388,9 @@ test('resolveStreamUrl follows decision with subtitles=auto over HTTPS', async f
   assert.equal(decisionQuery.path, '/library/metadata/12345');
   assert.equal(decisionQuery.directPlay, '1');
   assert.equal(decisionQuery.directStream, undefined);
-  assert.equal(decisionQuery['X-Plex-Client-Profile-Name'], 'Generic');
+  // Profile must be in request headers, not URL query (PMS only caches it from headers).
+  assert.equal(decisionQuery['X-Plex-Client-Profile-Name'], undefined);
+  assert.equal(decisionQuery['X-Plex-Client-Profile-Extra'], undefined);
   assert.equal(decisionQuery.subtitles, 'auto');
   assert.equal(decisionQuery['X-Plex-Incomplete-Segments'], undefined);
   assert.equal(decisionQuery.subtitleSize, undefined);
@@ -397,7 +399,14 @@ test('resolveStreamUrl follows decision with subtitles=auto over HTTPS', async f
   assert.equal(decisionQuery.skipSubtitles, undefined);
   assert.equal(decisionQuery.subtitleStreamID, undefined);
   assert.equal(decision.init.headers['X-Plex-Token'], 'server-token-xyz');
-  assert.equal(decision.init.headers['X-Plex-Session-Identifier'], 'client-playback-session-id');
+  // X-Plex-Session-Identifier must equal the client ID (not session GUID) so PMS
+  // matches the cached profile when /subtitles/start fires with the same client ID.
+  assert.equal(
+    decision.init.headers['X-Plex-Session-Identifier'],
+    decision.init.headers['X-Plex-Client-Identifier']
+  );
+  assert.equal(decision.init.headers['X-Plex-Client-Profile-Name'], 'Generic');
+  assert.ok(decision.init.headers['X-Plex-Client-Profile-Extra'].indexOf('type=subtitleProfile') >= 0);
 
   assert.equal(result.mode, 'direct-stream');
   assert.equal(session.playbackStrategy, 'direct-stream');
@@ -646,9 +655,10 @@ test('buildDecisionRequestParams forces transcode flags when quality=720 without
 test('buildDecisionRequestParams mirrors plex-for-kodi minimal shape', function () {
   var session = baseSession({ quality: '720', playbackStrategy: 'transcode' });
   var q = buildDecisionRequestParams(mockServer, partKey, session, 'hls');
-  // Present: MDE flag + client profile + buffer hint (what plex-for-kodi sends).
+  // Present: MDE flag + buffer hint. Profile is now in request headers (not URL query).
   assert.equal(q.hasMDE, '1');
-  assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
+  assert.equal(q['X-Plex-Client-Profile-Name'], undefined);
+  assert.equal(q['X-Plex-Client-Profile-Extra'], undefined);
   assert.equal(q.mediaBufferSize, '102400');
   // Absent: streaming-only flags that make PMS return a bare HTTP 400 over WAN.
   assert.equal(q.protocol, undefined);
@@ -783,7 +793,8 @@ test('buildFirstDecisionUrl stays optimistic (directPlay=1) for direct-stream on
   assert.equal(q.directPlay, '1');
   assert.equal(q.directStream, undefined);
   assert.equal(q.directStreamAudio, undefined);
-  assert.equal(q['X-Plex-Client-Profile-Name'], 'Generic');
+  // Profile must be in request headers, not URL query.
+  assert.equal(q['X-Plex-Client-Profile-Name'], undefined);
   // webOS 4 pins the decision to protocol=hls so PMS commits the transcode
   // session to the mpegts target (not the http/mp4 one → fMP4 base/header 404).
   assert.equal(q.protocol, 'hls');

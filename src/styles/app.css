@@ -566,6 +566,10 @@ html.caps-motion .detail-watchlist-btn:focus {
   /* Solid backing under the icons/labels (rail overlays the bled hero), fading
      only at the very right edge so it blends into the content. */
   background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
+  /* Eased slide is cheap here: the rail is an absolute OVERLAY, so growing its
+     width reflows only its own ~8 items, never the feed. (In-flow screens snap
+     instantly — see the base rule.) */
+  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .screen-home .home-main {
   margin-left: 0;
@@ -662,10 +666,13 @@ html.caps-motion .detail-watchlist-btn:focus {
   padding: var(--space-3) var(--space-2);
   overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
-  /* Expanding in-flow PUSHES the content (no overlay/cover). overflow:hidden
-     makes the growing width reveal the labels instead of popping them. Smooth
-     eased width transition on ALL devices incl. webOS 4. */
-  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* No width transition by DEFAULT: on the in-flow screens (search, settings,
+     detail, watchlist) the rail's sibling is the main content, so animating
+     `width` reflows that whole (often heavy) subtree every frame for 180ms —
+     the stutter the user hit when entering the sidebar. Snapping open is one
+     reflow instead of ~11. The eased slide is re-enabled below ONLY on the
+     overlay screens (home/library), where the absolute rail reflows just its
+     own ~8 items and the animation is essentially free. */
 }
 
 /* Expand to full sidebar when any descendant has focus, or during the
@@ -1197,6 +1204,8 @@ html.caps-motion .detail-watchlist-btn:focus {
   left: calc(-1 * var(--safe-x));
   z-index: 5;
   background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
+  /* Overlay rail: eased width slide is free (reflows only the rail subtree). */
+  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .library-item {

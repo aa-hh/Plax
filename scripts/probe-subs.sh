@@ -32,12 +32,38 @@ echo "metadata=$METADATA part=$PART embeddedSubId=$SID index=$SIDX"
 [ -z "$SID" ] && { echo "No embedded text subtitle found on item $METADATA — try another METADATA="; printf '%s' "$META" | tr '<' '\n' | grep -iE 'streamType="3"' | cut -c1-160; exit 1; }
 
 CID="probe-$(date +%s)"
-COMMON="X-Plex-Client-Identifier=$CID&X-Plex-Token=$TOK"
+# FULL Plex-for-LG identity (matches the app byte-for-byte, captured from logs/tv.log).
+# Under-identified requests get a generic-HTML 400 from the plex.direct edge even on a
+# plain /decision — faithful identity is REQUIRED to reproduce on-device behavior.
+IDENT="X-Plex-Client-Identifier=$CID&X-Plex-Product=Plex+for+LG&X-Plex-Version=0.1.0&X-Plex-Platform=webOS&X-Plex-Platform-Version=4.4.0&X-Plex-Device=TV&X-Plex-Model=OLED55B8LLA&X-Plex-Device-Name=LG+OLED55B8LLA&X-Plex-Device-Vendor=LG"
+COMMON="$IDENT&X-Plex-Token=$TOK"
 SESS="probe-sess-$(date +%s)"
 
 probe(){ # label url
   local code ct size
   read -r code ct size < <(curl -sk -m 25 -o /tmp/sub_body -w '%{http_code} %{content_type} %{size_download}' "$2"; echo)
+  printf '[%s] status=%s type=%s bytes=%s\n' "$1" "$code" "$ct" "$size"
+  head -c 80 /tmp/sub_body | tr '\n' ' '; printf '\n'
+}
+
+# Like probe() but sends identity+token as HEADERS with a clean query (NO X-Plex-* in
+# the URL) — reproduces how the APP currently builds the transcode-subtitle URLs
+# (bare query + header token). Compare against probe() (token in query) to isolate the
+# query-vs-header 400 seen on-device. Pass the URL WITHOUT &$COMMON.
+probe_hdr(){ # label url
+  local code ct size
+  read -r code ct size < <(curl -sk -m 25 \
+    -H "X-Plex-Token: $TOK" \
+    -H "X-Plex-Client-Identifier: $CID" \
+    -H "X-Plex-Product: Plex for LG" \
+    -H "X-Plex-Version: 0.1.0" \
+    -H "X-Plex-Platform: webOS" \
+    -H "X-Plex-Platform-Version: 4.4.0" \
+    -H "X-Plex-Device: TV" \
+    -H "X-Plex-Model: OLED55B8LLA" \
+    -H "X-Plex-Device-Name: LG OLED55B8LLA" \
+    -H "X-Plex-Device-Vendor: LG" \
+    -o /tmp/sub_body -w '%{http_code} %{content_type} %{size_download}' "$2"; echo)
   printf '[%s] status=%s type=%s bytes=%s\n' "$1" "$code" "$ct" "$size"
   head -c 80 /tmp/sub_body | tr '\n' ' '; printf '\n'
 }
@@ -70,11 +96,13 @@ probe "subs-vs-live-session" "$PLEX/video/:/transcode/universal/subtitles?path=%
 
 hr "F: on-demand EXTRACT then fetch as a stream (PUT part-select -> poll /library/streams)"
 curl -sk -m 20 -X PUT "$PLEX/library/parts/$PART?subtitleStreamID=$SID&allParts=1&$COMMON" -o /dev/null -w 'PUT part-select status=%{http_code}\n'
-for i in 1 2 3 4; do
-  sleep 2
+# Poll up to ~60s (20 x 3s): embedded extraction on a no-key sub can take ~1 min
+# (official client's /start held ~60s). 8s was far too short to see the 501->200 flip.
+for i in $(seq 1 20); do
+  sleep 3
   read -r code ct size < <(curl -sk -m 25 -o /tmp/sub_body -w '%{http_code} %{content_type} %{size_download}' "$PLEX/library/streams/$SID.srt?encoding=utf-8&$COMMON"; echo)
-  printf '[streams.srt try %s] status=%s type=%s bytes=%s\n' "$i" "$code" "$ct" "$size"
-  [ "$code" = "200" ] && { echo "  -> SUCCESS: $(head -c 80 /tmp/sub_body | tr '\n' ' ')"; break; }
+  printf '[streams.srt try %s @%ss] status=%s type=%s bytes=%s\n' "$i" "$((i*3))" "$code" "$ct" "$size"
+  [ "$code" = "200" ] && { echo "  -> SUCCESS after ~$((i*3))s: $(head -c 80 /tmp/sub_body | tr '\n' ' ')"; break; }
 done
 
 hr "G: alternate stream paths (no ext / vtt / codec param)"
@@ -87,5 +115,19 @@ SESS3="probe-substart-$(date +%s)"
 curl -sk -m 20 -X PUT "$PLEX/library/parts/$PART?subtitleStreamID=$SID&allParts=1&$COMMON" -o /dev/null -w 'PUT part-select status=%{http_code}\n'
 probe "subs-start" "$PLEX/subtitles/:/transcode/universal/start?directPlay=1&directStream=1&directStreamAudio=1&protocol=http&fastSeek=1&path=%2Flibrary%2Fmetadata%2F$METADATA&session=$SESS3&mediaIndex=0&partIndex=0&mediaBufferSize=50000&hasMDE=1&subtitleSize=75&autoAdjustSubtitle=1&subtitles=sidecar&location=wan&copyts=1&offset=0&$COMMON"
 probe "subs-start-withid" "$PLEX/subtitles/:/transcode/universal/start?directPlay=1&directStream=1&directStreamAudio=1&protocol=http&fastSeek=1&path=%2Flibrary%2Fmetadata%2F$METADATA&session=${SESS3}b&mediaIndex=0&partIndex=0&mediaBufferSize=50000&hasMDE=1&subtitleSize=75&autoAdjustSubtitle=1&subtitles=sidecar&subtitleStreamID=$SID&location=wan&copyts=1&offset=0&$COMMON"
+
+hr "I: query-vs-header DISCRIMINATOR (the on-device 400 hypothesis)"
+# The app sends these endpoints with token in HEADERS + bare query and gets an instant
+# generic-HTML 400; every WORKING call (/decision, /library/streams) has token in the
+# QUERY. This isolates whether token-in-query is the fix.
+curl -sk -m 20 -X PUT "$PLEX/library/parts/$PART?subtitleStreamID=$SID&allParts=1&$COMMON" -o /dev/null -w 'PUT part-select status=%{http_code}\n'
+SUBSTART_Q="directPlay=1&directStream=1&directStreamAudio=1&protocol=http&fastSeek=1&path=%2Flibrary%2Fmetadata%2F$METADATA&mediaIndex=0&partIndex=0&mediaBufferSize=50000&hasMDE=1&subtitleSize=75&autoAdjustSubtitle=1&subtitles=sidecar&location=wan&copyts=1&offset=0&session=probe-disc-$(date +%s)"
+probe     "start-QUERYtoken"  "$PLEX/subtitles/:/transcode/universal/start?$SUBSTART_Q&$COMMON"
+probe_hdr "start-HEADERtoken" "$PLEX/subtitles/:/transcode/universal/start?$SUBSTART_Q"
+UNIV_Q="path=%2Flibrary%2Fmetadata%2F$METADATA&mediaIndex=0&partIndex=0&subtitles=auto&subtitleStreamID=$SID"
+probe     "univ-QUERYtoken"   "$PLEX/video/:/transcode/universal/subtitles?$UNIV_Q&$COMMON"
+probe_hdr "univ-HEADERtoken"  "$PLEX/video/:/transcode/universal/subtitles?$UNIV_Q"
+# Sanity: a known-good /decision proves any 400s above are request-shaped, not proxy-wide.
+probe "decision-sanity" "$PLEX/video/:/transcode/universal/decision?path=%2Flibrary%2Fmetadata%2F$METADATA&mediaIndex=0&partIndex=0&protocol=hls&directPlay=1&hasMDE=1&subtitles=none&$COMMON"
 
 hr "DONE — paste the [label] status lines back"

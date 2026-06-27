@@ -418,6 +418,10 @@ function settingsScreen(root, params, navigate) {
     onSelect: function () { navigate('server-picker', { _from: 'settings' }); }
   }));
   accountCard.body.appendChild(createSettingsInfoRow({ label: 'Client ID', value: truncateId(state.clientId) }));
+  if (state.provider !== 'jellyfin') {
+    accountCard.body.appendChild(createSettingsInfoRow({ label: 'Plex token', value: state.authToken || '—' }));
+  }
+
   // App version carries the on-device build stamp so a deploy can be verified:
   // if this doesn't change after ./tvpush.sh, the new bundle didn't install.
   accountCard.body.appendChild(createSettingsInfoRow({ label: 'App version', value: VERSION + buildStampLabel() }));
