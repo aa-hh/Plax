@@ -241,7 +241,7 @@ function detailScreen(root, params, navigate) {
       var avatar = url
         ? '<img class="detail-cast-avatar-img" data-cast-idx="' + i + '" alt="" />'
         : '<span class="detail-cast-avatar-fallback">' + escapeHtml(castInitials(r.tag)) + '</span>';
-      return '<div class="detail-cast-card" tabindex="0" data-nav-up=".detail-primary-actions .btn" data-nav-down="#detail-rails .media-card">' +
+      return '<div class="detail-cast-card" tabindex="0">' +
         '<div class="detail-cast-avatar">' + avatar + '</div>' +
         '<span class="detail-cast-name">' + escapeHtml(r.tag || '') + '</span>' +
         (r.role ? '<span class="detail-cast-role">' + escapeHtml(r.role) + '</span>' : '') +
@@ -249,7 +249,7 @@ function detailScreen(root, params, navigate) {
     }).join('');
     return '<section class="detail-cast" aria-label="Cast">' +
       '<p class="row-label detail-cast-heading">Cast &amp; Crew</p>' +
-      '<div class="detail-cast-row row-scroll">' + cards + '</div></section>';
+      '<div class="detail-cast-row row-scroll" data-focus-zone="detail-cast">' + cards + '</div></section>';
   }
 
   function bindCastImages(item) {
@@ -279,7 +279,7 @@ function detailScreen(root, params, navigate) {
 
   function wrapDetailShell(mainHtml) {
     return '<div class="home-layout detail-screen-layout">' +
-      '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+      '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host" data-focus-zone="sidebar" data-focus-zone-enter=".browsing-hub-item"></nav>' +
       '<div class="home-main detail-home-main">' + mainHtml + '</div></div>';
   }
 
@@ -1492,11 +1492,6 @@ function detailScreen(root, params, navigate) {
           route.parentDetail = activeDetailRoute;
           navigate('detail', route);
         }, { layout: 'episode' });
-        // Up from any episode card → primary action row (Play button).
-        // Geometry alone fails here because far-right cards share no horizontal
-        // overlap with the action buttons, triggering MISALIGN_PENALTY on all
-        // candidates and producing a diagonal jump to "More actions".
-        card.setAttribute('data-nav-up', '.detail-primary-actions .btn');
         currentGrid.appendChild(card);
       });
       hydrateRowWindow(currentGrid, { start: 0, count: items.length });
@@ -1693,7 +1688,7 @@ function detailScreen(root, params, navigate) {
     showSettingRow(row);
     row.innerHTML =
       '<span class="detail-setting-label">' + escapeHtml(labelText) + '</span>' +
-      '<div class="detail-setting-options row-scroll"></div>';
+      '<div class="detail-setting-options row-scroll" data-focus-zone="' + rowId.replace('#', '') + '-options"></div>';
     var optsEl = row.querySelector('.detail-setting-options');
     options.forEach(function (opt) {
       var chip = document.createElement('button');

@@ -13,7 +13,7 @@
  * wire it in app.js behind isFocusDebugEnabled().
  */
 
-import { spatialMove, getScoredCandidates } from './focus.js';
+import { spatialMove, getScoredCandidates, zoneOf, getLastNavDecision } from './focus.js';
 
 var KEY_BLUE = 406;
 var KEY_F2   = 113; // simulator keyboard shortcut for focus debug toggle
@@ -36,6 +36,15 @@ var _overlay = null;
 var _svg = null;
 var _label = null;
 var _container = null;
+// The zone element currently carrying the debug inline outline — tracked so
+// each redraw/disable removes it before focus moves to another zone.
+var _outlinedZone = null;
+
+function clearZoneOutline() {
+  if (!_outlinedZone) return;
+  try { _outlinedZone.style.outline = ''; } catch (e) { /* ignore */ }
+  _outlinedZone = null;
+}
 
 export function isFocusDebugEnabled() {
   if (typeof window === 'undefined') return false;
@@ -189,6 +198,7 @@ function redraw() {
   _redrawScheduled = false;
   if (!_enabled || !_overlay || !_svg) return;
   clearSvg();
+  clearZoneOutline();
 
   var active = document.activeElement;
   if (!active || active === document.body) {
@@ -201,6 +211,15 @@ function redraw() {
 
   // Focused element ring
   drawRect(aRect, COLOR_FOCUS, 3);
+
+  // Zone outline (if active element is in a zone)
+  var zone = zoneOf(active);
+  if (zone) {
+    try {
+      zone.style.outline = '2px solid rgba(168,199,250,0.5)';
+      _outlinedZone = zone;
+    } catch (e) { /* inline style rejected — ignore */ }
+  }
 
   // Directional arrows with scores
   for (var i = 0; i < DIRS.length; i++) {
@@ -220,7 +239,13 @@ function redraw() {
     }
   }
 
-  _label.textContent = elementLabel(active);
+  var label = elementLabel(active);
+  var decision = getLastNavDecision();
+  if (decision && decision.path) {
+    label += ' | ' + decision.path;
+    if (decision.entry) label += ':' + decision.entry;
+  }
+  _label.textContent = label;
 }
 
 function enable(container) {
@@ -234,6 +259,7 @@ function enable(container) {
 function disable() {
   _enabled = false;
   if (_overlay) _overlay.style.display = 'none';
+  clearZoneOutline();
 }
 
 function toggle(container) {

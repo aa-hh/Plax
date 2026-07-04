@@ -46,11 +46,11 @@ function libraryScreen(root, params, navigate) {
   screen.className = 'screen library-screen';
   screen.innerHTML =
     '<div class="library-layout">' +
-    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host" data-focus-zone="sidebar" data-focus-zone-enter=".browsing-hub-item"></nav>' +
     '<div class="library-main" id="lib-main">' +
     '<h1 class="screen-title library-title" id="lib-title">Library</h1>' +
     '<p class="watch-status-msg" id="lib-scan-status"></p>' +
-    '<div class="library-toolbar">' +
+    '<div class="library-toolbar" data-focus-zone="library-toolbar">' +
     '<div class="library-filter-bar" id="library-filter-bar">' +
     '<button class="library-filter-chip library-filter-chip--active" id="filter-chip-all" data-filter="all" tabindex="0">All</button>' +
     '<button class="library-filter-chip" id="filter-chip-unwatched" data-filter="unwatched" tabindex="0">Unwatched</button>' +

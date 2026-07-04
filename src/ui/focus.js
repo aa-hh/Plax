@@ -388,28 +388,160 @@ function isInSideNav(el) {
   return !!sideNavHostOf(el);
 }
 
-// The geometric move: nearest focusable in the pressed direction.
-function spatialMove(container, key) {
-  var active = document.activeElement;
-  // The seek bar owns LEFT/RIGHT for scrubbing — let those keys fall through.
-  if (isPlayerSeekBar(active) && (key === ARROW_LEFT || key === ARROW_RIGHT)) {
-    return null;
-  }
-  // Declarative override wins over geometry.
-  var override = resolveNavOverride(active, key);
-  if (override) return override;
-  var aRect = rectOf(active);
-  if (!aRect) return null;
+// --- Zone (container) navigation layer -----------------------------------------
+// Screens annotate structural groups (rails, grids, button rows, the sidebar)
+// with data-focus-zone. Cross-zone moves resolve zone-first: pick the best zone
+// in the pressed direction, then pick the entry element inside it
+// (enter-selector → remembered child → cross-axis alignment). Elements outside
+// any zone keep the flat geometric behavior, so screens migrate one at a time.
 
-  var activeHost = sideNavHostOf(active);
-  var activeSideNav = !!activeHost;
-  // Moving UP/DOWN inside the sidebar never leaves it, so only the sidebar's
-  // own ~8 items are real candidates. Scoping the query to the host avoids
-  // measuring getBoundingClientRect() on every card on the screen (60+ on Home)
-  // just to discard them via the cross-boundary guard below — the dominant cost
-  // of the "laggy sidebar" while traversing it.
-  var scope = container;
-  if (activeSideNav && (key === ARROW_UP || key === ARROW_DOWN)) scope = activeHost;
+var _zoneMemo = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+function zoneOf(el) {
+  if (!el || !el.closest) return null;
+  if (_zoneMemo && _zoneMemo.has(el)) return _zoneMemo.get(el);
+  var z = el.closest('[data-focus-zone]') || null;
+  if (_zoneMemo) _zoneMemo.set(el, z);
+  return z;
+}
+
+// Debug: last navigation decision (path + entry policy stage if applicable).
+// Set by spatialMove; read by focusDebug overlay. Constraint: two property
+// writes max per keypress, no allocation beyond the one decision object.
+var _lastNavDecision = null;
+
+// Last-focused child per zone ("focus memory"). Keyed by the zone ELEMENT so a
+// re-render that replaces the zone drops its memory with it.
+var _zoneMemory = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+function rememberZoneFocus(el) {
+  if (!_zoneMemory || !el) return;
+  var z = zoneOf(el);
+  if (z) _zoneMemory.set(z, el);
+}
+
+// Sequential zones: axis keys walk the host's focusables in DOM order,
+// clamped at the ends. Only active when the host declares an explicit
+// data-focus-sequential-axis (the picker screens that set the mode without an
+// axis intentionally stay on geometry). Returns:
+//   undefined — not in a sequential host / perpendicular key → caller continues
+//   null      — clamped at an end (handled, no move)
+//   element   — the step target
+function sequentialStep(active, key) {
+  if (!active || !active.closest) return undefined;
+  var host = active.closest('[data-focus-mode="sequential"]');
+  if (!host) return undefined;
+  var axis = host.getAttribute('data-focus-sequential-axis');
+  if (!axis) return undefined;
+  var delta = 0;
+  if (axis === 'horizontal') {
+    if (key === ARROW_RIGHT) delta = 1;
+    else if (key === ARROW_LEFT) delta = -1;
+  } else {
+    if (key === ARROW_DOWN) delta = 1;
+    else if (key === ARROW_UP) delta = -1;
+  }
+  if (!delta) return undefined;
+  var list = getFocusables(host);
+  var idx = list.indexOf(active);
+  if (idx < 0) return undefined;
+  return list[idx + delta] || null;
+}
+
+// A zone qualifies when its near edge lies beyond the focused ELEMENT's far
+// edge in the pressed direction (8px epsilon tolerates label padding overlap).
+var ZONE_EDGE_EPS = 8;
+function zoneInDirection(a, z, key) {
+  if (key === ARROW_UP) return z.bottom <= a.top + ZONE_EDGE_EPS;
+  if (key === ARROW_DOWN) return z.top >= a.bottom - ZONE_EDGE_EPS;
+  if (key === ARROW_LEFT) return z.right <= a.left + ZONE_EDGE_EPS;
+  if (key === ARROW_RIGHT) return z.left >= a.right - ZONE_EDGE_EPS;
+  return false;
+}
+
+// Entry policy stage for debug (written by pickZoneEntry, read by spatialMove).
+var _lastEntryStage = null;
+
+// Entry policy for a zone being entered from aRect via `key`:
+// enter-selector → remembered child → cross-axis alignment.
+function pickZoneEntry(zone, aRect, key) {
+  var sel = zone.getAttribute('data-focus-zone-enter');
+  if (sel) {
+    try {
+      var pinned = zone.querySelector(sel);
+      if (pinned && isNavFocusable(pinned)) { _lastEntryStage = 'enter-attr'; return pinned; }
+    } catch (e) { /* invalid selector — fall through */ }
+  }
+  var mem = _zoneMemory && _zoneMemory.get(zone);
+  if (mem && zone.contains(mem) && isNavFocusable(mem)) { _lastEntryStage = 'memory'; return mem; }
+  _lastEntryStage = 'alignment';
+  var list = getFocusables(zone);
+  var vertical = key === ARROW_UP || key === ARROW_DOWN;
+  var aMid = vertical ? aRect.left + aRect.width / 2 : aRect.top + aRect.height / 2;
+  var best = null;
+  var bestD = Infinity;
+  for (var i = 0; i < list.length; i++) {
+    var r = rectOf(list[i]);
+    if (!r) continue;
+    var mid = vertical ? r.left + r.width / 2 : r.top + r.height / 2;
+    var d = Math.abs(mid - aMid);
+    if (d < bestD) { bestD = d; best = list[i]; }
+  }
+  return best;
+}
+
+// Cross-zone move: other zones (scored by container rect) and zoneless
+// focusables (scored by element rect, today's flat rules) compete in one pass.
+function crossZoneMove(container, active, aRect, activeZone, key) {
+  var vertical = key === ARROW_UP || key === ARROW_DOWN;
+  var activeSideNav = isInSideNav(active);
+  var best = null;
+  var bestScore = Infinity;
+  var bestIsZone = false;
+
+  var zones = container.querySelectorAll('[data-focus-zone]');
+  for (var i = 0; i < zones.length; i++) {
+    var z = zones[i];
+    if (z === activeZone) continue;
+    if (z.contains(active)) continue;                    // ancestor of active
+    if (activeZone && activeZone.contains(z)) continue;  // nested in active zone
+    var zr = rectOf(z);
+    if (!zr) continue;
+    if (!zoneInDirection(aRect, zr, key)) continue;
+    // The sidebar wall: UP/DOWN never crosses sidebar ↔ content.
+    if (vertical && isInSideNav(z) !== activeSideNav) continue;
+    if (!getFocusables(z).length) continue;              // skeleton/empty zone
+    var s = scoreCandidate(aRect, zr, key);
+    if (s < bestScore) { bestScore = s; best = z; bestIsZone = true; }
+  }
+
+  var list = getFocusables(container);
+  for (var j = 0; j < list.length; j++) {
+    var c = list[j];
+    if (c === active) continue;
+    if (zoneOf(c)) continue; // zoned elements are represented by their zone
+    var cr = rectOf(c);
+    if (!cr) continue;
+    if (!strictlyInDirection(aRect, cr, key)) continue;
+    if (vertical && isInSideNav(c) !== activeSideNav) continue;
+    var s2 = scoreCandidate(aRect, cr, key);
+    if (s2 < bestScore) { bestScore = s2; best = c; bestIsZone = false; }
+  }
+
+  if (!best) return null;
+  if (bestIsZone) return pickZoneEntry(best, aRect, key);
+  // LEFT from content into a not-yet-zoned sidebar still lands the TOP item
+  // (verbatim behavior of the old special case; unreachable once the sidebar
+  // hosts carry data-focus-zone-enter — removed in the annotation phase).
+  if (key === ARROW_LEFT && !activeSideNav && isInSideNav(best)) {
+    var hubHost = sideNavHostOf(best);
+    var firstHub = hubHost && hubHost.querySelector('.browsing-hub-item');
+    if (firstHub && isNavFocusable(firstHub)) return firstHub;
+  }
+  return best;
+}
+
+// Flat geometric pass scoped to `scope` (the old spatialMove loop, verbatim
+// rules). Used for intra-zone moves.
+function flatGeometricMove(scope, active, aRect, key) {
   var list = getFocusables(scope);
   var best = null;
   var bestScore = Infinity;
@@ -419,27 +551,33 @@ function spatialMove(container, key) {
     var cRect = rectOf(c);
     if (!cRect) continue;
     if (!strictlyInDirection(aRect, cRect, key)) continue;
-    // Up/Down never crosses the sidebar/content boundary — sidebar is only
-    // reachable via Left. Without this, the sidebar wins when no content
-    // candidate exists above/below the focused element (e.g. at the top of
-    // a scrolled detail screen), scoring just 10k penalty over 0 penalty.
-    if ((key === ARROW_UP || key === ARROW_DOWN) && isInSideNav(c) !== activeSideNav) continue;
     var score = scoreCandidate(aRect, cRect, key);
     if (score < bestScore) { bestScore = score; best = c; }
   }
-  // LEFT that crosses from main content INTO the sidebar should always land on
-  // the TOP nav item (Home), not the geometrically-nearest one — otherwise the
-  // selector jumps to whatever item happens to sit at the card's vertical
-  // position (Search, a library, …), which reads as random. When the leftmost
-  // content's only LEFT move is "open the sidebar", that move means "go to nav",
-  // and nav starts at the top. (Moving LEFT *within* the sidebar has no
-  // candidate, so this never hijacks intra-sidebar navigation.)
-  if (key === ARROW_LEFT && !activeSideNav && best && isInSideNav(best)) {
-    var hubHost = sideNavHostOf(best);
-    var firstHub = hubHost && hubHost.querySelector('.browsing-hub-item');
-    if (firstHub && isNavFocusable(firstHub)) return firstHub;
-  }
   return best;
+}
+
+function spatialMove(container, key) {
+  var active = document.activeElement;
+  if (isPlayerSeekBar(active) && (key === ARROW_LEFT || key === ARROW_RIGHT)) {
+    return null;
+  }
+  var override = resolveNavOverride(active, key);
+  if (override) return override;
+  var aRect = rectOf(active);
+  if (!aRect) return null;
+
+  var seq = sequentialStep(active, key);
+  if (seq !== undefined) { _lastNavDecision = { path: 'sequential', entry: null }; return seq; }
+
+  var activeZone = zoneOf(active);
+  if (activeZone) {
+    var inner = flatGeometricMove(activeZone, active, aRect, key);
+    if (inner) { _lastNavDecision = { path: 'intra-zone', entry: null }; return inner; }
+  }
+  var result = crossZoneMove(container, active, aRect, activeZone, key);
+  if (result) _lastNavDecision = { path: 'cross-zone', entry: _lastEntryStage };
+  return result;
 }
 
 function handleKeyNav(container, e) {
@@ -457,6 +595,7 @@ function handleKeyNav(container, e) {
   }
   e.preventDefault();
   target.focus();
+  rememberZoneFocus(target);
   scrollFocusedIntoView(target);
   return true;
 }
@@ -764,6 +903,7 @@ function attachFocusNav(container) {
     if (!t || !container.contains(t)) return;
     lastFocused = t;
     lastRect = rectOf(t) || lastRect;
+    rememberZoneFocus(t);
     if (t.matches && t.matches(focusableSelector)) scrollFocusedIntoView(t);
   }
   function onFocusOut(ev) {
@@ -779,6 +919,11 @@ function attachFocusNav(container) {
     container.removeEventListener('focusin', onFocusIn);
     container.removeEventListener('focusout', onFocusOut);
   };
+}
+
+// Returns the last navigation decision (path + entry stage). Called by focusDebug overlay.
+function getLastNavDecision() {
+  return _lastNavDecision;
 }
 
 // Returns all valid candidates in `key` direction from current active element,
@@ -816,5 +961,8 @@ export {
   getScoredCandidates,
   restoreFocus,
   addNavOverride,
-  clearNavOverrides
+  clearNavOverrides,
+  zoneOf,
+  rememberZoneFocus,
+  getLastNavDecision
 };

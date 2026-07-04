@@ -255,6 +255,25 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 | cross-screen fade-through | 150ms out → 150ms in | — | standard |
 | detail `•••` spring menu | 200–250ms + stagger | short | spring (overshoot) |
 
+### D-pad navigation engine (foundations)
+
+- **Status:** ✅ · 2026-07-04
+- **Resolution order (priority tier):**
+  1. Declarative `data-nav-*` overrides (attribute on the focused element, or `addNavOverride()` programmatic map)
+  2. Sequential mode (DOM order stepping when inside `[data-focus-mode="sequential"]` **with** explicit `data-focus-sequential-axis`; clamped at ends)
+  3. Intra-zone geometry (flat spatial scorer scoped to the active `[data-focus-zone]` container)
+  4. Cross-zone resolution (zone rects scored against zoneless focusables in one pass; winning zone enters via policy: `data-focus-zone-enter` selector → focus memory (WeakMap, last-focused child per zone) → cross-axis alignment)
+  5. Boundary behavior (vertical arrows in content eat the event to prevent webOS platform hijack at screen edges)
+- **Attribute vocabulary:**
+  - `data-nav-left`, `data-nav-right`, `data-nav-up`, `data-nav-down` — CSS selector pinning a target element
+  - `data-focus-zone="<name>"` — container for geometric scoping and entry policy
+  - `data-focus-zone-enter="<selector>"` — element inside the zone that always receives focus on entry
+  - `data-focus-mode="sequential"` — enables axis-based DOM-order stepping (requires `data-focus-sequential-axis`)
+  - `data-focus-sequential-axis="horizontal"|"vertical"` — axis keys step in DOM order; perpendicular keys fall through to cross-zone
+- **Sidebar vertical wall rule:** UP/DOWN never crosses the `.browsing-hub-nav-host` ↔ main-content boundary (enforced in `crossZoneMove` via the `isInSideNav` guard, mirrored in `getScoredCandidates` for the debug overlay).
+- **Settings screen note:** The Settings sidebar is intentionally unzoned so `spatialMove` preserves a LEFT-from-content-into-sidebar fallback that lands the first hub item (Home); once Settings sidebar gains `data-focus-zone-enter`, this fallback becomes redundant.
+- **Source:** `src/ui/focus.js` (engine core: `spatialMove`, `crossZoneMove`, `flatGeometricMove`, `sequentialStep`, `pickZoneEntry`, `zoneOf`, `rememberZoneFocus`); `docs/focus-zone-navigation-plan.md` (complete specification).
+
 ---
 
 ## Component specs

@@ -30,7 +30,7 @@ function watchlistScreen(root, params, navigate) {
 
   screen.innerHTML =
     '<div class="home-layout">' +
-    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host" data-focus-zone="sidebar" data-focus-zone-enter=".browsing-hub-item"></nav>' +
     '<div class="home-main">' +
     '<h1 class="screen-title screen-title-compact" id="watchlist-title">Watchlist</h1>' +
     '<div class="watchlist-manage-actions" id="watchlist-actions" data-focus-zone="watchlist-manage" data-cols="2"></div>' +

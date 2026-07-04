@@ -29,7 +29,7 @@ function homeScreen(root, params, navigate) {
   screen.className = 'screen screen-home';
   screen.innerHTML =
     '<div class="home-layout">' +
-    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
+    '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host" data-focus-zone="sidebar" data-focus-zone-enter=".browsing-hub-item"></nav>' +
     '<div class="home-main">' +
     '<div class="il-hero" id="il-hero" aria-hidden="true">' +
     '<div class="il-hero__backdrop il-hero__backdrop--a" id="il-backdrop-a"></div>' +
