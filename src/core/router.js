@@ -409,6 +409,15 @@ function render() {
   // listener just sits idle and is GC'd with the host on next navigation.
   if (document.documentElement.classList.contains('caps-motion')) {
     timeAnimation(host, 'anim:screen-enter-fade', { route: currentRoute });
+    // Drop the will-change/animation class once the fade completes so a
+    // retained host (which can live for the rest of the session) doesn't keep
+    // an unnecessary compositor layer promoted — will-change is only useful
+    // for the ~200ms it takes the fade to run.
+    host.addEventListener('animationend', function onFadeEnd(e) {
+      if (e.target !== host) return;
+      host.removeEventListener('animationend', onFadeEnd);
+      host.classList.remove('screen-host--enter');
+    });
   }
 
   var entry = {

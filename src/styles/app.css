@@ -5720,12 +5720,18 @@ html.caps-motion .gt-list-item:focus {
    forward navigation). The new screen fades in; opacity-only so it's compositor-
    cheap on Chromium 53 and adds ZERO latency (content builds immediately, the
    fade is non-blocking). caps-motion-gated → webOS4-without-motion hard-cuts.
-   Retained Back re-shows are not re-animated (host already exists). ── */
+   Retained Back re-shows are not re-animated (host already exists).
+   `will-change` pre-promotes the compositor layer BEFORE the animation starts —
+   measured on a real B8 (anim:screen-enter-fade in tv.log), the layer-promotion
+   stall on first animation start was costing ~150-200ms beyond the declared
+   duration even on a screen with 0 images. router.js strips `--enter` on
+   animationend so retained hosts don't keep an unneeded layer forever. ── */
 @keyframes screen-enter-fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 html.caps-motion .screen-host--enter {
+  will-change: opacity;
   animation: screen-enter-fade var(--dur-short4) var(--ease-standard-decelerate);
 }
 
