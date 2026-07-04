@@ -49,6 +49,7 @@ function markUnwatched() { return getBackend().markUnwatched.apply(null, argumen
 
 function getThumbUrl() { return getBackend().getThumbUrl.apply(null, arguments); }
 function getArtUrl() { return getBackend().getArtUrl.apply(null, arguments); }
+function loadAmbientColors() { return getBackend().loadAmbientColors.apply(null, arguments); }
 
 export {
   getBackend,
@@ -72,5 +73,6 @@ export {
   markWatched,
   markUnwatched,
   getThumbUrl,
-  getArtUrl
+  getArtUrl,
+  loadAmbientColors
 };

@@ -19,6 +19,12 @@ import {
   markWatched,
   markUnwatched
 } from './playback.js';
+import { blurHashToCorners } from './blurhashPalette.js';
+
+function loadAmbientColors(server, item) {
+  if (!item || !item.ambientHash) return Promise.resolve(null);
+  return Promise.resolve(blurHashToCorners(item.ambientHash));
+}
 
 function collectionTypeToSectionType(ct) {
   switch (ct) {
@@ -126,7 +132,9 @@ var jellyfinBackend = {
   // images
   getThumbUrl: getThumbUrl,
   getArtUrl: getArtUrl,
-  imageUrl: imageUrl
+  imageUrl: imageUrl,
+
+  loadAmbientColors: loadAmbientColors
 };
 
 export { jellyfinBackend, getLibraries };

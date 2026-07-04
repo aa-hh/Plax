@@ -26,6 +26,18 @@ function firstStreamByType(streams, type) {
   return null;
 }
 
+function pickAmbientHash(raw, backdropTag, primaryTag) {
+  var hashes = raw.ImageBlurHashes;
+  if (!hashes) return '';
+  if (backdropTag && hashes.Backdrop && hashes.Backdrop[backdropTag]) {
+    return hashes.Backdrop[backdropTag];
+  }
+  if (primaryTag && hashes.Primary && hashes.Primary[primaryTag]) {
+    return hashes.Primary[primaryTag];
+  }
+  return '';
+}
+
 /** Height → Plex-style videoResolution token ('4k'/'1080'/'720'/'480'/'sd'). */
 function resolutionLabel(height) {
   var h = Number(height) || 0;
@@ -258,6 +270,7 @@ function mapItem(raw, server) {
     introMarkers: [],
     introMarker: null,
     creditMarkers: [],
+    ambientHash: pickAmbientHash(raw, backdropTag, primaryTag),
     _jellyfin: { played: !!ud.Played, type: raw.Type }
   };
 }

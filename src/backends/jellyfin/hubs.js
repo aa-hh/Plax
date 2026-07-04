@@ -9,7 +9,7 @@ import { fetchJellyfinJson } from './client.js';
 import { mapItem } from './mapItem.js';
 import { normalizeHomeRow } from '../../plex/recommendations/homeFeed.js';
 
-var HUB_FIELDS = 'ProviderIds,ParentId';
+var HUB_FIELDS = 'ProviderIds,ParentId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,ImageBlurHashes,PrimaryImageAspectRatio';
 
 function toRow(title, id, rawItems, server, extra) {
   var row = {

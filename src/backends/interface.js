@@ -49,6 +49,9 @@
  * @property {(server:Object, path:string, width?:number)=>string} getThumbUrl
  * @property {(server:Object, path:string, width?:number)=>string} getArtUrl
  *
+ * // ---- immersive home ambient palette ----
+ * @property {(server:Object, item:Object)=>Promise<{topLeft:string,topRight:string,bottomRight:string,bottomLeft:string}|null>} loadAmbientColors
+ *
  * // ---- playback ----
  * // Both backends own their own decision + stream-URL build behind this contract;
  * // src/playback/sessionController.js is a thin delegator over getBackend().

@@ -21,8 +21,7 @@ import {
   prefetchLibraryBrowse,
   abortPrefetch
 } from '../../core/idlePrefetch.js';
-import { getArtUrl } from '../../backends/index.js';
-import { loadUltraBlurBackdrop } from '../../plex/ultrablur.js';
+import { getArtUrl, loadAmbientColors } from '../../backends/index.js';
 import { tvLog } from '../../utils/tvDebug.js';
 import { buildCornerWashCss, cornerWashLayerCount } from '../colorWash.js';
 
@@ -220,11 +219,11 @@ function homeScreen(root, params, navigate) {
     var artPath = item.artPath || item.art;
     var colorsFrom = 'none';
     if (server && artPath) {
-      loadUltraBlurBackdrop(server, artPath).then(function (backdrop) {
+      loadAmbientColors(server, item).then(function (colors) {
         if (destroyed || swapTok !== ilHeroToken) return;
-        if (backdrop && backdrop.colors) {
-          ilApplyAmbient(backdrop.colors, swapTok);
-          tvLog('perf', 'home:hero-swap', { colorsFrom: 'pms' });
+        if (colors) {
+          ilApplyAmbient(colors, swapTok);
+          tvLog('perf', 'home:hero-swap', { colorsFrom: 'ambient' });
         } else {
           tvLog('perf', 'home:hero-swap', { colorsFrom: 'none' });
         }
@@ -348,7 +347,7 @@ function homeScreen(root, params, navigate) {
       var item = card && card._plaxItem;
       var artPath = item && (item.artPath || item.art);
       var server = getState().activeServer;
-      if (artPath && server) loadUltraBlurBackdrop(server, artPath);
+      if (artPath && server) loadAmbientColors(server, item);
     }, 250);
   });
 

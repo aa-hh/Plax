@@ -30,7 +30,17 @@ import {
 import { searchHubs } from '../../plex/search.js';
 import { loadHomeFeedPhased } from '../../plex/recommendations/homeFeed.js';
 import { getThumbUrl, getArtUrl } from '../../plex/client.js';
+import { loadUltraBlurBackdrop } from '../../plex/ultrablur.js';
 import { resolveStreamUrl, buildSubtitlePlan } from './playback.js';
+
+function loadAmbientColors(server, item) {
+  if (!server || !item) return Promise.resolve(null);
+  var artPath = item.artPath || item.art;
+  if (!artPath) return Promise.resolve(null);
+  return loadUltraBlurBackdrop(server, artPath).then(function (backdrop) {
+    return backdrop && backdrop.colors ? backdrop.colors : null;
+  });
+}
 
 var plexBackend = {
   id: 'plex',
@@ -68,6 +78,8 @@ var plexBackend = {
   // images
   getThumbUrl: getThumbUrl,
   getArtUrl: getArtUrl,
+
+  loadAmbientColors: loadAmbientColors,
 
   // playback
   resolveStreamUrl: resolveStreamUrl,

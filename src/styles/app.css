@@ -726,9 +726,12 @@ html.caps-motion .detail-watchlist-btn:focus {
   /* pull out of the padded content box into the left safe-area gutter */
   left: calc(-1 * var(--safe-x));
   z-index: 5;
-  /* Collapsed: OPAQUE backing, hard edge, no fade — feed content scrolling
-     under the rail simply disappears behind it (no scrim in collapsed state). */
-  background: var(--bg-base);
+  /* Collapsed: TRANSPARENT backing (2026-07-04) so the immersive ambient wash
+     reads edge-to-edge with no hard rail cut. Per-icon translucent discs (see
+     the collapsed idle rule below) carry icon contrast instead of an opaque
+     rail. Expanded state still gets the ::before scrim for content separation.
+     Both are static paint — no per-frame cost on the B8. */
+  background: transparent;
   /* Width SNAPS (no transition) — 2026-07-04 perf pass. Animating `width` is a
      LAYOUT property that reflows every frame for 180ms; on the B8 (Chrome53)
      that measured 323–723ms of frozen frames. The drawer's motion now lives in
@@ -769,11 +772,16 @@ html.caps-motion .detail-watchlist-btn:focus {
 .library-screen .browsing-hub-nav-host--expanded::before {
   opacity: 1;
 }
-/* Fade is motion-gated; engines without caps-motion just snap the opacity. */
-html.caps-motion .screen-home .browsing-hub-nav-host::before,
-html.caps-motion .library-screen .browsing-hub-nav-host::before {
+/* Fade is gated to the RICH tier only (webOS5+/sim/dev-browser). The B8
+   (caps-motion, not caps-motion-rich) snaps this opacity instantly — on-device
+   jank:sidebar logging (2026-07-04) measured a single ~750ms frozen frame
+   landing exactly at the expand toggle with this transition active, on a
+   fixed 50vw multi-stop gradient layer; snapping removes the repeated repaint
+   of that layer during the 180ms fade. See docs/design-system/component-
+   registry.md → Motion for the tiering rationale. */
+html.caps-motion-rich .screen-home .browsing-hub-nav-host::before,
+html.caps-motion-rich .library-screen .browsing-hub-nav-host::before {
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
-
 }
 .screen-home .home-main {
   margin-left: 0;
@@ -933,6 +941,21 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
    on expand. */
 .browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
   width: var(--nav-item-h); /* 72px = collapsed content box → .active pill is a true circle */
+  /* Icon centering + no expand-shift both come from the base 18px padding (see
+     .browsing-hub-item); nothing collapsed-specific needed here. */
+}
+
+/* Collapsed IDLE items: translucent dark disc so the icon reads over the
+   ambient wash now that the rail backing is transparent. The disc IS the item's
+   72px pill (border-radius already makes it a circle), matching the
+   selected/focused pill size. Excludes .active/:focus so the selected blue pill
+   and the focused light pill keep their own fills and still read as "on". Idle
+   icon lifts to the high-emphasis text color for contrast on the disc. Pure
+   static paint — the collapsed rail never animates, so this costs nothing per
+   frame on the B8 (no blur, no filter — flat alpha only). */
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item:not(.active):not(:focus) {
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--gt-text);
 }
 
 /* Drawer-focused brighten (kit: contentColor = drawerHasFocus ? onSurface :
@@ -1007,7 +1030,11 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
   flex: 0 0 auto;
   min-height: var(--nav-item-h);
   text-align: left;
-  padding: 0 16px;
+  /* 18px inset (was 16px) so the 36px icon centers in the 72px collapsed circle
+     ((72−36)/2 = 18) AND the icon's x is IDENTICAL collapsed vs expanded — no
+     2px shift when the drawer opens. Expanded label room drops by 4px (256−36),
+     imperceptible. */
+  padding: 0 18px;
   border-radius: var(--gt-radius-button);
   background: transparent;
   color: var(--gt-text-2);     /* on-surface-variant — idle label */
@@ -1150,6 +1177,16 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
   width: 100%;
   height: 540px;
   overflow: hidden;
+  /* Crisp art-box geometry as shared vars so the backdrop image AND its scrim
+     stay locked to the SAME rect (a mismatch there would itself read as a
+     seam). Enlarged 2026-07-04 from gt-col-5 → gt-col-6 for more on-screen
+     presence: this is a pure GEOMETRY change — background-size:cover just
+     scales the ALREADY-decoded art bigger, so decode cost on the B8 is
+     unchanged (same 720px fetch, one decode; nothing here touches resolution).
+     Height stays 16:9 of the width (48.9584vw * 9/16 = 27.54vw) so cover never
+     crops a non-16:9 amount differently than before. */
+  --il-hero-box-w: calc(var(--gt-col-6) + var(--safe-x));
+  --il-hero-box-h: 27.54vw;
   /* TRANSPARENT (Phase 3 fix): the ambient wash + soft bleed layers sit BEHIND
      the whole home content at negative z, and they now provide the neutral base
      that Layer-C surface-dim used to give this band. An OPAQUE background here
@@ -1171,8 +1208,8 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
   right: 0;
   left: auto;
   bottom: auto;
-  width: calc(var(--gt-col-5) + var(--safe-x));
-  height: 23.32vw; /* 16:9 of (gt-col-5 + safe-x) */
+  width: var(--il-hero-box-w);
+  height: var(--il-hero-box-h);
   background-size: cover;
   background-position: top right;
   transition: opacity 0.35s ease;
@@ -1185,10 +1222,34 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
      Because this fades the PHOTO ITSELF to transparent, whatever is actually
      behind — flat surface-dim OR an ambient-tinted wash — shows through
      correctly with no color to get wrong; a painted overlay could only ever
-     match ONE of those. */
+     match ONE of those.
+
+     SEAM FIX (2026-07-04, on-device): the earlier 3-stop fade was still short
+     and steep — it emptied the photo over a narrow band and, crucially, hit
+     alpha 0 at 97%/58% (short of the box's true left/bottom edges), so the
+     photo's crisp content ended in a perceptible line INSIDE a still-tinted
+     wash whose corner-sampled color rarely matches the mid-photo pixels at
+     that line. The wash (buildCornerWashCss, 4 viewport-corner radials) is
+     spatially offset from this top-right box, so any SHORT feather exposes a
+     color discontinuity. Cure = a LONGER, gentler multi-stop ramp that (a)
+     reaches full transparency EXACTLY at the left (100%) and bottom (0%) edges
+     so the photo never presents a hard rectangle border, and (b) spreads the
+     photo→wash handoff across a wide band so a corner-color mismatch dissolves
+     gradually instead of snapping at one contour. Extra stops approximate an
+     ease curve (cheaper than a real filter — mask gradients are compositor
+     work, no repaint per frame). Still opacity/mask only: Chrome53-safe, no
+     backdrop-filter, no blur/shadow. */
   -webkit-mask-image:
-    linear-gradient(to left, rgba(0,0,0,1) 32%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0) 97%),
-    linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 24%, rgba(0,0,0,1) 58%);
+    linear-gradient(to left,
+      rgba(0,0,0,1) 30%,
+      rgba(0,0,0,0.6) 58%,
+      rgba(0,0,0,0.25) 80%,
+      rgba(0,0,0,0) 100%),
+    linear-gradient(to top,
+      rgba(0,0,0,0) 0%,
+      rgba(0,0,0,0.25) 22%,
+      rgba(0,0,0,0.6) 46%,
+      rgba(0,0,0,1) 74%);
   -webkit-mask-repeat: no-repeat, no-repeat;
   -webkit-mask-composite: destination-in;
 }
@@ -1206,11 +1267,19 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
   right: 0;
   left: auto;
   bottom: auto;
-  width: calc(var(--gt-col-5) + var(--safe-x));
-  height: 23.32vw;
+  width: var(--il-hero-box-w);
+  height: var(--il-hero-box-h);
+  /* Softened alongside the longer backdrop mask (2026-07-04 seam fix). This
+     paints NEUTRAL surface-dim (19,19,19); over a tinted ambient wash a strong
+     neutral band DESATURATES that patch, so its edge reads as a chroma seam
+     against the surrounding tint. Peaks pulled down (0.45→0.28, 0.35→0.30) and
+     both gradients now fade to 0 EXACTLY at the box's left (100%) and bottom
+     (0%) edges — matching the backdrop mask so the two never disagree at the
+     boundary. Just enough darkening for the rail cards that ride up over the
+     lower box; the melt itself is now the backdrop mask's job, not the scrim's. */
   background:
-    linear-gradient(to left, rgba(19,19,19,0) 32%, rgba(19,19,19,0.45) 70%, rgba(19,19,19,0) 97%),
-    linear-gradient(to top, rgba(19,19,19,0) 0%, rgba(19,19,19,0.35) 24%, rgba(19,19,19,0) 58%);
+    linear-gradient(to left, rgba(19,19,19,0) 30%, rgba(19,19,19,0.28) 68%, rgba(19,19,19,0) 100%),
+    linear-gradient(to top, rgba(19,19,19,0) 0%, rgba(19,19,19,0.30) 26%, rgba(19,19,19,0) 62%);
 }
 .il-hero__content {
   position: absolute;
@@ -1283,11 +1352,18 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
    tint over surface-dim (never wallpaper). Opacity-only transition = pure
    compositor work. */
 .il-ambient {
+  /* Absolute + negative safe-area inset bleed (mirrors .il-hero / .home-feed
+     gutter bleed). WHY not fixed: overlapping full-viewport FIXED layers under
+     the drawer ::before scrim drops Chrome 53 into multi-second software repaint
+     on expand. WHY not transform: B8 jank:sidebar still measured worstMs 347+
+     with 100vw + translate(-50%,-50%) — transform promotes compositor layers that
+     still stall the fixed scrim paint. Negative inset reaches the true screen
+     edges without transform or fixed. */
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  top: calc(-1 * var(--safe-y));
+  left: calc(-1 * var(--safe-x));
+  right: calc(-1 * var(--safe-x));
+  height: 100vh;
   z-index: -3; /* negative inside .home-layout's context — see its comment */
   opacity: 0;
   /* Tiny noise tile tiles; the radial-gradient wash layers do not. The inline
@@ -1308,11 +1384,12 @@ html.caps-motion .il-ambient {
    `il--no-bleed` kill-switch on the screen root (one-line disable if the B8
    scoreboard objects). */
 .il-hero__bleed {
+  /* Same negative-inset full-bleed as .il-ambient — no fixed, no transform. */
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  top: calc(-1 * var(--safe-y));
+  left: calc(-1 * var(--safe-x));
+  right: calc(-1 * var(--safe-x));
+  height: 100vh;
   z-index: -2; /* above ambient, still under ALL content */
   opacity: 0;
   background-position: top right;
@@ -1327,11 +1404,12 @@ html.caps-motion .il-hero__bleed {
    bottom and toward the LEFT text column so the hero copy + first rail stay
    legible. Two stacked linear gradients (surface-dim = rgb 19,19,19). */
 .il-hero__bleed-scrim {
+  /* Same negative-inset full-bleed as .il-ambient — no fixed, no transform. */
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  top: calc(-1 * var(--safe-y));
+  left: calc(-1 * var(--safe-x));
+  right: calc(-1 * var(--safe-x));
+  height: 100vh;
   z-index: -1; /* above the bleed art it scrims, still under ALL content */
   pointer-events: none;
   background:
