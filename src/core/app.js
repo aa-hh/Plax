@@ -243,15 +243,32 @@ function boot() {
 }
 
 /**
- * Strict webOS PLATFORM major for the motion gate — ONLY versionMajor /
- * platformVersionMajor (the real OS version), never sdkVersion/firmwareVersion.
- * The version GATE deliberately maxes across all fields (so a TV clears the >=4
- * minimum), but LG's firmwareVersion on the 2018 B8 is numbered ~05.xx — using
- * that for motion wrongly read the webOS 4 B8 as "5+" and turned focus scale ON
- * (janky grow + 32px-blur repaint = the perf regression). Use the OS field only.
+ * Strict webOS PLATFORM major for the motion gate.
+ *
+ * UPDATED 2026-07-04: the original "use ONLY versionMajor/platformVersionMajor"
+ * strategy assumed those two fields were clean OS-version fields, distinct from
+ * LG's firmware numbering. Remote diagnostics (device-info-raw in tv.log) from
+ * a REAL 2018 LG B8 (modelName OLED55B8LLA) proved that assumption wrong:
+ * versionMajor itself reported 5, merely mirroring the firmware build
+ * "05.50.70" — not a trustworthy OS-major field at all on real hardware. That
+ * silently turned the caps-motion-rich tier ON for a B8 (this is the SAME
+ * failure class as the historical bug this comment used to describe, just via
+ * a field we'd assumed was safe).
+ *
+ * versionGate.js now fetches the authoritative sdkVersion (the same luna
+ * system-property source webos.js already trusts for playback capability
+ * detection — see capabilityMatrix.js) and stamps the parsed major onto
+ * device.sdkVersionMajor before this ever runs. Prefer that exclusively when
+ * present; fall back to the old versionMajor/platformVersionMajor scan only
+ * when sdkVersion truly could not be resolved (simulator / dev-browser edge
+ * cases where the luna service may be unavailable).
  */
 function strictWebosMajor(device) {
   if (!device) return 0;
+  if (device.sdkVersionMajor != null) {
+    var sdk = parseInt(device.sdkVersionMajor, 10);
+    if (!isNaN(sdk) && sdk > 0) return sdk;
+  }
   var c = [];
   ['versionMajor', 'platformVersionMajor'].forEach(function (k) {
     if (device[k] != null) {

@@ -3,8 +3,13 @@
  * Uses webOSTV.js deviceInfo (versionMajor) when available.
  */
 import { tvLog } from '../utils/tvDebug.js';
+import { fetchSdkVersion, parseWebOSVersionMajor } from './webosSdkVersion.js';
 
 var MIN_WEBOS_TV_MAJOR = 4;
+// Bounded wait for the sdkVersion luna round-trip so a slow/hung service
+// property call can never wedge boot — falls back to the raw deviceInfo()
+// fields (see parseMajor) if it doesn't answer in time.
+var SDK_VERSION_TIMEOUT_MS = 1200;
 
 function isTvRuntime() {
   var root = typeof globalThis !== 'undefined' ? globalThis
@@ -76,20 +81,58 @@ function checkMinimumWebOS() {
           modelName: device && device.modelName
         });
       } catch (_) { /* ignore */ }
-      var major = parseMajor(device);
-      if (major >= MIN_WEBOS_TV_MAJOR) {
-        resolve({ ok: true, major: major, device: device });
-      } else if (major === 0) {
-        // No usable version fields at all — likely a simulator stub. Allow through but warn.
-        try { console.warn('[versionGate] No usable version fields; allowing through.'); } catch (_) {}
-        resolve({ ok: true, major: 0, device: device, reason: 'no-version-fields' });
-      } else {
-        resolve({
-          ok: false,
-          major: major,
-          device: device,
-          message: 'Detected webOS TV major version ' + major + '. Minimum is ' + MIN_WEBOS_TV_MAJOR + '.'
-        });
+
+      // The raw deviceInfo() callback's OWN `versionMajor` field is NOT
+      // trustworthy on real hardware — confirmed on a real 2018 LG B8
+      // (modelName OLED55B8LLA) reporting versionMajor:5 / version:"05.50.70"
+      // (LG's firmware build number), while sdkVersion correctly reported
+      // "4.4.0". Fetch sdkVersion (the same authoritative luna system-property
+      // source webos.js already uses for playback capability detection) and
+      // PREFER it whenever it resolves; only fall back to the raw-field scan
+      // in parseMajor() if the luna call fails or times out (e.g. simulator).
+      var settled = false;
+      var timeoutId = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        finish(0);
+      }, SDK_VERSION_TIMEOUT_MS);
+
+      fetchSdkVersion(
+        function (sdkVersion) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          finish(parseWebOSVersionMajor(sdkVersion));
+        },
+        function () {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          finish(0);
+        }
+      );
+
+      function finish(sdkMajor) {
+        // Stamp the resolved sdk major onto the device object so
+        // app.js's strictWebosMajor() (the motion-tier gate) can trust it
+        // directly instead of re-deriving from the same unreliable fields.
+        if (device) device.sdkVersionMajor = sdkMajor;
+        tvLog('boot', 'sdk-version-resolved', { sdkVersionMajor: sdkMajor });
+        var major = sdkMajor > 0 ? sdkMajor : parseMajor(device);
+        if (major >= MIN_WEBOS_TV_MAJOR) {
+          resolve({ ok: true, major: major, device: device });
+        } else if (major === 0) {
+          // No usable version fields at all — likely a simulator stub. Allow through but warn.
+          try { console.warn('[versionGate] No usable version fields; allowing through.'); } catch (_) {}
+          resolve({ ok: true, major: 0, device: device, reason: 'no-version-fields' });
+        } else {
+          resolve({
+            ok: false,
+            major: major,
+            device: device,
+            message: 'Detected webOS TV major version ' + major + '. Minimum is ' + MIN_WEBOS_TV_MAJOR + '.'
+          });
+        }
       }
     });
   });

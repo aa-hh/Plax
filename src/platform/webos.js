@@ -6,6 +6,7 @@
 import { loadDeviceDisplay, applyGraphicsViewport } from './deviceDisplay.js';
 import { initMotionCursor } from './motionCursor.js';
 import { getWebOSVersion, isSimulatorRuntime } from './webosRuntime.js';
+import { fetchSdkVersion, parseWebOSVersionMajor } from './webosSdkVersion.js';
 import { setPlexDeviceInfo, logPlexClientIdentityOnce } from '../plex/clientIdentity.js';
 import { setState } from '../core/store.js';
 import {
@@ -30,30 +31,6 @@ function normalizeDeviceInfoForStore(info, sdkVersion) {
     hdr10: !!info.hdr10,
     dolbyVision: !!info.dolbyVision
   };
-}
-
-function parseWebOSVersionMajor(versionString) {
-  if (!versionString) return 0;
-  var major = parseInt(String(versionString), 10);
-  return !isNaN(major) && major > 0 ? major : 0;
-}
-
-/**
- * Fetch sdkVersion via the luna TV system property service.
- * sdkVersion is the authoritative webOS version string (e.g. "4.4.3-22").
- * Calls onSuccess(sdkVersion) or onFailure() if unavailable.
- */
-function fetchSdkVersion(onSuccess, onFailure) {
-  if (typeof webOS === 'undefined' || !webOS.service || !webOS.service.request) {
-    onFailure();
-    return;
-  }
-  webOS.service.request('luna://com.webos.service.tv.systemproperty', {
-    method: 'getSystemInfo',
-    parameters: { keys: ['sdkVersion'] },
-    onSuccess: function (res) { onSuccess(res.sdkVersion || ''); },
-    onFailure: function () { onFailure(); }
-  });
 }
 
 function getDeviceInfo(callback) {
