@@ -172,6 +172,36 @@
   --drawer-player-bottom: 280px;
   --drawer-dialog-h: 200px;     /* kit Modal drawer action dialog (Top/Bottom) */
   --drawer-actions-w: 268px;    /* kit dialog Actions column */
+  /* Navigation drawer — kit Navigation drawer 563:4331 / Nav item 9:161. Geometry
+     is the redline dp taken literally 1:1 as px (expanded rail max 280, collapsed
+     max 80, item 48, icon 24, gap 12, band 80) — NOT doubled. An earlier pass here
+     doubled everything, reasoning the kit's "Usage" frames are drawn on a 960×540
+     "TV Frame" (half 1920×1080) — plausible-looking, but WRONG: checked against
+     real shipping code (android/tv-samples JetStreamCompose `DashboardTopBar.kt` +
+     `Type.kt`), Google's own polished sample uses a 32dp tab height and a 14sp
+     label for its persistent nav chrome — smaller than even the undoubled kit
+     defaults, and nowhere near double. Android's dp/sp units are already
+     calibrated for 10-foot viewing by the OS; a Figma frame drawn at a smaller
+     canvas for workspace convenience is not an instruction to double values in
+     code. The ×2 pass shipped and was confirmed "far too large." Reverted.
+     Icon uses the shared `--icon-md` (24px, same token as hub-icon/player-menu/
+     etc. elsewhere) rather than a nav-only token — no evidence supports the nav
+     icon being different from every other icon slot in the app. Label is the one
+     value the redline doesn't cover at all (no type spec) — kept at --font-body
+     (24px), this app's own already-shipped Button/Chip 10-foot scale, since
+     JetStream's 14sp scales down to roughly this ballpark once density is
+     accounted for, and it's what the user directly asked for earlier
+     ("why aren't we using ... 24 labels"). */
+  --nav-rail-w: 96px;             /* collapsed — widened from the kit's 80dp (2026-07-04) so a
+     72px circular pill (= --nav-item-h) fits with the SAME 12px host padding used when
+     expanded (96 = 12 + 72 + 12) — this keeps the icon at a constant x position in both
+     states instead of shrinking host padding to fit the circle, which shifted the icon left. */
+  --nav-rail-w-expanded: 280px;   /* expanded — 280dp kit max, literal */
+  --nav-item-h: 72px;             /* test: 72px item height for 10-foot scale */
+  --nav-band-h: 80px;             /* header + footer band — 80dp kit, literal */
+  --nav-icon-md-nav: 36px;        /* test: 36px nav icons */
+  --nav-selected-bg: rgba(0, 74, 119, 0.4); /* secondaryContainer.copy(alpha=.4f) — selected indicator */
+  --font-nav-label: 24px;         /* nav label — 24px for legibility */
   --provider-card-w: 420px;
   --provider-card-media-h: 200px;
   --server-card-w: 240px;        /* server-picker square card (logo tile + caption) */
@@ -684,13 +714,51 @@ html.caps-motion .detail-watchlist-btn:focus {
   /* pull out of the padded content box into the left safe-area gutter */
   left: calc(-1 * var(--safe-x));
   z-index: 5;
-  /* Solid backing under the icons/labels (rail overlays the bled hero), fading
-     only at the very right edge so it blends into the content. */
-  background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
+  /* Collapsed: OPAQUE backing, hard edge, no fade — feed content scrolling
+     under the rail simply disappears behind it (no scrim in collapsed state). */
+  background: var(--bg-base);
   /* Eased slide is cheap here: the rail is an absolute OVERLAY, so growing its
      width reflows only its own ~8 items, never the feed. (In-flow screens snap
      instantly — see the base rule.) */
   transition: width 180ms var(--ease-standard);
+}
+
+/* Expanded-drawer SCRIM (kit modal-drawer anatomy: drawer + Scrim over content,
+   node 8689:45284). position:fixed escapes the host's overflow:hidden clip
+   (the host has NO transform/filter — adding one would re-capture the fixed
+   pseudo and break this). Constant geometry, opacity-only toggle: invisible +
+   pointer-events:none when collapsed (no scrim in the collapsed state — the
+   rail's opaque background alone hides scrolling content), fading in over the
+   content when the drawer expands. z-index:-1 keeps it under the rail's own
+   surface inside the host's stacking context while still painting above the
+   page content. */
+.screen-home .browsing-hub-nav-host::before,
+.library-screen .browsing-hub-nav-host::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50vw;
+  background: linear-gradient(to right,
+    var(--bg-base) 0%,
+    var(--bg-base) 30%,
+    rgba(19, 19, 20, 0.72) 55%,
+    rgba(19, 19, 20, 0) 100%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+.screen-home .browsing-hub-nav-host--peek::before,
+.screen-home .browsing-hub-nav-host--expanded::before,
+.library-screen .browsing-hub-nav-host--peek::before,
+.library-screen .browsing-hub-nav-host--expanded::before {
+  opacity: 1;
+}
+/* Fade is motion-gated; engines without caps-motion just snap the opacity. */
+html.caps-motion .screen-home .browsing-hub-nav-host::before,
+html.caps-motion .library-screen .browsing-hub-nav-host::before {
+  transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .screen-home .home-main {
   margin-left: 0;
@@ -780,13 +848,14 @@ html.caps-motion .detail-watchlist-btn:focus {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  width: 80px;                 /* kit collapsed rail width */
-  /* kit drawer px-12. Collapsed: 80 − 24 = 56 = item(16 + 24 icon + 16). The
-     focus pill is the inverse-fill background (no ring), so overflow:hidden is
-     safe and the expanding width *reveals* the labels (no display pop). */
-  padding: var(--space-3);
+  width: var(--nav-rail-w);
+  /* Kit drawer padding is 12px each side (563:4331 px-[12px]); with that inset the
+     focus pill fits inside the rail, so overflow:hidden is safe and the expanding
+     width reveals the labels (no sliver). */
+  padding: var(--space-3) var(--space-3);
   overflow: hidden;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  /* No divider: the rail separates from content by its opaque backing when
+     collapsed and by the scrim when expanded (overlay screens), not a border. */
   /* No width transition by DEFAULT: on the in-flow screens (search, settings,
      detail, watchlist) the rail's sibling is the main content, so animating
      `width` reflows that whole (often heavy) subtree every frame for 180ms —
@@ -803,7 +872,7 @@ html.caps-motion .detail-watchlist-btn:focus {
    which previously killed both the expand and the label-hide rules on the B8. */
 .browsing-hub-nav-host--peek,
 .browsing-hub-nav-host--expanded {
-  width: 280px;                /* kit expanded drawer width */
+  width: var(--nav-rail-w-expanded);
 }
 
 /* Hide labels and section headings when collapsed. */
@@ -812,56 +881,39 @@ html.caps-motion .detail-watchlist-btn:focus {
   display: none;
 }
 
+/* Collapsed rail circle (2026-07-04, take 2): host padding stays the SAME
+   12px in every state (no override here) — a previous pass shrank it to 4px
+   to make room for the circle, which shifted the icon ~8px left on collapse
+   and caused a visible jump. Instead --nav-rail-w was widened to 96px so the
+   host's content box (96 − 2×12 = 72) already equals --nav-item-h; the item
+   is width:100% of that box, so its pill (background covers the full item
+   box regardless of the item's own internal padding) is a 72×72 circle for
+   free, and the icon's x position only moves ~2px between collapsed/expanded
+   (imperceptible) instead of jumping. */
 .browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
   padding-left: 14px;
   padding-right: 14px;
   justify-content: center;
 }
 
-/* Collapsed-but-labelled active section (E): when the rail is collapsed and not
-   peeking, the active item (aria-current="page") stacks its icon over a compact
-   accent label so the current section stays legible from a cold landing. The
-   72px width holds it; other items remain icon-only. */
-.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] {
-  flex-direction: column;
-  justify-content: center;
-  padding-top: var(--space-2);
-  padding-bottom: var(--space-2);
-}
-
-.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] .browsing-hub-item__label {
-  display: block;
-  flex: none;
-  width: 100%;
-  margin-left: 0;
-  margin-top: var(--space-1);
-  text-align: center;
-  font-size: var(--font-card-meta);
-  font-weight: 600;
-  color: var(--accent);
-}
-
-/* Stacked active item: drop the horizontal icon->label gap. */
-.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] .browsing-hub-item__icon + .browsing-hub-item__label {
-  margin-left: 0;
+/* Drawer-focused brighten (kit: contentColor = drawerHasFocus ? onSurface :
+   onSurfaceVariant). Entering the rail (--expanded) lifts every resting item from
+   on-surface-variant to on-surface; the focused/selected items override below. */
+.browsing-hub-nav-host--peek .browsing-hub-item,
+.browsing-hub-nav-host--expanded .browsing-hub-item {
+  color: var(--gt-text);
 }
 
 .browsing-hub-nav-host > * + * {
   margin-top: var(--space-5);
 }
 
-/* kit nav is one continuous list — no section dividers/titles. The System
-   section is still pinned to the bottom (margin-top:auto below) as the kit
-   Footer, so it reads as a footer without a rule line. */
-.browsing-hub-section--search,
-.browsing-hub-section--system {
-  margin-top: var(--space-2);
-}
-
-/* kit Footer Nav Item is taller than the body items (h-56 vs h-48). */
-.browsing-hub-section--system .browsing-hub-item {
-  min-height: 56px;
-}
+/* Kit drawer 563:4331 has no dividers/headings — the footer-pinned Settings and
+   the inter-section gap carry the grouping. (Guideline: use dividers sparingly.)
+   A parallel main-branch pass gave the Footer item a taller h-56 vs the body's
+   h-48 (kit's own distinction) — dropped here in favor of the single, uniform
+   --nav-item-h (72px) the user validated live across several rounds; revisit
+   if a footer-height distinction is wanted again, scaled off 72 not 48. */
 
 .browsing-hub-section__title {
   display: none;
@@ -896,37 +948,44 @@ html.caps-motion .detail-watchlist-btn:focus {
   width: 100%;
 }
 
+/* Kit nav-items column gap (563:4331 gap-[12px], literal). */
 .browsing-hub-nav > * + * {
-  margin-top: 2px;
+  margin-top: 12px;
 }
 
+/* Kit Nav item (9:161): pill, height/gap/icon the redline dp literal (see the
+   geometry note above `--nav-rail-w`). Label is the one deliberate exception
+   (--font-body, not kit-derived — see the token comment). Default content =
+   on-surface-variant; brightens to on-surface when the drawer is focused
+   (.--expanded rule above). */
 .browsing-hub-item {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 48px;            /* kit Nav item h-48 (exact-reset: drop the 52px floor) */
+  min-height: var(--nav-item-h);
   text-align: left;
-  padding: 0 16px;             /* kit px-16; the 48px height fixes the box, content centers */
-  margin-bottom: 2px;
-  border-radius: var(--gt-radius-button);   /* pill — identical to kit radius-24 at h-48 */
+  padding: 0 16px;
+  border-radius: var(--gt-radius-button);
   background: transparent;
   color: var(--gt-text-2);     /* on-surface-variant — idle label */
   border: none;
-  font-size: var(--gt-body);
-  font-weight: var(--gt-weight-medium);     /* kit: every nav label is Roboto Medium */
+  font-size: var(--font-nav-label);
+  font-weight: var(--gt-weight-medium);
+  line-height: 1.3;
+  letter-spacing: var(--gt-ls-title);
 }
 
 .browsing-hub-item__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--icon-md);
-  height: var(--icon-md);
+  width: var(--nav-icon-md-nav);
+  height: var(--nav-icon-md-nav);
   flex-shrink: 0;
 }
 
 .browsing-hub-item__icon + .browsing-hub-item__label {
-  margin-left: var(--space-3);
+  margin-left: 18px;
 }
 
 .browsing-hub-item__label {
@@ -937,36 +996,51 @@ html.caps-motion .detail-watchlist-btn:focus {
   white-space: nowrap;
 }
 
+/* Icon follows the item's per-state content color (kit: icon + label share the
+   content color). currentColor inherits Default/Selected/Focused alike. */
 .browsing-hub-item .hub-icon {
-  width: var(--icon-md);
-  height: var(--icon-md);
-  color: var(--gt-text-2);     /* on-surface-variant — idle icon (matches label) */
+  width: var(--nav-icon-md-nav);
+  height: var(--nav-icon-md-nav);
+  color: currentColor;
 }
 
-/* Selected = current destination, unfocused (kit secondary-container pill +
-   on-secondary-container content + filled glyph). */
+/* Selected = secondaryContainer @40% pill + on-secondary-container (kit Selected). */
 .browsing-hub-item.active {
   color: var(--gt-on-secondary-container);
-  background: var(--gt-secondary-container);
-  font-weight: var(--gt-weight-medium);
+  background: var(--nav-selected-bg);
 }
 
-.browsing-hub-item.active .hub-icon {
-  color: var(--gt-on-secondary-container);
-}
-
-/* Focused = kit inverse-surface pill + inverse-on-surface content (the shared
-   control INVERSION used by the button/chip family). No box-shadow ring — the
-   white pill on the dark rail is the cue, and color-only is Chrome53-cheap.
-   Focus WINS over selected (kit shows Home selected+focused as the white pill):
-   equal specificity to `.active`, later in source order. */
+/* Focused = inverse-surface pill + inverse-on-surface (kit Focussed) — the shared
+   control inversion (Button/Chip/Menu). Controls invert; only posters get the ring. */
 .browsing-hub-item:focus {
   background: var(--focus-fill);
   color: var(--focus-on-fill);
 }
 
-.browsing-hub-item:focus .hub-icon {
+/* Focused + selected → focus wins (explicit; mirrors the Chip --active:focus fix so
+   the selected fill can't beat :focus at equal specificity on Chrome 53). */
+.browsing-hub-item.active:focus {
+  background: var(--focus-fill);
   color: var(--focus-on-fill);
+}
+
+/* Motion (html.caps-motion = webOS 4+ incl. B8; app.js applyMotionCapabilityClass).
+   Pills are paint cues → instant + crisp on every engine; here we only soften the
+   paint swap and slide the label in on expand. Transform/opacity-only, so it stays
+   smooth on Chromium 53 and runs at higher FPS on more capable hardware. Text is
+   never GPU-scaled (Chrome 53 blurs stretched text — same rule as text Buttons). */
+html.caps-motion .browsing-hub-item {
+  transition: background-color var(--focus-motion-dur) ease, color var(--focus-motion-dur) ease;
+}
+
+@keyframes navLabelIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+html.caps-motion .browsing-hub-nav-host--peek .browsing-hub-item__label,
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
+  animation: navLabelIn 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .watchlist-row-link {
@@ -1333,7 +1407,9 @@ html.caps-motion .detail-watchlist-btn:focus {
   bottom: 0;
   left: calc(-1 * var(--safe-x));
   z-index: 5;
-  background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
+  /* Collapsed: opaque hard-edged backing (grid hides behind it) — see the Home
+     overlay rule; the expanded scrim below carries the fade instead. */
+  background: var(--bg-base);
   /* Overlay rail: eased width slide is free (reflows only the rail subtree). */
   transition: width 180ms var(--ease-standard);
 }
@@ -1664,14 +1740,30 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 /* Plax logo at the top of the nav drawer. Full "plax" wordmark when the rail
    has room (peek/expanded); compact "x" mark when collapsed icon-only. Letters
    inherit `color` (white on this dark surface); the x keeps its brand gradient. */
+/* Header region (kit drawer 563:4331 "Header", py-12). We keep the plax brand here
+   instead of the kit's account switcher (ratified). Collapses to the compact mark. */
 .browsing-hub-brand {
   display: flex;
   align-items: center;
-  min-height: var(--target-min);
-  padding: var(--space-2) 16px;
+  /* FIXED band height (not min-height) + no vertical padding: flex centering
+     does the vertical work, and the band can never grow when the lockup swaps
+     mark↔wordmark — the header stays exactly --nav-band-h in both states so
+     the nav items below never shift. */
+  height: var(--nav-band-h);
+  padding: 0 16px;
   margin-bottom: var(--space-4);
   color: var(--gt-text);
 }
+/* Brand lockup — the collapsed "x" mark and the expanded "plax" wordmark must
+   read as the SAME logo at the SAME size and vertical position, so switching
+   states never makes it jump or resize. The mark's viewBox is the x alone
+   (284 units tall → x fills the whole 40px box); the wordmark's viewBox
+   (466 units) includes the letters' ascender/descender, with the x glyph
+   spanning only 275/466 ≈ 59% of it. At equal 40px heights the wordmark's x
+   shrank to ~24px. Fix: wordmark svg height = 40 / (275/466) ≈ 68px, so its
+   x renders at the mark's exact 40px; both lockups are vertically centered in
+   the same fixed 80px --nav-band-h band, so the x also keeps the same vertical
+   position (its center sits within ~1px of the wordmark's own center). */
 .browsing-hub-brand__mark {
   flex-shrink: 0;
   width: 40px;
@@ -1680,7 +1772,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .browsing-hub-brand__mark svg { display: block; width: 100%; height: 100%; }
 /* Full wordmark hidden until the rail expands (mirrors nav-item label reveal) */
 .browsing-hub-brand__wordmark { display: none; margin-left: 2px; }
-.browsing-hub-brand__wordmark svg { display: block; width: auto; height: 40px; }
+.browsing-hub-brand__wordmark svg { display: block; width: auto; height: 68px; }
 .browsing-hub-nav-host--peek .browsing-hub-brand__wordmark,
 .browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark { display: block; }
 .browsing-hub-nav-host--peek .browsing-hub-brand__mark,
@@ -1691,9 +1783,14 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   padding-left: 14px;
   padding-right: 14px;
 }
-/* Pin the System (settings) section to the bottom of the drawer */
+/* Pin the System (settings) section to the bottom of the drawer, as an 80dp band
+   (kit redline) — the item is centered inside, not stretched to fill it. */
 .browsing-hub-nav-host > .browsing-hub-section--system {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--nav-band-h);
 }
 /* Card focus = Google-style lift via composited scale + the cheap hard ring.
    No large-blur glow — it repaints badly on the B8 and isn't needed for the cue. */

@@ -218,8 +218,8 @@ function mountBrowsingHubNav(host, options) {
   }
 
   host.innerHTML = '';
-  // --label-active: opt-in hook so DesignSystem can keep the ACTIVE section's
-  // label legible even while the rail is collapsed (the rest stay icon-only).
+  // Collapsed-rail current-section cue is the kit's selected pill behind the icon
+  // (.active → secondary-container @40%, app.css); no separate collapsed-label hook.
   host.className = 'browsing-hub-nav-host';
   host.setAttribute('role', 'navigation');
   host.setAttribute('aria-label', 'Browse');
@@ -245,10 +245,23 @@ function mountBrowsingHubNav(host, options) {
   // is Chromium 53, so the rail never expanded there — focusin/out works on 53.
   function syncExpanded() {
     var inside = document.activeElement && host.contains(document.activeElement);
+    // Cold-landing guard: the home screen parks initial focus on the rail
+    // before the feed exists (data-initial-focus="1") and displaces it to the
+    // first card once content arrives. Expanding for that transient parking
+    // spot made the rail flash open→closed on every load, so stay collapsed
+    // for the programmatic landing; the keydown below (a REAL user interaction
+    // inside the rail) clears the flag and re-syncs.
+    if (inside && host.getAttribute('data-initial-focus') === '1') return;
     host.classList.toggle('browsing-hub-nav-host--expanded', !!inside);
   }
   host.addEventListener('focusin', syncExpanded);
   host.addEventListener('focusout', function () { setTimeout(syncExpanded, 0); });
+  host.addEventListener('keydown', function () {
+    if (host.getAttribute('data-initial-focus') === '1') {
+      host.removeAttribute('data-initial-focus');
+      syncExpanded();
+    }
+  });
 
   function onItemSelect(item) {
     handleHubNavSelect(item, options.navigate, {
