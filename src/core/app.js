@@ -35,6 +35,8 @@ import { providerPickerScreen } from '../ui/screens/providerPickerScreen.js';
 import { jellyfinLoginScreen } from '../ui/screens/jellyfinLoginScreen.js';
 import { jellyfinUserPickerScreen } from '../ui/screens/jellyfinUserPickerScreen.js';
 import { serverPickerScreen } from '../ui/screens/serverPickerScreen.js';
+import { appearanceScreen } from '../ui/screens/appearanceScreen.js';
+import { loadAppearancePrefs, applyAppearance, getAppearancePrefs } from '../settings/appearancePrefs.js';
 
 /**
  * One-shot boot diagnostic settling the webOS engine question: dumps the UA,
@@ -96,6 +98,7 @@ function startApp(platformMajor) {
   register('detail', detailScreen);
   register('player', playerScreen);
   register('settings', settingsScreen);
+  register('appearance', appearanceScreen);
   register('search', searchScreen);
   register('watchlist', watchlistScreen);
   register('design-review', designReviewScreen);
@@ -272,10 +275,45 @@ function strictWebosMajor(device) {
  */
 function applyMotionCapabilityClass(device, reason) {
   var osMajor = strictWebosMajor(device);
+  // Baseline tier (caps-motion): the whole supported range incl. the B8 — focus
+  // scale/glide, sheet/drawer slide-ins, staggered reveal, cross-screen fade.
   var motionCapable = reason === 'dev-browser' || osMajor >= 4 || osMajor === 0;
-  document.documentElement.classList.toggle('caps-motion', motionCapable);
-  tvLog('boot', 'motion-capability', { osMajor: osMajor, reason: reason || null, capsMotion: motionCapable });
+  // Rich tier (caps-motion-rich): higher-headroom engines only — webOS 5+, the
+  // desktop simulator (osMajor 0), and the dev browser. Adds depth flourishes
+  // too costly for the B8 (focus parallax / lift-shadow, longer reveal chains).
+  // It is a SUPERSET of caps-motion (every rich engine also clears the baseline),
+  // so the B8 silently runs the safe subset. See component-registry.md → Motion.
+  var motionRich = reason === 'dev-browser' || osMajor >= 5 || osMajor === 0;
+  var root = document.documentElement;
+  root.classList.toggle('caps-motion', motionCapable);
+  root.classList.toggle('caps-motion-rich', motionRich);
+  tvLog('boot', 'motion-capability', {
+    osMajor: osMajor, reason: reason || null,
+    capsMotion: motionCapable, capsMotionRich: motionRich
+  });
 }
+
+/*
+ * MTB theme preview (reversible). Re-points the app's color tokens to the
+ * Material Theme Builder dark export via the `html.theme-mtb` block in
+ * app.css. Flip at runtime with plaxTheme(true|false); persists in
+ * localStorage so a packaged build can be pre-set to preview on the TV.
+ */
+// Appearance prefs: load persisted theme + per-element overrides into state and
+// apply them to documentElement (data-theme + --role-* indirection vars) before
+// first paint. Supersedes the old plax_theme_mtb localStorage preview path.
+try {
+  loadAppearancePrefs();
+  applyAppearance(getAppearancePrefs());
+} catch (e) { /* prefs/storage unavailable — fall through to default look */ }
+
+// Back-compat shim: keep the old MTB preview toggle working (some console flows
+// / docs reference it). Independent of the appearance system above.
+window.plaxTheme = function (on) {
+  try { localStorage.setItem('plax_theme_mtb', on ? '1' : '0'); } catch (e) { /* ignore */ }
+  document.documentElement.classList.toggle('theme-mtb', !!on);
+  return !!on;
+};
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot);

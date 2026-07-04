@@ -61,12 +61,11 @@ function refreshHubNavIcons(host, activeHubId) {
     // collapsed-rail "keep the active label legible" CSS a stable hook.
     if (isActive) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
-    // Only the watchlist glyph changes SHAPE with active state (outline ↔
-    // filled bookmark); every other icon is identical regardless of selection,
-    // so re-parsing its SVG on each navigation is pure waste. Rewrite innerHTML
-    // only for watchlist, and only when its filled-state actually flipped.
+    // Material nav pattern: every glyph is OUTLINED when idle and FILLED when
+    // the section is active. Re-parse the SVG only when the filled-state
+    // actually flips (i.e. the two buttons whose selection changed), not on
+    // every nav item — so this stays as cheap as the old watchlist-only path.
     var kind = btn.dataset.iconKind || 'home';
-    if (kind !== 'watchlist') return;
     var wantFilled = isActive ? '1' : '0';
     if (btn.dataset.iconFilled === wantFilled) return;
     var iconWrap = btn.querySelector('.browsing-hub-item__icon');
@@ -126,10 +125,11 @@ function appendHubButtons(navEl, items, activeId, onSelect) {
       btn.setAttribute('aria-current', 'page');
     }
 
-    var filledBookmark = item.iconKind === 'watchlist' && item.id === activeId;
-    if (item.iconKind === 'watchlist') btn.dataset.iconFilled = filledBookmark ? '1' : '0';
+    // Active section renders the FILLED glyph; idle sections render OUTLINED.
+    var filled = item.id === activeId;
+    btn.dataset.iconFilled = filled ? '1' : '0';
     btn.innerHTML =
-      '<span class="browsing-hub-item__icon">' + iconSvgForKind(item.iconKind, filledBookmark) + '</span>' +
+      '<span class="browsing-hub-item__icon">' + iconSvgForKind(item.iconKind, filled) + '</span>' +
       '<span class="browsing-hub-item__label">' + escapeLabel(item.label) + '</span>';
 
     btn.addEventListener('click', function () {

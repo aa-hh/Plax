@@ -478,6 +478,16 @@ function settingsScreen(root, params, navigate) {
     renderWatchlistsSettings(wlCard.body, activeUser, navigate);
   }
 
+  // ── Appearance ──
+  var appearanceCard = createSettingsCard({ title: 'Appearance' });
+  appearanceCard.body.appendChild(createSettingsActionRow({
+    label: 'Theme & appearance',
+    sublabel: 'Theme presets and per-element color overrides.',
+    hint: 'Open',
+    onSelect: function () { navigate('appearance', { _from: 'settings' }); }
+  }));
+  content.appendChild(appearanceCard);
+
   // ── Playback ──
   var playbackCard = createSettingsCard({ title: 'Playback' });
   content.appendChild(playbackCard);

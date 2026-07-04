@@ -184,6 +184,76 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ---
 
+## Foundations
+
+### Iconography  ✅ Material Symbols Rounded (2026-06-30)
+
+- **Status:** ✅ · 2026-06-30 — migrated off the mixed Radix / Android-TV-Kit / one-off set.
+- **Source:** **Material Symbols (Google), "Rounded" style, weight 400** — the official Google design icon library ([m3.material.io/styles/icons](https://m3.material.io/styles/icons), [fonts.google.com/icons](https://fonts.google.com/icons)), OFL. This is the single sanctioned icon source going forward; do NOT reintroduce Radix or bespoke glyphs.
+- **Delivery:** path data is **inlined** as SVG (`src/ui/icons/navIcons.js`), NOT the Material Symbols icon font — so there is no CDN/font runtime dependency and every glyph renders on Chromium 53 / webOS 4 over `file://`. Single-colour (`fill: currentColor`) → inherits the host's colour/focus state. Sized via CSS (`--icon-md` 24px on nav/hub, `1em` on inline badges); never hard-code width on the SVG.
+- **ViewBox:** kept verbatim at the library's `0 -960 960 960` baseline-anchored grid. **No `fill-rule`** — Material Symbols rely on default nonzero winding (evenodd breaks counters on several glyphs).
+- **Outlined ↔ Filled pattern:** nav/section glyphs are **outlined when idle, filled when active/selected** (standard Material navigation). `iconSvgForKind(kind, filled)` returns the matching variant; the sidebar flips it on selection via `refreshHubNavIcons` (see Nav item). Glyphs shipped as outline+fill pairs: home, bookmark (watchlist), tv (show), movie (films), settings, video_library. Single-variant glyphs: search, tune (Quality), more_horiz (More), star-fill (rating).
+- **To add an icon:** grab the Rounded SVG (e.g. `@material-symbols/svg-400/rounded/<name>.svg`, fill variant `<name>-fill.svg`), inline the `d` as a `P_*` constant + a `*IconSvg()` wrapper. Keep the 960 viewBox and no fill-rule.
+
+### Typography  ✅ Elms Sans (2026-06-30)
+
+- **Status:** ✅ · 2026-06-30 — resolved the long-standing "Roboto delivery TBD" token note.
+- **Typeface:** **Elms Sans** — utilitarian geometric sans (Gida Type Studio / Amarachi Nwauwa), OFL. Token `--gt-font` (`src/styles/app.css`), TV-scaled across the Material 3 type roles. Fallback ladder `'Roboto', 'Noto Sans', system-ui, …` retained so text still renders if a weight file fails.
+- **Delivery:** **self-hosted STATIC weights** via `@font-face` (top of `app.css`) — 400/500/600/700 woff2 in `assets/fonts/` (→ `dist/assets/fonts/` via rollup-copy; `url()` is relative to `dist/app.css`). **Chromium 53 has no variable-font support**, so we ship discrete files, NOT the `wght[ ]` variable face. woff2 is supported on Chrome 36+. `font-display: swap` is a harmless no-op on 53. License: `assets/fonts/OFL.txt`.
+- **CSP:** already covered by `font-src 'self' file: data:` in `index.html` — no change needed.
+- **Weights used:** Regular 400 (body/display/headline roles), Medium 500 (title/label roles, `--gt-weight-medium`), SemiBold 600 (card titles), Bold 700.
+
+### Motion  ✅ Material 3 motion system (2026-06-30)
+
+- **Status:** ✅ tokens + tiers · 2026-06-30 — M3 easing/duration tokens landed in `src/styles/app.css` `:root`; legacy M2 curve `cubic-bezier(0.4,0,0.2,1)` + bare `ease` deprecated and migrated. **Build status of individual effects:** focus scale/glide, sheet/drawer slide-ins, **staggered screen-enter reveal (home-feed rows), cross-screen fade-through, `caps-motion-rich` tier (focus lift + elevation shadow on webOS 5+)** ✅ shipped 2026-06-30 · detail `•••` spring menu ⏸️ **deferred** — the current More flow uses the `openSidePanel` drawer (now M3 emphasized-decelerate); the anchored spring popover is a separable, hardware-validated follow-up (bespoke focus management, B8 risk).
+- **Source:** [Material 3 Motion](https://m3.material.io/styles/motion) easing + duration specs, reconciled to the Chrome 53 / webOS 4 floor. M3's true "emphasized" curve is a two-part spline delivered via CSS `linear()` (Chrome 113+); on our floor it is approximated with the closest single `cubic-bezier`. cubic-bezier + custom props predate Chrome 53 → no `/* chrome53-ok */` marker needed.
+- **THE RULE (non-negotiable):** animate **`transform` + `opacity` only** — the compositor-only properties. Never animate layout (width/height/margin/top/left) or paint (box-shadow/background/filter-blur) per frame. This is what holds 60fps on the B8. (History: [[caps-motion-gate-bug]] — a firmware misread once over-animated with big-blur shadows.)
+- **Timing discipline:** enter **decelerates**, exit **accelerates**, and **exit is shorter than enter**. Cap at `--dur-medium2` (300ms) — at 10-foot distance M3's 450–600ms "long" durations feel sluggish.
+- **No JS/rAF spring integrators on the baseline tier** — per-frame style writes contend with the `focus.js` scroll glide → dropped frames. "Spring feel" = the `--ease-spring` overshoot bezier + `transition-delay` stagger, transform/opacity only.
+
+**Easing tokens** (`:root`):
+
+| token | value | use |
+| --- | --- | --- |
+| `--ease-standard` | `cubic-bezier(0.2,0,0,1)` | default in/out |
+| `--ease-standard-decelerate` | `cubic-bezier(0,0,0,1)` | enter (incoming element) |
+| `--ease-standard-accelerate` | `cubic-bezier(0.3,0,1,1)` | exit (outgoing element) |
+| `--ease-emphasized` | `cubic-bezier(0.2,0,0,1)` | hero/expressive (single-bezier stand-in for the M3 spline) |
+| `--ease-emphasized-decelerate` | `cubic-bezier(0.05,0.7,0.1,1)` | emphasized enter (sheets/drawers) |
+| `--ease-emphasized-accelerate` | `cubic-bezier(0.3,0,0.8,0.15)` | emphasized exit |
+| `--ease-spring` | `cubic-bezier(0.2,0,0,1.2)` | baked overshoot for discrete pops (detail `•••` menu) — NEVER a JS spring on B8 |
+
+**Duration tokens** (`:root`):
+
+| token | value | use |
+| --- | --- | --- |
+| `--dur-short2` | 100ms | micro (focus ring/scale, mirrors `--focus-motion-dur` 0.1s) |
+| `--dur-short3` | 150ms | small fades (scrim), cross-screen fade leg, nav-glide `NAV_SCROLL_MS` |
+| `--dur-short4` | 200ms | overlay/transport in |
+| `--dur-medium1` | 250ms | sheets/drawers enter (emphasized-decelerate) |
+| `--dur-medium2` | 300ms | hard cap; staggered-reveal total budget |
+
+**Capability tiers** (`app.js` `applyMotionCapabilityClass`, classes on `<html>`):
+
+| tier | engines | what runs |
+| --- | --- | --- |
+| `html.caps-motion` (baseline) | webOS 4+ incl. B8, sim, dev | focus scale/glide, sheet/drawer slide-ins, staggered screen-enter reveal, cross-screen fade-through, detail `•••` spring menu — all transform/opacity only |
+| `html.caps-motion-rich` | webOS 5+ / fast Chromium | adds depth flourishes too costly on Chrome 53: focus **parallax / lift-shadow** on hero & featured cards, longer reveal chains. The B8 silently skips these (it only ever has `.caps-motion`). |
+
+**Pattern → timing map:**
+
+| pattern | enter | exit | easing |
+| --- | --- | --- | --- |
+| focus scale/ring | 100ms | — | standard |
+| nav-scroll glide | 150ms rAF ease-out-cubic | — | (JS, `focus.js`) |
+| overlay / transport | 200ms | 150ms | standard / decelerate-in |
+| sheet / side drawer | 250ms (`--dur-medium1`) | instant | emphasized-decelerate |
+| staggered screen-enter | ≤40ms step, ≤300ms total | — | standard-decelerate |
+| cross-screen fade-through | 150ms out → 150ms in | — | standard |
+| detail `•••` spring menu | 200–250ms + stagger | short | spring (overshoot) |
+
+---
+
 ## Component specs
 
 ### Media card  (audited 2026-06-19)
@@ -214,8 +284,8 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 - **Anatomy (parts → slot), JetStream-mapped:**
   - hero: 2:3 poster (NOT JetStream's full-bleed backdrop — platform 2:3 rule) + info column; ultrablur backdrop stays as screen bg.
   - info: title → `detail-meta` dot row (year · runtime · contentRating · **rating badge**) → **genre pills** (≤4, `--radius-pill`) → summary → **credits row** (Director / Writer / Studio, label+value cols) → actions.
-  - **rating badge** (`.detail-rating-badge`, added 2026-06-22): `icon` + `score`. The score is always shown; when the rating comes from an official source we have a logo for, the logo is shown — otherwise a **Material Symbols "star" (filled)** icon from the Google design library stands in (`starIconSvg` in `src/ui/icons/navIcons.js`, 24×24 viewBox, inherits `--accent` via `currentColor`). No official-source logo assets are bundled yet, so the star renders for every source today; the source seam is `ratingSourceLabel`/`buildRatingHtml` in `detailScreen.js`. Sized `1em`, `4px` right margin (no flex `gap` — Chrome53). Used in movie/show/episode layouts.
-  - actions: Play (primary) + **icon buttons** Subtitles (Radix chat-bubble) & Quality (Radix mixer) that open `openSidePanel` drawers; label span shows current value. Then **`...` (More) icon button** (`btn-more-options` / `btn-more-actions`) that opens `openActionDialog` with context-aware options: **Mark as Watched** OR **Mark as Unwatched** (one, not both, based on `getWatchStatus`) + **Manage Watchlist…** (if `supportsWatchlistBookmark`). Inline watchlist button and secondary mark-watched/unwatched buttons **removed** (2026-06-26). The `...` icon is `moreOptionsIconSvg()` (three horizontal dots, `navIcons.js`).
+  - **rating badge** (`.detail-rating-badge`, added 2026-06-22): `icon` + `score`. The score is always shown; when the rating comes from an official source we have a logo for, the logo is shown — otherwise a **Material Symbols Rounded "star" (filled)** icon from the Google design library stands in (`starIconSvg` in `src/ui/icons/navIcons.js`, `0 -960 960 960` viewBox, inherits `--accent` via `currentColor`). No official-source logo assets are bundled yet, so the star renders for every source today; the source seam is `ratingSourceLabel`/`buildRatingHtml` in `detailScreen.js`. Sized `1em`, `4px` right margin (no flex `gap` — Chrome53). Used in movie/show/episode layouts.
+  - actions: Play (primary) + **icon buttons** Subtitles (Material Symbols `subtitles`) & Quality (Material Symbols `tune`) that open `openSidePanel` drawers; label span shows current value. Then **`...` (More) icon button** (`btn-more-options` / `btn-more-actions`) that opens `openActionDialog` with context-aware options: **Mark as Watched** OR **Mark as Unwatched** (one, not both, based on `getWatchStatus`) + **Manage Watchlist…** (if `supportsWatchlistBookmark`). Inline watchlist button and secondary mark-watched/unwatched buttons **removed** (2026-06-26). The `...` icon is `moreOptionsIconSvg()` (three horizontal dots, `navIcons.js`).
   - **Cast & Crew rail:** circular 104px avatars (JetStream uses 144dp portrait cards → swapped to circular 10-ft convention), name (2-line clamp) + character role; ≤12; display-only (actors not navigable), images via `bindPosterImage`.
   - episode: 16:9 still + series/title/meta/summary + credits + actions + Up Next + cast rail.
 - **Data:** `item.genres/directors/writers/roles/studio`; `writers` added to Plex (`src/plex/library.js`) + Jellyfin (`mapItem.js`) mappers. Cast thumb: full URL passthrough, else `getThumbUrl(server, thumb, 200)`.
@@ -326,22 +396,27 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 - **Platform deviations (ratified):** label **`--font-meta` 22px** kept (kit 14 → 10-foot up-scale, ratified Plax rule, do not shrink); blue `--accent`/secondary-container active tokens; border `@35%` (the reconciled Library-grid value) rather than literal kit `@20%`; focus motion via `html.caps-motion` only.
 - **Trailing-glyph note (2026-06-22):** the Library **Sort** chip (`.library-filter-chip--sort`) shows a down-chevron via a **CSS border-triangle `::after`** (`currentColor`, so it inverts on focus) — NOT a Unicode glyph. The webOS 4 system font does not include `▾` (U+25BE), which rendered as nothing on the B8. Use border-triangle or SVG for any chip/tab glyph; never a bare Unicode arrow.
 
-### Nav item (browsing-hub sidebar)  ✅ reconciled 2026-06-20
+### Nav item (browsing-hub sidebar)  ✅ reconciled to kit EXACTLY 2026-06-30
 
-- **Status:** ✅ to-spec · 2026-06-20 (reconciled to kit)
+- **Status:** ✅ to-spec · 2026-06-30 (re-pulled kit `563:4331` + variable defs; reconciled per the *exact-reset* directive — dropped the 52px floor and the accent-soft/ring states for the kit's own treatment)
 - **Android TV guideline:** [Navigation drawer](https://developer.android.com/design/ui/tv/guides/components/navigation-drawer)
 - **Figma source:** `TLtknC3rZXQqWe3uIivt94` / Nav item `9:161` (default `9:873`) · drawer `563:4331`
-- **Anatomy (canonical):** `container` (flex, **height 48**, `padding-x 16`, `gap 12`) + `content` (leading `icon` **24px**) + `label` (when `Expanded=True`) + `badge` (opt, top-right); states `Default|Focused|Selected` × `Expanded`
-- **Code (as-built):** `.browsing-hub-nav` / `.browsing-hub-item` (+ `__icon`) `src/styles/app.css:718+`
-- **Resolved spec / per-element:**
-  - icon box **24×24** = kit ✅ (was 40×40; reconciled 2026-06-20). Glyph `.hub-icon` also 24×24 (was 26) so it fills the kit box without overflow.
-  - `padding-x` **16px** = kit ✅ (`var(--space-3) 16px`).
-  - `gap` **12px** = kit ✅ (icon→label `margin-left: var(--space-3)`; was `--space-4`/16px).
-  - container `min-height: var(--target-min)` = **52px** — ratified deviation from kit 48. `--target-min` is the global 10-foot focus/hit floor used app-wide; kept ≥48 rather than pinned to 48 for d-pad target consistency. Container is `display:flex; align-items:center` so glyph/label center within the 52px row.
+- **Anatomy (canonical, from `563:4331`):** drawer = `flex-col justify-between`, collapsed **w-80** / expanded **w-280**, `px-12`; three groups — `Header` (kit Account Switch; **Plax substitutes the brand lockup** — ratified content deviation, no in-drawer account switch) / `Nav items` / `Footer`. Nav item = `container` (flex, **h-48**, `px-16`, `gap-12`, `radius-24` pill) + `content` (leading `icon` **24px** — Material Symbols Rounded, **outlined idle, filled when Selected**, see Iconography) + `label` (Roboto Medium 16/24 +0.15, when `Expanded`). Footer item (Settings) = **h-56**. States `Default|Focused|Selected` × `Expanded`.
+- **Code (as-built):** `.browsing-hub-nav` / `.browsing-hub-item` (+ `__icon`) `src/styles/app.css:913+`
+- **Resolved spec / per-element (2026-06-30):**
+  - **widths:** collapsed **80px**, expanded **280px** = kit ✅ (were 72 / 220). Host `padding: var(--space-3)` (12) → collapsed 80−24 = 56 = item(16 + 24 icon + 16).
+  - **height:** body item `min-height: 48px`, footer (System-section) item `min-height: 56px` = kit ✅. Dropped the `--target-min` 52px floor here per the exact-reset (48 is the kit value and the Android-TV target minimum).
+  - icon box **24×24**, `padding-x 16`, icon→label `gap 12` = kit ✅. Label `font-weight: --gt-weight-medium` on EVERY item (kit makes all nav labels Medium, not just active).
+  - **Idle:** transparent bg; label + glyph `var(--gt-text-2)` (on-surface-variant #C4C7C5).
+  - **Selected** (`.active` = current destination, unfocused): `var(--gt-secondary-container)` #004A77 pill + `var(--gt-on-secondary-container)` #C2E7FF label/glyph + filled glyph. (Was `--accent-soft` + `--accent`.)
+  - **Focused** (`:focus`): `var(--focus-fill)` #E3E3E3 inverse-surface pill + `var(--focus-on-fill)` #303030 label/glyph — the shared control INVERSION (button/chip family). **No box-shadow ring** (removed; the white pill is the cue, color-only = Chrome53-cheap, no costly motion). **Focus wins over Selected** (equal specificity, later source order) — matches the kit artboard (Home selected+focused = the white pill). The old `.active:focus .hub-icon{accent}` override was deleted.
+  - **No section dividers/titles** — kit nav is one continuous list (removed the `border-top` rule on search/system sections). System stays bottom-pinned (`margin-top:auto`) as the kit Footer.
   - expand/collapse via JS classes ✅ (Chrome53-correct, NO `:focus-within`).
-  - **width-expand animation (perf, 2026-06-27):** the eased `width 180ms` slide is applied ONLY on the overlay screens (`.screen-home` / `.library-screen`), where the absolute rail reflows just its own ~8 items. On the in-flow screens (search/settings/detail/watchlist) the rail snaps open with NO transition — animating `width` there reflowed the heavy main-content sibling every frame (the "laggy sidebar on entry" stutter). Visual: smooth slide on home/library, instant snap elsewhere; anatomy unchanged. `refreshHubNavIcons` now rewrites only the watchlist glyph SVG (the sole shape that changes with active state) and only on an actual flip, gated by `data-icon-filled`.
-- **Contract (unchanged):** nav order Home · Library · Search · Settings (Media / Search / System sections in `browsingHubNav.js`).
-- **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host`; CSS-only change, 600/600 tests pass.
+  - **width-expand animation (perf, 2026-06-27):** the eased `width 180ms` slide is applied ONLY on the overlay screens (`.screen-home` / `.library-screen`), where the absolute rail reflows just its own ~8 items. On the in-flow screens (search/settings/detail/watchlist) the rail snaps open with NO transition — animating `width` there reflowed the heavy main-content sibling every frame (the "laggy sidebar on entry" stutter). Visual: smooth slide on home/library, instant snap elsewhere; anatomy unchanged. `refreshHubNavIcons` rewrites a glyph's SVG only when its filled-state actually flips (gated by `data-icon-filled`) — now EVERY nav glyph swaps outlined↔filled on selection (Material nav pattern, 2026-06-30), but only the ≤2 buttons whose selection changed are re-parsed per navigation, so the cost is unchanged from the old watchlist-only path.
+- **Contract (unchanged):** nav order Home · Library · Search · Settings (Media / Search / System sections in `browsingHubNav.js`); the **System section is pinned to the bottom** (`margin-top:auto`) and the host stretches full viewport height on every screen.
+- **Focus entry (2026-06-30):** D-pad **Left that crosses from main content into the rail always lands on the TOP item (Home)**, not the geometrically-nearest item — implemented in `spatialMove` (`src/ui/focus.js`): when LEFT's best candidate is inside the sidenav and the source is content, it redirects to the first `.browsing-hub-item`. (Left *within* the rail has no candidate, so intra-rail nav is untouched. Initial screen-mount focus still uses the active item via `focusSidebarHub`.)
+- **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host`; CSS + focus-engine change, lint + CSS-compat (12/12) green.
+- **Open (kit deltas not yet taken — IA/content, not component styling):** kit nav order is Search-first with the items vertically *centered* (`justify-between` middle group); Plax keeps Home-first and top-aligns the nav group under the brand. Revisit if exact IA parity is wanted.
 
 ### Rail row
 
@@ -732,6 +807,28 @@ Built + launched in the webOS 26 simulator; full suite green except the pre-exis
 - **Platform notes:** switch has no transition (Chrome53-safe); no on-screen Back (remote-only); the destructive footer action has no confirm dialog (parity with prior behaviour — revisit if accidental triggers occur).
 - **Account / Profiles / Forget (current, grouped-card form):** Account card carries a **"Switch server"** `createSettingsActionRow` (→ `server-picker {_from:'settings'}`, non-destructive cross-provider jump) + the build-stamped App-version info row. The Profiles card's **"Switch profile"** action is provider-aware (`jellyfin-users` vs `profile-picker`) and the Plex Home roster only fetches for Plex. The footer card holds the destructive **"Forget server"** action row (`gt-settings-item--destructive`): removes **only the current saved link** (`removeSavedLink` keyed by `'plex:'+clientId` or `'jf:'+serverId`) + `clearActiveSession()`, then routes to `server-picker` if other links remain, else `provider-picker`. See [Server picker](#server-picker-cross-provider-saved-link-chooser).
 - **✅ Drift resolved 2026-06-26:** the 2026-06-23 code/registry drift (live screen was still the flat `.settings-row` layout) is **closed** — the grouped-card redesign was ported onto current `main` (`controls.js` `createSettings*` factories adapted to the current `openSidePanel` API; `.gt-settings-*` CSS with flex `gap`→margin for Chrome53; `networkSettings.js`/`playbackSettings.js` taken from the branch; screen rewritten as grouped cards preserving Switch/Forget server + Jellyfin awareness). Source branch `feat/settings-redesign` retired.
+
+### Appearance / Theme picker (Settings sub-screen)  ✅ rebuilt to-spec 2026-06-30
+
+- **Status:** ✅ rebuilt to-spec · 2026-06-30 — implemented as `src/ui/screens/appearanceScreen.js` (route `appearance`, registered in `app.js`; entered via Settings → Appearance card → "Theme & appearance" `createSettingsActionRow` → `navigate('appearance')`). **Rebuild note:** the prior 2026-06-30 build was a single inline-styled strip — labels overlapped the sample components, there was no editor column, and **no `.appearance-*` layout CSS existed** at all (everything rode inline styles + `--role-*` indirection vars). That was a defect; this entry now records the reconciled **fixed two-column** screen and supersedes it. **As-built design (vs the 📐 target below — they now agree):** a real `.appearance-*` CSS layout in `src/styles/app.css` (no inline-style fallback); a **left live-preview column** rebuilt PER screen from **real component classes** (`.btn`/`.btn-primary`, active chip, `.gt-switch--on`, progress fill, focus ring) with selectable `[data-slot]` target buttons, and a **right editor column** (Role picker + Tone ramp + contrast warning + Save). Screen tabs (Home/Detail/Player/Settings) swap the left mock. **As-built reconciliations:** (1) overrides are stored & read via `src/settings/appearancePrefs.js` (`getAppearancePrefs`/`setOverride`/`getOverrideContrast`) and applied through the `--palette-<role>-<tone>` ramp vars — NOT the old ad-hoc `--role-*` indirection vars (removed); (2) the unified **Theme** + **Contrast** segmented controls and the role picker use `.appearance-segmented__chip` / `.appearance-role` (purpose-built `.appearance-*` classes, not `.detail-setting-chip`) — active chip → native `disabled` (focus engine `isNavFocusable` skips it) plus a CSS `:disabled` dim rule that now exists; (3) the live colours still cascade through the real component rules already wired in app.css (`.btn-primary` L1039, chip-active L5346/5499, `.gt-switch--on` L5645, `--progress-fill-color` L23, `--border-focus` L34) because the mocks use those classes directly. Anatomy + zones otherwise match the target below.
+- **Android TV guideline:** [Settings](https://developer.android.com/design/ui/tv/guides/components) — full-screen sub-screen reached from Settings; D-pad select-then-adjust across two focus zones (no pointer dependency).
+- **Figma source:** none dedicated. Reuses kit Chip `2506:17680` (theme chips + role picker, segmented), Tabs `17:848` / tab item `17:849` (screen-tab row), List item `561:3969` (list-shaped preview/editor rows), Modal drawer `4498:31402` framing patterns (split body). File `TLtknC3rZXQqWe3uIivt94`.
+- **Code (as-built):** shell `src/ui/screens/appearanceScreen.js` (signature `(root, params, navigate)`; keeps the existing focus/destroy pattern) — owns the header (title + unified Theme & Contrast segmented + Reset/Save footer), the `.appearance-tabs` screen-tab row, and the two-column `.appearance-body`; event-delegates click/ENTER on `.appearance-stage [data-slot]` to toggle `.appearance-target--selected` and call `renderEditor`. Left preview mocks: `src/ui/components/appearance/{previewHome,previewDetail,previewPlayer,previewSettings}.js` — each exports one builder (`buildHomePreview` / `buildDetailPreview` / `buildPlayerPreview` / `buildSettingsPreview`) returning a recognizable mock of that screen from real component classes + `.appearance-chrome` decoration, with focusable `<button class="appearance-target" data-slot="…">` targets. Right editor: `src/ui/components/appearance/appearanceEditor.js` — `renderEditor(container, slotKey, { onChange })` (slot title + Role picker `.appearance-role` + Tone ramp `.appearance-swatch` + contrast note + persists via `setOverride`) and `renderEditorEmpty(container)`. Override store + contrast math: `src/settings/appearancePrefs.js` (unchanged; pre-existing). CSS `.appearance-*` section in `src/styles/app.css`.
+- **Anatomy (parts → slot):**
+  - `theme-picker` — required; unified **segmented** `.appearance-segmented` of **4 `.appearance-segmented__chip`** (Default, Cyan, Gold, Teal) following the kit Chip / segmented pattern; selecting calls `setTheme(k)`; the **currently-active** theme chip renders **Disabled** (native `disabled` + `:disabled` dim — kit Chip `State=Disabled`).
+  - `contrast-control` (rebuilt 2026-06-30) — sibling unified **segmented** `.appearance-segmented` **Contrast: Standard / Medium / High** in the header (`.appearance-segmented__chip`, same purpose-built class as the theme picker — NOT `.detail-setting-chip`). Selecting calls `setContrast(level)` (applies live) then re-renders; active read from `getAppearancePrefs().contrast`. For `theme==='default'` the Medium/High chips render **Disabled** (native `disabled` + `:disabled` dim, focus engine skips) with a hint — the blue default theme ships no medium/high tonal blocks.
+  - `screen-tabs` — required; `.appearance-tabs` row of `.appearance-tab` (+`--active`) pills (Home / Detail / Player / Settings) selecting which preview mock shows; rebuilds `.appearance-stage` with the chosen `buildXPreview()` mock. Reuses the kit Tabs pill pattern.
+  - `body` — required; **fixed split-column** `.appearance-body` (left ~60% `.appearance-preview`, right ~40% `.appearance-editor`; Chrome53-safe gap via margins/padding):
+    - `preview` (LEFT) — `.appearance-preview` > `.appearance-stage` holding the active screen mock, built from **real component classes** + `.appearance-chrome` decorative bits (hero block, 2:3 poster rail, nav rail, seek bar, settings rows). Customize targets are focusable `.appearance-target` buttons carrying `data-slot`, with the `.appearance-target__label` placed BELOW/BESIDE the sample (never overlapping — the old strip's defect) and a `--selected` accent ring. Per-screen slots: Home = primaryButton (hero Play) / focusAccent (poster) / progressFill (continue bar) / selectedChip (nav item); Detail = primaryButton (Play) / selectedChip (genre/season) / focusAccent (cast/related); Player = progressFill (seek) / primaryButton (skip-intro) / focusAccent (transport); Settings = switchOn (toggle) / selectedChip (picker value) / focusAccent (list row). Mocks attach NO handlers — the shell event-delegates on `[data-slot]`.
+    - `editor` (RIGHT) — `.appearance-editor` (+`--empty` hint "Select an element in the preview…"); **always-visible** column (NOT a `:focus-within`-revealed panel — Chrome53). `renderEditor` builds:
+      - `role-picker` — primary / secondary / tertiary / neutral `.appearance-role` chips (current `--active`).
+      - `tone-ramp` — `.appearance-tone-ramp` wrap row of `.appearance-swatch` squares, each `style background = --palette-<role>-<tone>` hex off the active theme's tonal ramp; current marked.
+      - `contrast-warning` — inline badge under the tone ramp on every role/tone change. Calls `getOverrideContrast(slotKey)` (try/catch-guarded; skipped if absent/throws); when `level !== 'pass'`: `large-only` → `.appearance-warning` muted "OK for large text only", `fail` → `.appearance-warning--fail` (`--danger`) "Low contrast — may be hard to read". Semantic tokens only, no hardcoded hex.
+  - `footer` — required; `.appearance-actions`: **Reset to default** (`.appearance-reset` → `resetAppearance`) + a transient **"Saved ✓"** affordance (`.appearance-save`) shown after any theme/contrast/override change (overrides auto-persist; this is user-trust only).
+- **Variant axes:** `Theme=Default|Cyan|Gold|Teal` (active → chip `Disabled`); `Screen=Home|Detail|Player|Settings`; `Role=primary|secondary|tertiary|neutral`; `Tone=<tonal-ramp steps>`; `State=Rest|Focus|Press` (derived, not authored).
+- **Customization model:** per-component-**class** override of **role × tone** (the 5 slots `primaryButton` / `selectedChip` / `switchOn` / `progressFill` / `focusAccent`), persisted in `appearancePrefs.js` and applied through the `--palette-<role>-<tone>` ramp vars; editing a slot recolors it on **every** screen (the per-screen mocks just show each slot in context). Defaults: primaryButton/switchOn/progressFill/focusAccent = primary/80, selectedChip = secondary/40. Selecting a preview target (`.appearance-stage [data-slot]`) then adjusting role/tone in the right editor is the **select-then-adjust** D-pad flow across the two columns; `onChange` rebuilds the preview so the recolor shows live.
+- **Per-element spec (reuse, do not re-derive):** theme/contrast segmented chips + role picker = `.appearance-segmented__chip` / `.appearance-role` on the kit Chip pattern (8/16 padding, radius 8, 1px `#8E918F @35%` outline, label `--font-meta` 22, active = `--gt-secondary-container` fill, focus = shared control inversion) — see Chip entry. Screen tabs = `.appearance-tab` on the `.gt-tab` pill pattern (min-height `--target-min` 52, radius 24, selected filled pill, focus inversion) — see Tabs entry. Preview targets/sample surfaces and editor rows follow `.gt-list-item` rhythm (radius 8, focus `--focus-fill`/`--focus-on-fill`). Disabled chip = kit Chip Disabled treatment.
+- **Platform deviations (ratified):** Chrome53 / webOS4 — **no `:focus-within`** (editor column is always rendered; active-target binding driven by JS classes, not `:focus-within`); no `color-mix`/relative-color (per-slot colours read straight off `--palette-<role>-<tone>` hex; `rgba(var(--x-rgb),a)` lines end `/* chrome53-ok */`); focus motion transform/opacity-only under `html.caps-motion` (webOS5+); targets/chips are real `<button>` so the focus engine picks them up; vertical 2:3 cards in the mocks (never 16:9); M3 **blue** token base with per-class role×tone overrides layered on top (not the old gold); chip label up-scaled to 22px (Plax 10-ft rule).
 
 ### Splash screen  📐 reference (2026-06-26)
 

@@ -263,6 +263,10 @@ function homeScreen(root, params, navigate) {
     // can't leak above later-deferred rows. See prepareFeedForRender for why.
     if (!prepareFeedForRender(el, rows, append)) return;
     var sorted = pinContinueWatchingFirst(rows);
+    // Only the rows added in THIS pass get the staggered entrance. A fresh
+    // render cleared the feed (startIndex 0); a deferred-append batch cascades
+    // from its own start so late rows still reveal in sequence.
+    var startIndex = el.querySelectorAll('.row-section:not(.row-skeleton)').length;
     sorted.forEach(function (row) {
       renderHubRow(el, row, navigate, {
         cols: 12,
@@ -271,6 +275,10 @@ function homeScreen(root, params, navigate) {
         playbackPrefs: state.playbackPrefs
       });
     });
+    // Staggered screen-enter reveal — each freshly-mounted row rises+fades in
+    // (transform/opacity only, caps-motion-gated in CSS). Non-blocking: focus is
+    // set independently below, so the reveal never gates first input.
+    applyRowEnterStagger(el, startIndex);
     // The feed DOM just changed (skeletons → rows, or deferred rows appended).
     // focus.js caches focusables/zones per container; invalidate so D-pad RIGHT
     // from the sidebar finds the freshly-rendered cards instead of locking onto
@@ -288,6 +296,24 @@ function homeScreen(root, params, navigate) {
         var firstLib = firstBrowsableLibrary();
         if (firstLib) prefetchLibraryBrowse(state.activeServer, firstLib);
       } catch (e) { /* ignore */ }
+    }
+  }
+
+  // Stagger the entrance of the rows added at/after startIndex. The CSS keyframe
+  // (.row-section--enter) does the work under html.caps-motion; here we only set
+  // a capped per-row animation-delay as a literal ms string (no CSS calc →
+  // Chrome53-safe). The delay caps at MAX_STEPS so a long feed never makes the
+  // last row wait — the reveal is ambient, not a gate on input.
+  function applyRowEnterStagger(el, startIndex) {
+    if (!el) return;
+    var rowEls = el.querySelectorAll('.row-section:not(.row-skeleton)');
+    var STEP_MS = 40;
+    var MAX_STEPS = 6; // 6 × 40ms = last row starts by 240ms
+    for (var i = startIndex; i < rowEls.length; i++) {
+      var rowEl = rowEls[i];
+      var delay = Math.min(i - startIndex, MAX_STEPS) * STEP_MS;
+      if (delay) rowEl.style.animationDelay = delay + 'ms';
+      rowEl.classList.add('row-section--enter');
     }
   }
 
