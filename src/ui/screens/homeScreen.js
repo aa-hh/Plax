@@ -1,4 +1,5 @@
 import { getState } from '../../core/store.js';
+import { timeAnimation } from '../../perf/animationTiming.js';
 import { loadHomeFeedPhased } from '../../backends/index.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
 import { listWatchlists } from '../../watchlists/store.js';
@@ -278,7 +279,16 @@ function homeScreen(root, params, navigate) {
     // Staggered screen-enter reveal — each freshly-mounted row rises+fades in
     // (transform/opacity only, caps-motion-gated in CSS). Non-blocking: focus is
     // set independently below, so the reveal never gates first input.
-    applyRowEnterStagger(el, startIndex);
+    var lastStaggeredRow = applyRowEnterStagger(el, startIndex);
+    // Time the LAST row's animationend — that's when the whole cascade is
+    // actually visually complete (not just when it was scheduled), so a slow
+    // B8 compositor under load shows up here as a longer real duration than
+    // the nominal ~290ms (240ms max delay + 250ms/300ms animation).
+    if (lastStaggeredRow) {
+      timeAnimation(lastStaggeredRow, 'anim:row-stagger-complete', {
+        route: 'home', rowCount: sorted.length, append: !!append
+      });
+    }
     // The feed DOM just changed (skeletons → rows, or deferred rows appended).
     // focus.js caches focusables/zones per container; invalidate so D-pad RIGHT
     // from the sidebar finds the freshly-rendered cards instead of locking onto
@@ -304,17 +314,22 @@ function homeScreen(root, params, navigate) {
   // a capped per-row animation-delay as a literal ms string (no CSS calc →
   // Chrome53-safe). The delay caps at MAX_STEPS so a long feed never makes the
   // last row wait — the reveal is ambient, not a gate on input.
+  // Returns the last row it tagged (or null if there was nothing to stagger),
+  // so the caller can time when the whole cascade actually finishes.
   function applyRowEnterStagger(el, startIndex) {
-    if (!el) return;
+    if (!el) return null;
     var rowEls = el.querySelectorAll('.row-section:not(.row-skeleton)');
     var STEP_MS = 40;
     var MAX_STEPS = 6; // 6 × 40ms = last row starts by 240ms
+    var lastRow = null;
     for (var i = startIndex; i < rowEls.length; i++) {
       var rowEl = rowEls[i];
       var delay = Math.min(i - startIndex, MAX_STEPS) * STEP_MS;
       if (delay) rowEl.style.animationDelay = delay + 'ms';
       rowEl.classList.add('row-section--enter');
+      lastRow = rowEl;
     }
+    return lastRow;
   }
 
   // The first movie/show library in the sidebar — the most likely entry.

@@ -1,4 +1,6 @@
 import { isPerfEnabled, mark } from '../perf/resourceMonitor.js';
+import { timeAnimation } from '../perf/animationTiming.js';
+import { tvLog } from '../utils/tvDebug.js';
 import { clearPosterUrlMaps } from '../ui/posterImages.js';
 import { invalidateFocusableCache, focusFirst } from '../ui/focus.js';
 import { exitToLauncher } from '../platform/webos.js';
@@ -299,6 +301,7 @@ function showRetainedEntry(entry, perfOn) {
   if (perfOn) {
     var elapsed = startedAt ? Math.round(performance.now() - startedAt) : 0;
     mark('route:render', { route: entry.route, renderMs: elapsed, retained: true });
+    tvLog('perf', 'route:render', { route: entry.route, renderMs: elapsed, retained: true });
     schedulePaintMark(entry.route);
   }
 }
@@ -308,8 +311,65 @@ function schedulePaintMark(route) {
   requestAnimationFrame(function () {
     if (currentRoute === route) {
       mark('screen:firstPaint', { route: route });
+      tvLog('perf', 'screen:firstPaint', { route: route });
     }
   });
+}
+
+/**
+ * "Full paint" ≠ first paint: first paint (one rAF above) fires as soon as the
+ * DOM is committed, before any <img> in the new screen has actually decoded.
+ * On the B8 the poster decode is exactly where jank hides, so this waits for
+ * every <img> already in the DOM at build time to finish loading (bounded by
+ * FULL_PAINT_TIMEOUT_MS so a slow/broken image can't wedge the mark forever),
+ * then reports elapsed-since-build plus how many images were still pending at
+ * the cutoff — a direct signal for "this screen is slow because of images".
+ * Images added later (lazy rows, deferred rails) are NOT tracked here; this is
+ * a build-time snapshot, not a full lifecycle observer.
+ */
+var FULL_PAINT_TIMEOUT_MS = 4000;
+function scheduleContentPaintMark(host, route, buildStartedAt) {
+  if (!host || typeof host.querySelectorAll !== 'function') return;
+  var imgs = host.querySelectorAll('img');
+  var pending = 0;
+  var settled = false;
+  var i;
+  for (i = 0; i < imgs.length; i++) {
+    if (!imgs[i].complete) pending++;
+  }
+  function report(timedOut) {
+    if (settled) return;
+    settled = true;
+    var elapsed = Math.round(nowMsSafe() - buildStartedAt);
+    var payload = { route: route, elapsedMs: elapsed, imageCount: imgs.length, pendingAtCutoff: pending, timedOut: !!timedOut };
+    mark('screen:contentPainted', payload);
+    tvLog('perf', 'screen:contentPainted', payload);
+  }
+  if (pending === 0) {
+    // Nothing to wait for — still measure on the next rAF so the number
+    // reflects committed layout, not just synchronous script time.
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(function () { report(false); });
+    } else {
+      report(false);
+    }
+    return;
+  }
+  var remaining = pending;
+  function onSettle() {
+    remaining--;
+    if (remaining <= 0) report(false);
+  }
+  for (i = 0; i < imgs.length; i++) {
+    if (imgs[i].complete) continue;
+    imgs[i].addEventListener('load', onSettle, { once: true });
+    imgs[i].addEventListener('error', onSettle, { once: true });
+  }
+  setTimeout(function () { report(true); }, FULL_PAINT_TIMEOUT_MS);
+}
+
+function nowMsSafe() {
+  return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 }
 
 function render() {
@@ -344,6 +404,12 @@ function render() {
   host.className = 'screen-host screen-host--enter';
   host.setAttribute('data-route', currentRoute);
   rootEl.appendChild(host);
+  // Only fires when html.caps-motion is present (the CSS animation only runs
+  // there); on a non-motion engine there's no animationend to time, so the
+  // listener just sits idle and is GC'd with the host on next navigation.
+  if (document.documentElement.classList.contains('caps-motion')) {
+    timeAnimation(host, 'anim:screen-enter-fade', { route: currentRoute });
+  }
 
   var entry = {
     route: currentRoute,
@@ -371,9 +437,15 @@ function render() {
 
   enforceRetentionCap();
 
+  // Content paint (images decoding) is measured unconditionally — mark()/
+  // tvLog() self-gate on the perf/debug flags, so this is a cheap no-op
+  // listener setup when neither is enabled.
+  scheduleContentPaintMark(host, currentRoute, startedAt || nowMsSafe());
+
   if (perfOn) {
     var elapsed = startedAt ? Math.round(performance.now() - startedAt) : 0;
     mark('route:render', { route: currentRoute, renderMs: elapsed });
+    tvLog('perf', 'route:render', { route: currentRoute, renderMs: elapsed });
     schedulePaintMark(currentRoute);
   }
 }
