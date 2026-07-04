@@ -1,5 +1,7 @@
 import { isPerfEnabled, mark } from '../perf/resourceMonitor.js';
 import { timeAnimation } from '../perf/animationTiming.js';
+import { sampleFrames } from '../perf/frameJank.js';
+import { beginTransition, endTransition } from '../ui/transitionGate.js';
 import { tvLog } from '../utils/tvDebug.js';
 import { clearPosterUrlMaps } from '../ui/posterImages.js';
 import { invalidateFocusableCache, focusFirst } from '../ui/focus.js';
@@ -396,6 +398,16 @@ function render() {
   if (perfOn) mark('screen:enter', { route: currentRoute });
   var startedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
 
+  // Open the protected transition window BEFORE the screen builds: everything
+  // heavy the build kicks off (poster decode, hero backdrop) queues behind
+  // onIdle instead of competing with the enter fade + first input. Closed
+  // early by the fade's animationend below; the gate's own safety timeout
+  // covers the no-animation paths (caps-motion off, cancelled).
+  beginTransition(400);
+  // Jank scoreboard: sample rAF gaps through the transition + hydration
+  // window so every navigation gets a dropped-frames number in tv.log.
+  sampleFrames('jank:navigation', { route: currentRoute });
+
   var host = document.createElement('div');
   // Cross-screen fade-through: a freshly-built screen fades in (opacity-only,
   // compositor, caps-motion-gated in CSS). Retained Back re-shows are NOT
@@ -409,14 +421,15 @@ function render() {
   // listener just sits idle and is GC'd with the host on next navigation.
   if (document.documentElement.classList.contains('caps-motion')) {
     timeAnimation(host, 'anim:screen-enter-fade', { route: currentRoute });
-    // Drop the will-change/animation class once the fade completes so a
-    // retained host (which can live for the rest of the session) doesn't keep
-    // an unnecessary compositor layer promoted — will-change is only useful
-    // for the ~200ms it takes the fade to run.
     host.addEventListener('animationend', function onFadeEnd(e) {
       if (e.target !== host) return;
       host.removeEventListener('animationend', onFadeEnd);
+      // Drop the animation class once the fade completes so a retained host
+      // (which can live for the rest of the session) doesn't keep an
+      // unnecessary compositor layer promoted.
       host.classList.remove('screen-host--enter');
+      // Fade is done — release the deferred heavy work (poster queue etc.).
+      endTransition();
     });
   }
 

@@ -15,6 +15,7 @@ import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
 import { createTabs, openSidePanel } from '../components/controls.js';
 import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
+import { onIdle } from '../transitionGate.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
 import {
@@ -744,29 +745,36 @@ function detailScreen(root, params, navigate) {
     if (!item.artPath || !server) return;
 
     var bgTok = ++detailBgToken;
-    loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
-      if (!backdrop || bgTok !== detailBgToken) return;
-      // Paint the cheap CSS color gradient the instant the colors arrive — the
-      // backdrop appears immediately instead of waiting on the full-res blur
-      // image's fetch + (synchronous, on Chrome53) decode, which was the hitch
-      // that "prevented movement" on entering detail.
-      if (backdrop.colors) setDetailBackgroundColors(backdrop.colors);
-      if (!backdrop.imageUrl) return;
-      // Upgrade to the noise-dithered ultrablur image (avoids OLED banding)
-      // only once it has loaded, so the swap never blocks the main thread.
-      // img.decode() is Chrome 64+ (absent on the B8), so feature-detect it and
-      // otherwise rely on onload, which already implies the bytes are in cache.
-      var img = new Image();
-      function swap() {
-        if (bgTok !== detailBgToken) return;
-        setDetailBackgroundImage(backdrop.imageUrl);
-      }
-      img.onload = function () {
-        if (img.decode) { img.decode().then(swap, swap); }
-        else swap();
-      };
-      img.onerror = function () { /* keep the gradient; never wedge */ };
-      img.src = backdrop.imageUrl;
+    // Transition gate: the backdrop fetch + (synchronous on Chrome53) decode is
+    // the single heaviest competitor to the enter fade on this screen — hold it
+    // until the transition window closes (≤400ms). The bgTok check keeps the
+    // deferred run harmless if the user has already moved on to another item.
+    onIdle(function () {
+      if (bgTok !== detailBgToken) return;
+      loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
+        if (!backdrop || bgTok !== detailBgToken) return;
+        // Paint the cheap CSS color gradient the instant the colors arrive — the
+        // backdrop appears immediately instead of waiting on the full-res blur
+        // image's fetch + (synchronous, on Chrome53) decode, which was the hitch
+        // that "prevented movement" on entering detail.
+        if (backdrop.colors) setDetailBackgroundColors(backdrop.colors);
+        if (!backdrop.imageUrl) return;
+        // Upgrade to the noise-dithered ultrablur image (avoids OLED banding)
+        // only once it has loaded, so the swap never blocks the main thread.
+        // img.decode() is Chrome 64+ (absent on the B8), so feature-detect it and
+        // otherwise rely on onload, which already implies the bytes are in cache.
+        var img = new Image();
+        function swap() {
+          if (bgTok !== detailBgToken) return;
+          setDetailBackgroundImage(backdrop.imageUrl);
+        }
+        img.onload = function () {
+          if (img.decode) { img.decode().then(swap, swap); }
+          else swap();
+        };
+        img.onerror = function () { /* keep the gradient; never wedge */ };
+        img.src = backdrop.imageUrl;
+      });
     });
   }
 

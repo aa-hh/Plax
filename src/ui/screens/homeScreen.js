@@ -1,5 +1,6 @@
 import { getState } from '../../core/store.js';
 import { timeAnimation } from '../../perf/animationTiming.js';
+import { beginTransition, endTransition, onIdle } from '../transitionGate.js';
 import { loadHomeFeedPhased } from '../../backends/index.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
 import { listWatchlists } from '../../watchlists/store.js';
@@ -288,6 +289,19 @@ function homeScreen(root, params, navigate) {
       timeAnimation(lastStaggeredRow, 'anim:row-stagger-complete', {
         route: 'home', rowCount: sorted.length, append: !!append
       });
+      // Protect the cascade the same way the router protects the enter fade:
+      // poster decode + metadata prefetch queue behind the LAST row's
+      // animationend (or the safety ceiling if the animation never runs), so
+      // the reveal animates on a calm main thread instead of fighting six
+      // concurrent JPEG decodes. Only when the animation will actually run.
+      if (document.documentElement.classList.contains('caps-motion')) {
+        beginTransition(550); // 240ms max delay + 250ms run + headroom
+        lastStaggeredRow.addEventListener('animationend', function onCascadeEnd(e) {
+          if (e.target !== lastStaggeredRow) return;
+          lastStaggeredRow.removeEventListener('animationend', onCascadeEnd);
+          endTransition();
+        });
+      }
     }
     // The feed DOM just changed (skeletons → rows, or deferred rows appended).
     // focus.js caches focusables/zones per container; invalidate so D-pad RIGHT
@@ -300,12 +314,17 @@ function homeScreen(root, params, navigate) {
     // After the visible rows are committed, warm the metadata (and detail
     // follow-ups) for the top items so opening detail does not hit the
     // network, and warm the first library's grid so entering it is instant.
+    // Deferred behind the transition gate: JSON fetch+parse is main-thread
+    // work that would otherwise run during the row cascade.
     if (state.activeServer && rows && rows.length) {
-      try {
-        schedulePrefetch(state.activeServer, rows, { perRow: 6, maxRows: 2 });
-        var firstLib = firstBrowsableLibrary();
-        if (firstLib) prefetchLibraryBrowse(state.activeServer, firstLib);
-      } catch (e) { /* ignore */ }
+      onIdle(function () {
+        if (destroyed || token !== renderToken) return;
+        try {
+          schedulePrefetch(state.activeServer, rows, { perRow: 6, maxRows: 2 });
+          var firstLib = firstBrowsableLibrary();
+          if (firstLib) prefetchLibraryBrowse(state.activeServer, firstLib);
+        } catch (e) { /* ignore */ }
+      });
     }
   }
 

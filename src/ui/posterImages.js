@@ -1,4 +1,5 @@
 import { addOnceEventListener } from '../utils/domUtils.js';
+import { isTransitioning, onIdle } from './transitionGate.js';
 import * as persistentCache from '../core/persistentCache.js';
 
 /**
@@ -276,6 +277,18 @@ function bindPosterImage(img, url, opts) {
   // Already loading this exact URL — don't enqueue/start a duplicate (which would
   // leak a concurrency slot; see startPosterImageLoad).
   if (img.__posterLoading && img.dataset.posterSrc === url) return;
+  // Transition gate: during a screen transition, image fetch+decode is exactly
+  // the main-thread work that delays the enter fade's first frame and eats
+  // remote input (measured on B8 — see ui/transitionGate.js). Defer the WHOLE
+  // bind to the window's close (≤400ms, usually ~230ms). Placed after the
+  // already-bound / already-loading guards so retained posters still reveal
+  // synchronously, and before any slot bookkeeping so a deferred bind can
+  // never hold or leak a concurrency slot. Re-binds during the window simply
+  // re-enter this function at idle and hit the same guards.
+  if (isTransitioning()) {
+    onIdle(function () { bindPosterImage(img, url, opts); });
+    return;
+  }
   if (activePosterLoads >= MAX_CONCURRENT_POSTER_LOADS) {
     posterLoadQueue.push({ img: img, url: url, opts: opts });
     return;

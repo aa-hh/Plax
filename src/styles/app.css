@@ -1589,19 +1589,38 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 /* Card focus = Google-style lift via composited scale + the cheap hard ring.
    No large-blur glow — it repaints badly on the B8 and isn't needed for the cue. */
 html.caps-motion .media-card:focus .card-poster-wrap {
-  transform: scale(var(--gt-focus-scale));
+  transform: scale(var(--gt-focus-scale)) translateY(-4px);
   box-shadow: var(--focus-shadow);
 }
-/* caps-motion-rich (webOS 5+ / fast Chromium / simulator): a more dimensional
-   focus — the poster lifts as it scales and casts a soft elevation shadow (the
-   tvOS "lift off the surface" depth cue). The B8 (.caps-motion only) never sees
-   this. The lift folds into the already-transitioned transform (compositor); the
-   elevation shadow is a STATIC focused-state property — not transitioned — so
-   there is no per-frame raster even on the richer engine. */
-html.caps-motion-rich .media-card:focus .card-poster-wrap {
-  transform: scale(var(--gt-focus-scale)) translateY(-4px);
-  box-shadow: var(--focus-shadow), 0 10px 24px rgba(0, 0, 0, 0.5);
+/* Elevation, the compositor-safe way (B8 baseline INCLUDED). Never
+   transition box-shadow — Chrome 53 re-rasters the blur every frame. Instead
+   the shadow is pre-painted ONCE onto an empty ::after box behind/around the
+   poster, and focus animates only its OPACITY (composited, like every other
+   motion here). Paired with the translateY lift above, this is the tvOS
+   "lift off the surface" depth cue at webOS-4 cost. ::after works because
+   .card-poster-wrap has no overflow clipping and no other pseudo use; the
+   longhand offsets are used because the shorthand box-offset property
+   postdates Chrome 53. */
+html.caps-motion .media-card .card-poster-wrap::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity var(--focus-motion-dur) ease;
+  pointer-events: none;
 }
+html.caps-motion .media-card:focus .card-poster-wrap::after {
+  opacity: 1;
+}
+/* caps-motion-rich (webOS 5+ / fast Chromium / simulator): reserved for depth
+   flourishes beyond the baseline (parallax, longer chains). The former static
+   lift-shadow rule that lived here is superseded — the ::after elevation above
+   is compositor-safe enough for the whole caps-motion range. */
 /* Edge-aware focus origin (Google: "scaling can vary based on position", and
    don't hard-clip focused foreground content). The first card in a home rail
    sits flush against the feed's left clip boundary (overflow-x: hidden), so a

@@ -1,17 +1,30 @@
 /**
  * Measure how long a CSS animation ACTUALLY took on a given element — wall-
- * clock time to `animationend`, not the declared CSS duration. On webOS 4 /
- * Chromium 53 the compositor can fall behind the declared timing (raster
- * contention, poster decode, GC pause), so the only way to see real jank is
- * to time the browser's own completion event rather than trust the CSS.
+ * clock time, not the declared CSS duration — split into two phases so the
+ * cause of slowness is diagnosable from tv.log alone:
+ *
+ *   startDelayMs  creation → `animationstart`. Big number = the MAIN THREAD
+ *                 was too busy (DOM build, style recalc, image decode, JS) to
+ *                 commit the element's first frame. This is the congestion
+ *                 signal — the animation hasn't even begun.
+ *   runMs         `animationstart` → `animationend`. Compares against the
+ *                 declared CSS duration. Big overshoot = the compositor is
+ *                 genuinely struggling (rare for opacity/transform) OR event
+ *                 delivery is stalled behind main-thread work.
+ *   durationMs    total (creation → end) — kept for continuity with earlier
+ *                 tv.log captures.
+ *
+ * NOTE: both events are delivered on the main thread, so a compositor-driven
+ * fade can LOOK smooth on screen while these numbers are big — that still
+ * matters, because a congested main thread is exactly what makes remote input
+ * and focus glides feel laggy. Treat startDelayMs as the "input dead time"
+ * proxy, and the frameJank sampler as the smoothness proxy.
  *
  * Reports through TWO channels so it's usable both locally and on-device:
  *  - the in-memory perf-mark buffer (resourceMonitor.mark → window.__plaxPerf.
  *    exportData()), gated by ?perf=1 / localStorage plax_perf_enabled
- *  - the remote tvLog sink (tag 'perf'), gated by tvDebug's own debug+logSink
- *    state — so BOTH the perf flag and debug/logSink must be on to see these
- *    in tv.log. That mirrors every other tvLog call in the app; see
- *    docs/design-system/component-registry.md → Motion (instrumentation note).
+ *  - the remote tvLog sink (tag 'perf'), gated by tvDebug's debug+logSink
+ *    state. See docs/design-system/component-registry.md → Motion.
  */
 
 import { mark } from './resourceMonitor.js';
@@ -28,29 +41,44 @@ function nowMs() {
  */
 function timeAnimation(el, label, data) {
   if (!el || typeof el.addEventListener !== 'function') return;
-  var startedAt = nowMs();
+  var createdAt = nowMs();
+  var startedAt = 0;
   var done = false;
+
+  function detach() {
+    el.removeEventListener('animationstart', onStart);
+    el.removeEventListener('animationend', onEnd);
+    el.removeEventListener('animationcancel', onCancel);
+  }
 
   function finish(extra) {
     if (done) return;
     done = true;
-    el.removeEventListener('animationend', onEnd);
-    el.removeEventListener('animationcancel', onCancel);
-    var elapsed = Math.round(nowMs() - startedAt);
-    var payload = { durationMs: elapsed };
+    detach();
+    var endAt = nowMs();
+    var payload = {
+      durationMs: Math.round(endAt - createdAt),
+      startDelayMs: startedAt ? Math.round(startedAt - createdAt) : null,
+      runMs: startedAt ? Math.round(endAt - startedAt) : null
+    };
     if (data) { for (var k in data) if (data.hasOwnProperty(k)) payload[k] = data[k]; }
     if (extra) { for (var k2 in extra) if (extra.hasOwnProperty(k2)) payload[k2] = extra[k2]; }
     mark(label, payload);
     tvLog('perf', label, payload);
   }
-  function onEnd(e) {
+  function onStart(e) {
     if (e.target !== el) return; // ignore bubbled child-element animations
+    if (!startedAt) startedAt = nowMs();
+  }
+  function onEnd(e) {
+    if (e.target !== el) return;
     finish();
   }
   function onCancel(e) {
     if (e.target !== el) return;
     finish({ cancelled: true });
   }
+  el.addEventListener('animationstart', onStart);
   el.addEventListener('animationend', onEnd);
   el.addEventListener('animationcancel', onCancel);
 }
