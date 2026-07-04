@@ -286,7 +286,18 @@ function bindPosterImage(img, url, opts) {
   // never hold or leak a concurrency slot. Re-binds during the window simply
   // re-enter this function at idle and hit the same guards.
   if (isTransitioning()) {
-    onIdle(function () { bindPosterImage(img, url, opts); });
+    onIdle(function () {
+      // Stale-by-hide guard (2026-07-04 round 2): binds queued during a scroll
+      // burst can drain AFTER the user navigated away — the img then belongs
+      // to a hidden retained host (e.g. home behind detail) and its decode is
+      // invisible waste. Measured on the B8 as detail's late 1.2–1.7s freeze:
+      // the FIFO queue drained home's stale posters AHEAD of detail's own
+      // images. offsetParent is null under a display:none host → drop the
+      // bind; the owning screen re-primes visible posters in onResume (the
+      // router calls it on every retained re-show), so the poster recovers.
+      if (!img.isConnected || img.offsetParent === null) return;
+      bindPosterImage(img, url, opts);
+    });
     return;
   }
   if (activePosterLoads >= MAX_CONCURRENT_POSTER_LOADS) {

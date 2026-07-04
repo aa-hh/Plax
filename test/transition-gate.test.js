@@ -71,7 +71,7 @@ test('onIdle queues while transitioning and drains after the gate closes', funct
   });
 });
 
-test('trickle drain runs one callback per macrotask, not all synchronously', function () {
+test('trickle drain runs one callback per paced tick, not all synchronously', function () {
   reset();
   beginTransition(10);
   var order = [];
@@ -85,9 +85,11 @@ test('trickle drain runs one callback per macrotask, not all synchronously', fun
   // from flushIdleQueue, but subsequent items are chained via setTimeout).
   endTransition();
   assert.equal(order.length <= 1, true, 'no more than the first callback runs synchronously');
-  return wait(10).then(function () {
+  // Drain ticks are DRAIN_TICK_MS (48ms) apart so decodes can't batch into
+  // one raster frame — waits sized generously above 2 ticks.
+  return wait(60).then(function () {
     assert.deepEqual(order.length >= 2, true);
-    return wait(30);
+    return wait(120);
   }).then(function () {
     assert.deepEqual(order, ['a', 'b', 'c']);
   });
@@ -111,8 +113,9 @@ test('re-opening the gate mid-drain pauses the chain until the next flush', func
     assert.deepEqual(order, [1]);
     assert.equal(isTransitioning(), true);
     // Let the re-opened window close on its own safety timeout and confirm
-    // the remaining queue drains afterward.
-    return wait(60);
+    // the remaining queue drains afterward (2 runs at flush, 3 one 48ms tick
+    // later → needs ~50+48 from here; wait well past it).
+    return wait(140);
   }).then(function () {
     assert.deepEqual(order, [1, 2, 3]);
   });
@@ -125,7 +128,8 @@ test('a throwing callback does not stop the rest of the drain', function () {
   onIdle(function () { order.push('x'); throw new Error('boom'); });
   onIdle(function () { order.push('y'); });
   endTransition();
-  return wait(30).then(function () {
+  // 'x' runs at flush; 'y' one 48ms drain tick later.
+  return wait(120).then(function () {
     assert.deepEqual(order, ['x', 'y']);
   });
 });

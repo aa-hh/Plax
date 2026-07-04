@@ -610,6 +610,21 @@ function homeScreen(root, params, navigate) {
     },
     onSuspend: function () {
       try { abortPrefetch(); } catch (e) { /* ignore */ }
+      // Cancel the immersive hero swap when this (retained) screen is covered
+      // by a newer one: the 500ms settle timer — and any already-in-flight art
+      // load — must not decode a 720px hero image BEHIND the detail screen
+      // (measured contributor to detail's late freeze). Bumping the token
+      // invalidates in-flight commits (same guard the swap already checks);
+      // the next focused card re-arms the hero after resume.
+      ilHeroToken += 1;
+      if (ilHeroTimer) { clearTimeout(ilHeroTimer); ilHeroTimer = null; }
+    },
+    onResume: function () {
+      // Recover posters whose deferred binds were dropped while this screen
+      // was hidden (posterImages' stale-by-hide guard): re-prime whatever is
+      // in the viewport now that the host is visible again.
+      var el = document.getElementById('home-feed');
+      if (el) primeVisiblePosters(el);
     }
   };
 }

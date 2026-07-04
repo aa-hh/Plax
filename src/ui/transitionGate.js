@@ -30,16 +30,21 @@ var transitionUntil = 0;   // epoch-ms deadline of the current protected window
 var idleQueue = [];
 var timerId = null;
 var draining = false;      // true while the trickle drain chain is in flight
+var DRAIN_TICK_MS = 48;    // ~3 frames @60Hz between drained callbacks — see drainStep
 
 function nowMs() {
   return Date.now();
 }
 
-// Drain ONE callback per macrotask (a setTimeout(0) chain) instead of the
-// whole queue in a single synchronous loop. Measured on a real B8: dumping
-// every deferred poster decode in one task was the 1506ms home re-entry
-// stall. Trickling keeps each task short so input stays responsive between
-// decodes.
+// Drain ONE callback per PACED tick instead of the whole queue in a single
+// synchronous loop. Measured on a real B8: dumping every deferred poster
+// decode in one task was the 1506ms home re-entry stall. Round 2 (same day):
+// a bare setTimeout(0) chain (~4ms apart) still let the loads' decodes BATCH
+// into one giant raster frame (detail's 1.2–1.7s late gap) — the spacing must
+// be wide enough for the compositor to actually produce frames between
+// decodes, so each tick is DRAIN_TICK_MS (~3 frames at 60Hz) apart. The queue
+// is short after the stale-by-hide guard (posterImages.js), so the added
+// latency to full hydration is tens of ms, not felt.
 //
 // - `draining` prevents a double-drain (endTransition + the safety timeout
 //   can both try to start one).
@@ -69,7 +74,7 @@ function drainStep() {
     draining = false;
     return;
   }
-  setTimeout(drainStep, 0);
+  setTimeout(drainStep, DRAIN_TICK_MS);
 }
 
 function flushIdleQueue() {
