@@ -1150,10 +1150,14 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
   width: 100%;
   height: 540px;
   overflow: hidden;
-  /* Layer C (Google anatomy): neutral background-color behind the poster, shown
-     before art loads / where the 16:9 art doesn't cover. Surface-dim so the scrim
-     and the solid app background blend with zero visible seam. */
-  background: var(--surface-dim);
+  /* TRANSPARENT (Phase 3 fix): the ambient wash + soft bleed layers sit BEHIND
+     the whole home content at negative z, and they now provide the neutral base
+     that Layer-C surface-dim used to give this band. An OPAQUE background here
+     occluded those layers across the entire hero region — the "focus does
+     nothing" bug. Before first focus (no ambient yet) the body's own
+     surface-dim shows through, so the cold-load look is unchanged. The crisp
+     corner box + scrim still paint ON TOP within this box. */
+  background: transparent;
   -webkit-flex-shrink: 0;
   flex-shrink: 0;
 }
