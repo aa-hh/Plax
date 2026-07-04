@@ -197,6 +197,10 @@
      expanded (96 = 12 + 72 + 12) — this keeps the icon at a constant x position in both
      states instead of shrinking host padding to fit the circle, which shifted the icon left. */
   --nav-rail-w-expanded: 280px;   /* expanded — 280dp kit max, literal */
+  --nav-rail-inner-expanded: 256px; /* expanded content box = 280 − 2×12 host pad. Rows
+     (item/section-title/brand) are FIXED to this width in EVERY state so the collapsed
+     96px host merely CLIPS them (overflow:hidden) — no per-frame re-layout on the width
+     snap, and the icon's x-position is pixel-identical collapsed vs expanded (2026-07-04). */
   --nav-item-h: 72px;             /* test: 72px item height for 10-foot scale */
   --nav-band-h: 80px;             /* header + footer band — 80dp kit, literal */
   --nav-icon-md-nav: 36px;        /* test: 36px nav icons */
@@ -717,10 +721,12 @@ html.caps-motion .detail-watchlist-btn:focus {
   /* Collapsed: OPAQUE backing, hard edge, no fade — feed content scrolling
      under the rail simply disappears behind it (no scrim in collapsed state). */
   background: var(--bg-base);
-  /* Eased slide is cheap here: the rail is an absolute OVERLAY, so growing its
-     width reflows only its own ~8 items, never the feed. (In-flow screens snap
-     instantly — see the base rule.) */
-  transition: width 180ms var(--ease-standard);
+  /* Width SNAPS (no transition) — 2026-07-04 perf pass. Animating `width` is a
+     LAYOUT property that reflows every frame for 180ms; on the B8 (Chrome53)
+     that measured 323–723ms of frozen frames. The drawer's motion now lives in
+     the label/brand cascade (compositor opacity+transform) — see
+     `.browsing-hub-item__label` / the brand rules — so the width change is a
+     single reflow, one frame, and the contents choreograph in on top of it. */
 }
 
 /* Expanded-drawer SCRIM (kit modal-drawer anatomy: drawer + Scrim over content,
@@ -876,26 +882,37 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
   width: var(--nav-rail-w-expanded);
 }
 
-/* Hide labels and section headings when collapsed. */
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item__label,
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-section__title {
-  display: none;
+/* Item labels: ALWAYS in the DOM (never display:none → 2026-07-04 perf pass).
+   Toggling display forced a big reflow inside the width transition — the
+   measured freeze. Collapsed = compositor-hidden (visibility:hidden + opacity 0
+   + a small translateX offset); expanded fades + slides them in. The host's
+   overflow:hidden clips the fixed-width rows when collapsed, so the hidden
+   labels never widen the collapsed rail. (Section titles stay display:none in
+   every state — the kit has no visible headings; they never toggled, so they
+   were never a transition-reflow source. Kept as-is below.) */
+.browsing-hub-item__label {
+  visibility: hidden;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+.browsing-hub-nav-host--peek .browsing-hub-item__label,
+.browsing-hub-nav-host--expanded .browsing-hub-item__label {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(0);
 }
 
-/* Collapsed rail circle (2026-07-04, take 2): host padding stays the SAME
-   12px in every state (no override here) — a previous pass shrank it to 4px
-   to make room for the circle, which shifted the icon ~8px left on collapse
-   and caused a visible jump. Instead --nav-rail-w was widened to 96px so the
-   host's content box (96 − 2×12 = 72) already equals --nav-item-h; the item
-   is width:100% of that box, so its pill (background covers the full item
-   box regardless of the item's own internal padding) is a 72×72 circle for
-   free, and the icon's x position only moves ~2px between collapsed/expanded
-   (imperceptible) instead of jumping. */
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
-  padding-left: 14px;
-  padding-right: 14px;
-  justify-content: center;
-}
+/* Collapsed rail circle (2026-07-04, take 3): the item now keeps its EXPANDED
+   geometry in every state — fixed content width (--nav-rail-inner-expanded) and
+   the same `padding: 0 16px` + flex-start alignment always — so the icon's
+   x-position is PIXEL-IDENTICAL collapsed vs expanded (host pad 12 + item pad 16
+   = 28px in both). The collapsed 96px host simply CLIPS the 256px-wide item via
+   overflow:hidden; the selected pill still covers the visible 72px content box
+   as a circle (item box ≥ --nav-item-h). No per-state padding/justify override
+   → nothing re-lays-out on the width snap. (Earlier takes shrank host padding or
+   re-justified the item on collapse, which shifted the icon ~2–8px and, worse,
+   re-laid-out every frame.) The fixed width + flex:0 0 auto live on the base
+   .browsing-hub-item rule below. */
 
 /* Drawer-focused brighten (kit: contentColor = drawerHasFocus ? onSurface :
    onSurfaceVariant). Entering the rail (--expanded) lifts every resting item from
@@ -962,7 +979,11 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
 .browsing-hub-item {
   display: flex;
   align-items: center;
-  width: 100%;
+  /* FIXED expanded content width in ALL states (not 100%) so the collapsed host
+     just clips it — see the "take 3" note above --nav-rail-inner-expanded. */
+  width: var(--nav-rail-inner-expanded);
+  max-width: var(--nav-rail-inner-expanded);
+  flex: 0 0 auto;
   min-height: var(--nav-item-h);
   text-align: left;
   padding: 0 16px;
@@ -1034,14 +1055,31 @@ html.caps-motion .browsing-hub-item {
   transition: background-color var(--focus-motion-dur) ease, color var(--focus-motion-dur) ease;
 }
 
-@keyframes navLabelIn {
-  from { opacity: 0; transform: translateX(-6px); }
-  to { opacity: 1; transform: translateX(0); }
+/* Label choreography (2026-07-04 perf pass): the width now SNAPS, so the
+   drawer's felt motion IS the label cascade — pure compositor (opacity +
+   translateX), never layout. Each label fades + slides in on --expanded via a
+   TRANSITION (not a keyframe animation) so it also fades OUT cleanly on collapse.
+   A small per-item transition-delay stagger (30ms steps, capped at 3 = ≤90ms so
+   the whole cascade stays under the --dur-medium2 300ms budget) reads as "the
+   contents cascade in". visibility is not transitionable — it snaps — but the
+   opacity carries the fade; delaying the collapse of visibility isn't needed
+   because opacity 0 already hides the glyph. Gated by html.caps-motion; engines
+   without it just snap opacity/visibility (no cascade), which is fine. */
+html.caps-motion .browsing-hub-item__label {
+  transition:
+    opacity 160ms var(--ease-standard-decelerate),
+    transform 160ms var(--ease-standard-decelerate);
 }
-
-html.caps-motion .browsing-hub-nav-host--peek .browsing-hub-item__label,
-html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
-  animation: navLabelIn 160ms cubic-bezier(0.4, 0, 0.2, 1);
+/* Capped cascade: items 1-2-3 step by 30ms; item 4+ share the 3rd step so a long
+   library list never trails past the budget. Only meaningful while expanding
+   (delay applies to the enter). */
+html.caps-motion .browsing-hub-nav-host--peek .browsing-hub-nav > .browsing-hub-item:nth-child(2) .browsing-hub-item__label,
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-hub-item:nth-child(2) .browsing-hub-item__label {
+  transition-delay: 30ms;
+}
+html.caps-motion .browsing-hub-nav-host--peek .browsing-hub-nav > .browsing-hub-item:nth-child(n+3) .browsing-hub-item__label,
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-hub-item:nth-child(n+3) .browsing-hub-item__label {
+  transition-delay: 60ms;
 }
 
 .watchlist-row-link {
@@ -1411,8 +1449,8 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
   /* Collapsed: opaque hard-edged backing (grid hides behind it) — see the Home
      overlay rule; the expanded scrim below carries the fade instead. */
   background: var(--bg-base);
-  /* Overlay rail: eased width slide is free (reflows only the rail subtree). */
-  transition: width 180ms var(--ease-standard);
+  /* Width SNAPS (no transition) — see the Home overlay host: layout-property
+     animation froze the B8; motion moved to the label/brand cascade. */
 }
 
 .library-item {
@@ -1746,6 +1784,8 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .browsing-hub-brand {
   display: flex;
   align-items: center;
+  /* Positioning context for the absolutely-stacked mark↔wordmark (2026-07-04). */
+  position: relative;
   /* FIXED band height (not min-height) + no vertical padding: flex centering
      does the vertical work, and the band can never grow when the lockup swaps
      mark↔wordmark — the header stays exactly --nav-band-h in both states so
@@ -1765,24 +1805,43 @@ html.caps-motion .media-card:focus .card-poster-wrap {
    x renders at the mark's exact 40px; both lockups are vertically centered in
    the same fixed 80px --nav-band-h band, so the x also keeps the same vertical
    position (its center sits within ~1px of the wordmark's own center). */
+/* Mark↔wordmark are BOTH always in the DOM, absolutely stacked at the same
+   left/vertical origin, and cross-FADE (opacity) on expand/collapse — no more
+   display:none↔block toggle (2026-07-04 perf pass). Toggling display reflowed
+   the header inside the width transition; cross-fade is pure compositor. Both
+   sit at left:16px (= brand padding) so the "x" glyph keeps the same x-position
+   the shared-optical-size math below already guarantees; vertically centered in
+   the fixed --nav-band-h band. The host's overflow:hidden clips the wider
+   wordmark when collapsed. */
+.browsing-hub-brand__mark,
+.browsing-hub-brand__wordmark {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  transform: translateY(-50%);
+}
 .browsing-hub-brand__mark {
-  flex-shrink: 0;
   width: 40px;
   height: 40px;
+  opacity: 1;
 }
 .browsing-hub-brand__mark svg { display: block; width: 100%; height: 100%; }
-/* Full wordmark hidden until the rail expands (mirrors nav-item label reveal) */
-.browsing-hub-brand__wordmark { display: none; margin-left: 2px; }
+.browsing-hub-brand__wordmark {
+  /* +2px matches the old margin-left so the wordmark's x sits exactly over the
+     mark's x (the shared-optical-size note above). */
+  left: 18px;
+  opacity: 0;
+}
 .browsing-hub-brand__wordmark svg { display: block; width: auto; height: 68px; }
+/* Expanded/peek: fade wordmark in, mark out (cross-fade). */
 .browsing-hub-nav-host--peek .browsing-hub-brand__wordmark,
-.browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark { display: block; }
+.browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark { opacity: 1; }
 .browsing-hub-nav-host--peek .browsing-hub-brand__mark,
-.browsing-hub-nav-host--expanded .browsing-hub-brand__mark { display: none; }
-/* Collapsed rail: center the compact mark */
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand {
-  justify-content: center;
-  padding-left: 14px;
-  padding-right: 14px;
+.browsing-hub-nav-host--expanded .browsing-hub-brand__mark { opacity: 0; }
+/* Motion-gated cross-fade; engines without caps-motion just snap opacity. */
+html.caps-motion .browsing-hub-brand__mark,
+html.caps-motion .browsing-hub-brand__wordmark {
+  transition: opacity 160ms var(--ease-standard-decelerate);
 }
 /* Pin the System (settings) section to the bottom of the drawer, as an 80dp band
    (kit redline) — the item is centered inside, not stretched to fill it. */
