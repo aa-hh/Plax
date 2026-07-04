@@ -115,7 +115,9 @@ test('buildHubNavItems omits watchlist for guest profiles', function () {
     activeHomeUser: { id: 'g', admin: false, restricted: false, guest: true },
     libraries: []
   });
-  assert.deepEqual(items.map(function (i) { return i.id; }), ['home']);
+  // Watchlist is omitted for guests, but Home and the Leaving Soon destination
+  // (its own sidebar item, available to every profile) remain.
+  assert.deepEqual(items.map(function (i) { return i.id; }), ['home', 'leavingSoon']);
 });
 
 test('bookmark icon markup is shared and filled variant differs', function () {

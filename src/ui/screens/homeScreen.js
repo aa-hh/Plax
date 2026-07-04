@@ -1,8 +1,11 @@
 import { getState } from '../../core/store.js';
 import { loadHomeFeedPhased } from '../../backends/index.js';
+import { loadLeavingSoonRows } from '../../plex/recommendations/homeFeed.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
 import { listWatchlists } from '../../watchlists/store.js';
-import { resolveWatchlistItems, watchlistToHubRow } from '../../watchlists/resolve.js';
+import { resolveWatchlistItems, watchlistToHubRow, queueToHubRow } from '../../watchlists/resolve.js';
+import { getQueueItems, CHANGED_EVENT as USERQUEUE_CHANGED_EVENT } from '../../playback/userQueue.js';
+import { profileKey } from '../../watchlists/store.js';
 import { renderHubRow } from '../components/hubRow.js';
 import { prepareFeedForRender } from './homeFeedRender.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
@@ -184,6 +187,11 @@ function homeScreen(root, params, navigate) {
     if (item.id === 'watchlist') {
       ilShowHero(false);
       loadWatchlistHub();
+      return;
+    }
+    if (item.id === 'leavingSoon') {
+      ilShowHero(false);
+      loadLeavingSoonHub();
     }
   }
 
@@ -240,18 +248,37 @@ function homeScreen(root, params, navigate) {
     }, 250);
   });
 
-  function pinContinueWatchingFirst(rows) {
-    if (!rows || !rows.length) return rows;
+  // Build the manually-queued "Up Next" rail from userQueue snapshots. Empty
+  // queue → null (renders no rail). Snapshots already carry render+navigate data,
+  // so they go straight into a hub row (no backend resolve needed).
+  function buildUserQueueRow() {
+    var items = getQueueItems(state.activeHomeUser || state.user) || [];
+    if (!items.length) return null;
+    return queueToHubRow(items);
+  }
+
+  // Placement: pin Continue Watching / On Deck first, then "Up Next" immediately
+  // after it (or first when there's no resume rail), then the rest. Rationale:
+  // resume is the single most-likely action, but a manually-queued item is a
+  // deliberate "I want to watch this next" signal that should outrank the
+  // algorithmic recommendation rails below it.
+  function pinContinueWatchingFirst(rows, includeQueue) {
+    var queueRow = includeQueue ? buildUserQueueRow() : null;
+    var src = rows || [];
+    if (!src.length && !queueRow) return src;
     var pinned = [];
     var rest = [];
-    for (var i = 0; i < rows.length; i++) {
-      var id = rows[i].hubIdentifier || '';
+    for (var i = 0; i < src.length; i++) {
+      var id = src[i].hubIdentifier || '';
+      // Never let a duplicate queue row from an append survive (defensive).
+      if (id.indexOf('home.userqueue') !== -1) continue;
       if (id.indexOf('continue') !== -1 || id.indexOf('ondeck') !== -1 || id.indexOf('resume') !== -1) {
-        pinned.push(rows[i]);
+        pinned.push(src[i]);
       } else {
-        rest.push(rows[i]);
+        rest.push(src[i]);
       }
     }
+    if (queueRow) pinned.push(queueRow);
     return pinned.concat(rest);
   }
 
@@ -262,7 +289,9 @@ function homeScreen(root, params, navigate) {
     // Drops the loading skeletons on a fresh render (even when empty) so they
     // can't leak above later-deferred rows. See prepareFeedForRender for why.
     if (!prepareFeedForRender(el, rows, append)) return;
-    var sorted = pinContinueWatchingFirst(rows);
+    // Inject the "Up Next" rail only on the fresh (non-append) render so the
+    // deferred-rows append below can't add a second copy.
+    var sorted = pinContinueWatchingFirst(rows, !append);
     // Only the rows added in THIS pass get the staggered entrance. A fresh
     // render cleared the feed (startIndex 0); a deferred-append batch cascades
     // from its own start so late rows still reveal in sequence.
@@ -369,7 +398,10 @@ function homeScreen(root, params, navigate) {
       var hasInitial = feed.initialRows && feed.initialRows.length;
       (feed.deferredRowsPromise || Promise.resolve([])).then(function (rows) {
         if (destroyed || token !== renderToken) return;
-        if (!hasInitial && (!rows || !rows.length)) {
+        // Don't clobber a rendered "Up Next" rail (or any section) with the
+        // empty-state copy: the queue rail can be the only content on Home.
+        var hasRenderedRow = !!el.querySelector('.row-section');
+        if (!hasInitial && (!rows || !rows.length) && !hasRenderedRow) {
           el.innerHTML = '<p class="status-msg">No recommendations yet. Browse a library from the sidebar.</p>';
         }
       }).catch(function () {});
@@ -451,13 +483,70 @@ function homeScreen(root, params, navigate) {
     });
   }
 
+  function loadLeavingSoonHub() {
+    var token = ++renderToken;
+    var feedEl = document.getElementById('home-feed');
+    if (feedEl) feedEl.innerHTML = '<p class="status-msg">Loading…</p>';
+
+    loadLeavingSoonRows(state.activeServer, {
+      libraries: state.libraries || [],
+      activeHomeUser: state.activeHomeUser || null
+    }).then(function (rows) {
+      if (destroyed || token !== renderToken) return;
+      var el = document.getElementById('home-feed');
+      if (!el) return;
+      el.innerHTML = '';
+      var hasRows = false;
+      (rows || []).forEach(function (row) {
+        if (!row || !row.items || !row.items.length) return;
+        hasRows = true;
+        renderHubRow(el, row, navigate, {
+          cols: 12,
+          visibleCount: 20,
+          server: state.activeServer,
+          playbackPrefs: state.playbackPrefs
+        });
+      });
+      invalidateFocusableCache();
+      if (!hasRows) {
+        el.innerHTML =
+          '<p class="status-msg">Nothing is leaving soon. Titles expiring from your libraries will appear here.</p>';
+      } else {
+        primeVisiblePosters(el);
+        focusFirstFeedCardIfNeeded();
+      }
+    }).catch(function () {
+      if (destroyed || token !== renderToken) return;
+      var el = document.getElementById('home-feed');
+      if (el) {
+        el.innerHTML =
+          '<p class="status-msg">Nothing is leaving soon. Titles expiring from your libraries will appear here.</p>';
+      }
+    });
+  }
+
   if (activeHubId === 'watchlist') {
     setHubTitle('Watchlist');
     loadWatchlistHub();
+  } else if (activeHubId === 'leavingSoon') {
+    setHubTitle('Leaving Soon');
+    loadLeavingSoonHub();
   } else {
     setHubTitle('Home');
     loadHomeHub();
   }
+
+  // Live-refresh the "Up Next" rail when the queue mutates (add/remove from the
+  // detail overflow menu). Only re-run the default home feed — the rail lives on
+  // the 'home' hub — and only for the profile this screen is showing. Chrome53-
+  // safe: a plain window addEventListener (the dispatcher feature-detects).
+  function onUserQueueChanged(e) {
+    if (destroyed || activeHubId !== 'home') return;
+    var changed = e && e.detail ? e.detail.profile : null;
+    if (changed != null && changed !== profileKey(state.activeHomeUser || state.user)) return;
+    loadHomeHub();
+  }
+  window.addEventListener(USERQUEUE_CHANGED_EVENT, onUserQueueChanged);
 
   // Initial focus goes to the first content card once the feed loads
   // (see focusFirstFeedCardIfNeeded). Tag the sidebar as auto-focused so
@@ -476,6 +565,7 @@ function homeScreen(root, params, navigate) {
       if (posterFocusTimer) { clearTimeout(posterFocusTimer); posterFocusTimer = null; }
       if (ilHeroTimer) { clearTimeout(ilHeroTimer); ilHeroTimer = null; }
       try { abortPrefetch(); } catch (e) { /* ignore */ }
+      window.removeEventListener(USERQUEUE_CHANGED_EVENT, onUserQueueChanged);
       detachFocus();
     },
     onSuspend: function () {

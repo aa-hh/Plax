@@ -49,6 +49,8 @@ var P_TUNE = 'M435.5-128.63Q427-137.25 427-150v-165q0-12.75 8.68-21.38 8.67-8.62
 var P_MORE = 'M207.86-432Q188-432 174-446.14t-14-34Q160-500 174.14-514t34-14Q228-528 242-513.86t14 34Q256-460 241.86-446t-34 14Zm272 0Q460-432 446-446.14t-14-34Q432-500 446.14-514t34-14Q500-528 514-513.86t14 34Q528-460 513.86-446t-34 14Zm272 0Q732-432 718-446.14t-14-34Q704-500 718.14-514t34-14Q772-528 786-513.86t14 34Q800-460 785.86-446t-34 14Z';
 // "star" (filled) — rating glyph when no official-source logo exists.
 var P_STAR = 'M480-269 294-157q-8 5-17 4.5t-16-5.5q-7-5-10.5-13t-1.5-18l49-212-164-143q-8-7-9.5-15.5t.5-16.5q2-8 9-13.5t17-6.5l217-19 84-200q4-9 12-13.5t16-4.5q8 0 16 4.5t12 13.5l84 200 217 19q10 1 17 6.5t9 13.5q2 8 .5 16.5T826-544L662-401l49 212q2 10-1.5 18T699-158q-7 5-16 5.5t-17-4.5L480-269Z';
+// "schedule" — "Leaving Soon" rail item (Radix clock, MIT; 15×15 grid).
+var P_CLOCK = 'M7.5 0.875C3.83319 0.875 0.875 3.83319 0.875 7.5C0.875 11.1668 3.83319 14.125 7.5 14.125C11.1668 14.125 14.125 11.1668 14.125 7.5C14.125 3.83319 11.1668 0.875 7.5 0.875ZM1.825 7.5C1.825 4.35783 4.35783 1.825 7.5 1.825C10.6422 1.825 13.175 4.35783 13.175 7.5C13.175 10.6422 10.6422 13.175 7.5 13.175C4.35783 13.175 1.825 10.6422 1.825 7.5ZM8 4.5C8 4.22386 7.77614 4 7.5 4C7.22386 4 7 4.22386 7 4.5V7.5C7 7.63261 7.05268 7.75979 7.14645 7.85355L9.14645 9.85355C9.34171 10.0488 9.65829 10.0488 9.85355 9.85355C10.0488 9.65829 10.0488 9.34171 9.85355 9.14645L8 7.29289V4.5Z';
 
 function starIconSvg(modifier) {
   return svgIcon(modifier, P_STAR);
@@ -64,6 +66,7 @@ function filmsIconSvg(filled) { return svgIcon('hub-icon--films', filled ? P_MOV
 function searchIconSvg() { return svgIcon('hub-icon--search', P_SEARCH); }
 function settingsIconSvg(filled) { return svgIcon('hub-icon--settings', filled ? P_SETTINGS_FILL : P_SETTINGS); }
 function libraryIconSvg(filled) { return svgIcon('hub-icon--library', filled ? P_LIBRARY_FILL : P_LIBRARY); }
+function leavingSoonIconSvg() { return svgIcon('hub-icon--leaving-soon', P_CLOCK, '0 0 15 15', true); }
 function subtitlesIconSvg() { return svgIcon('hub-icon--subtitles', P_SUBTITLES); }
 function qualityIconSvg() { return svgIcon('hub-icon--quality', P_TUNE); }
 function moreOptionsIconSvg() { return svgIcon('hub-icon--more', P_MORE); }
@@ -75,6 +78,7 @@ function iconSvgForKind(kind, filled) {
   if (kind === 'films' || kind === 'movie') return filmsIconSvg(filled);
   if (kind === 'search') return searchIconSvg();
   if (kind === 'settings') return settingsIconSvg(filled);
+  if (kind === 'leavingSoon') return leavingSoonIconSvg();
   return libraryIconSvg(filled);
 }
 
@@ -95,7 +99,9 @@ export {
   subtitlesIconSvg,
   qualityIconSvg,
   moreOptionsIconSvg,
+  leavingSoonIconSvg,
   starIconSvg,
+  libraryIconSvg,
   iconSvgForKind,
   libraryIconKind
 };

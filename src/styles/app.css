@@ -558,7 +558,7 @@ html.caps-motion .detail-network-info-btn,
 html.caps-motion .detail-watchlist-btn {
   /* Transform-only = GPU-composited, no per-frame repaint (webOS 4 smooth). The
      focus ring (box-shadow) applies instantly — cheap, and not animated. */
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 
 /* Text-bearing CTA buttons do NOT scale: Chromium 53 rasterises the layer at
@@ -566,7 +566,7 @@ html.caps-motion .detail-watchlist-btn {
    instant focus ring + a composited background lift (matches the player pills). */
 html.caps-motion .btn,
 html.caps-motion #btn-test-connection {
-  transition: background var(--focus-motion-dur) ease;
+  transition: background var(--focus-motion-dur) var(--ease-standard);
 }
 
 /* Player pills keep their size on focus (no scale → never clip in tight rows or
@@ -574,7 +574,7 @@ html.caps-motion #btn-test-connection {
    only the shadow/background transition needs smoothing. */
 html.caps-motion .player-control-pill,
 html.caps-motion .player-stream-pill {
-  transition: box-shadow var(--focus-motion-dur) ease, background var(--focus-motion-dur) ease;
+  transition: box-shadow var(--focus-motion-dur) var(--ease-standard), background var(--focus-motion-dur) var(--ease-standard);
 }
 
 html.caps-motion .card:not(.media-card):not(.profile-card):not(.provider-card):focus,
@@ -1103,7 +1103,7 @@ html.caps-motion .detail-watchlist-btn:focus {
   overflow: hidden;
   max-height: 110px;
   opacity: 1;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur-short4) var(--ease-standard);
 }
 .il-hero--blur-overview .il-hero__overview {
   opacity: 0;
@@ -1111,7 +1111,7 @@ html.caps-motion .detail-watchlist-btn:focus {
 /* Fade the whole hero when sidebar has focus (no relevant card) */
 .il-hero--sidebar-focus .il-hero__content {
   opacity: 0.4;
-  transition: opacity 0.3s ease;
+  transition: opacity var(--dur-medium2) var(--ease-standard);
 }
 
 .home-feed {
@@ -1653,7 +1653,7 @@ html.caps-motion .detail-watchlist-btn:focus {
 html.caps-motion .media-card .card-poster-wrap {
   /* Transform-only = GPU-composited, no per-frame repaint (webOS 4 smooth). The
      focus ring (box-shadow) applies instantly — cheap, and not animated. */
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 
 html.caps-motion .media-card:focus .card-poster-wrap {
@@ -2477,6 +2477,61 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .detail-icon-btn__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Detail overflow menu — "•••" trigger that opens a vertical stack of secondary
+   actions ABOVE it. No animation: state (open/closed) is a plain display toggle
+   driven by JS classes on .detail-more-menu (no :focus-within — dropped on
+   Chrome53). */
+.detail-more-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.detail-more-stack {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  /* Stack grows upward out of flow so it never reflows the action row. Normal
+     column: first DOM child = top, last = bottom (nearest the trigger). */
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 240px;
+  margin-bottom: 8px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--bg-elevated, #1e1f20);
+  /* Tonal elevation (≈ M3 L2) + hairline; no large-blur shadow (Chrome53 paint cost). */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 40;
+}
+
+/* Only rendered while open — fully absent (not just empty) when closed. */
+.detail-more-menu.is-open .detail-more-stack {
+  display: flex;
+}
+
+.detail-more-item {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+.detail-more-item + .detail-more-item {
+  margin-top: 4px;
+}
+
+.detail-more-item__icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+}
+
+.detail-more-item__icon svg {
   width: 100%;
   height: 100%;
 }
@@ -3522,15 +3577,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 15, 0.92) 40%, rgba(10, 10, 15, 0.98) 100%);
   z-index: var(--z-player-overlay);
   opacity: 1;
-  transition: opacity 0.22s ease;
+  /* M3 Fade pattern — enter: emphasized-decelerate, short4 (200ms). Opacity-only
+     (slide intentionally dropped); ungated — compositor-cheap on all engines. */
+  transition: opacity var(--dur-short4) var(--ease-emphasized-decelerate);
 }
 
 .player-overlay--hidden {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  /* delay visibility:hidden so the opacity fade plays first */
-  transition: opacity 0.22s ease, visibility 0s linear 0.22s;
+  /* M3 Fade pattern — exit: emphasized-accelerate, short3 (150ms). Exit shorter
+     than enter (M3 rule). Delay visibility:hidden so the opacity fade plays first. */
+  transition: opacity var(--dur-short3) var(--ease-emphasized-accelerate), visibility 0s linear var(--dur-short3);
 }
 
 .player-overlay--hidden.player-overlay--skip-intro-active {
@@ -4893,7 +4951,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   /* Margins on cards (not gap) — webOS 4 Chromium lacks flex gap; same pattern as .pin-pad-grid. */
   margin: -12px;
   padding: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity var(--dur-medium1) var(--ease-standard);
 }
 
 .profile-picker--pin-mode .profile-picker-row {
@@ -4977,7 +5035,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   color: var(--accent);
 }
 html.caps-motion .profile-card-avatar {
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 html.caps-motion .profile-card:focus .profile-card-avatar {
   transform: scale(var(--gt-focus-scale-med));
@@ -5817,7 +5875,7 @@ video.native-player.subtitle-no-bg ::cue {
 /* List items keep the tiny 1.025x lift (text blur imperceptible at that scale).
    Chips/tabs are text-bearing → no scale (fuzz); ring + background lift instead. */
 html.caps-motion .gt-list-item {
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 html.caps-motion .gt-list-item:focus {
   transform: scale(1.025);
@@ -5876,7 +5934,7 @@ html.caps-motion .gt-dialog,
 html.caps-motion .gt-side-panel,
 html.caps-motion .player-track-modal,
 html.caps-motion .player-media-info-modal {
-  animation: gt-overlay-in var(--dur-short3) var(--ease-standard);
+  animation: gt-overlay-in var(--dur-short4) var(--ease-emphasized-decelerate);
 }
 html.caps-motion .detail-modal-sheet,
 html.caps-motion .gt-modal-sheet,
@@ -5884,7 +5942,9 @@ html.caps-motion .gt-dialog-sheet {
   animation: gt-sheet-in var(--dur-medium1) var(--ease-emphasized-decelerate);
 }
 /* Side panel = kit Direction=Right → slides in from the right edge (compositor
-   translateX only). Matches the player track-selector / media-info drawers. */
+   translateX only). Matches the player track-selector / media-info drawers.
+   M3 enter: emphasized-decelerate, medium1 (250ms). Replaced M2-legacy 0.4,0,0.2,1.
+   Entrance-only — dismissal is instant DOM removal (removeChild), no exit anim. */
 html.caps-motion .player-track-modal-sheet,
 html.caps-motion .player-media-info-sheet,
 html.caps-motion .gt-side-panel-sheet {
@@ -6154,7 +6214,7 @@ html.caps-motion .gt-list-item:focus {
 .server-card:focus .server-card__label { color: var(--accent); }
 .server-card--add:focus .server-card__media { color: var(--accent); }
 html.caps-motion .server-card__media {
-  transition: transform var(--focus-motion-dur) ease, border-color 0.12s ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard), border-color 0.12s ease;
 }
 html.caps-motion .server-card:focus .server-card__media {
   transform: scale(var(--gt-focus-scale-med));
