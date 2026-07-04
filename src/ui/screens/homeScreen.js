@@ -24,7 +24,6 @@ import {
 import { getArtUrl } from '../../backends/index.js';
 import { loadUltraBlurBackdrop } from '../../plex/ultrablur.js';
 import { tvLog } from '../../utils/tvDebug.js';
-import { getPalette, hasPalette, clearPaletteCache } from '../palette.js';
 import { buildCornerWashCss, cornerWashLayerCount } from '../colorWash.js';
 
 function homeScreen(root, params, navigate) {
@@ -168,56 +167,65 @@ function homeScreen(root, params, navigate) {
     // Guard the whole swap with the current hero token so a slow read that
     // resolves after the user has moved on can't flash a stale layer.
     var swapTok = ilHeroToken;
-    var wasCached = hasPalette(url);
-    var settled = false;
 
-    // ONE fetch, ONE decode, THREE uses: getPalette blob-XHRs the art (dodging
-    // the file:// canvas-taint), samples the corner palette, and hands back a
-    // same-origin objectURL reused for BOTH the crisp corner box and the soft
-    // bleed layers. Cache-hit → its Promise resolves without a network trip, so
-    // the ambient wash lands effectively immediately (color leads).
-    getPalette(url).then(function (res) {
-      if (settled || destroyed || swapTok !== ilHeroToken) return;
-      settled = true;
+    // ── VISIBLE LAYERS use the plain art URL as a CSS background (display only,
+    // no CORS, no canvas) — the way the crisp box worked BEFORE Phase 3. The
+    // Phase-3 blob-XHR path (palette.js) fed BOTH the box and the bleed off an
+    // objectURL; when that fetch/decode failed on the B8 it silently produced
+    // null and the ENTIRE hero (incl. the previously-working box) went blank.
+    // Decouple: images from the raw URL, wash colors from PMS (below). Preload
+    // via an <img> so we only crossfade once the bytes are actually decoded.
+    var img = new Image();
+    var imgSettled = false;
+    img.onload = function () {
+      if (imgSettled || destroyed || swapTok !== ilHeroToken) return;
+      imgSettled = true;
+      var artCss = 'url(' + url + ')';
+      ilCacheTouch(url);
 
-      // 1) Ambient wash (color) — crossfade whenever we got usable colors.
-      if (res && res.colors) ilApplyAmbient(res.colors, swapTok);
+      var boxNext = ilSide === 'a' ? ilBackdropB : ilBackdropA;
+      var boxCurr = ilSide === 'a' ? ilBackdropA : ilBackdropB;
+      boxNext.style.backgroundImage = artCss;
+      boxNext.style.opacity = '1';
+      boxCurr.style.opacity = '0';
+      ilSide = ilSide === 'a' ? 'b' : 'a';
 
-      // 2) Crisp corner box + 3) soft bleed — both off the SAME objectURL, so
-      // the image decodes once. Without an objectURL (fetch/decode failure) we
-      // simply leave the previous art up — today's silent-drop behavior.
-      if (res && res.objectUrl) {
-        var artCss = 'url(' + res.objectUrl + ')';
+      // Bleed is caps-motion + kill-switch gated in CSS via !important (inline
+      // writes beat plain class rules; !important lets the suppressed states win).
+      var bleedNext = ilBleedSide === 'a' ? ilBleedB : ilBleedA;
+      var bleedCurr = ilBleedSide === 'a' ? ilBleedA : ilBleedB;
+      bleedNext.style.backgroundImage = artCss;
+      bleedNext.style.opacity = IL_BLEED_MAX;
+      bleedCurr.style.opacity = '0';
+      if (ilBleedScrim) ilBleedScrim.style.opacity = '1';
+      ilBleedSide = ilBleedSide === 'a' ? 'b' : 'a';
+    };
+    img.onerror = function () { imgSettled = true; };
+    setTimeout(function () { if (!imgSettled) imgSettled = true; }, 6000);
+    img.src = url;
 
-        var boxNext = ilSide === 'a' ? ilBackdropB : ilBackdropA;
-        var boxCurr = ilSide === 'a' ? ilBackdropA : ilBackdropB;
-        ilCacheTouch(url);
-        boxNext.style.backgroundImage = artCss;
-        boxNext.style.opacity = '1';
-        boxCurr.style.opacity = '0';
-        ilSide = ilSide === 'a' ? 'b' : 'a';
-
-        // Bleed is caps-motion + kill-switch gated in CSS via !important —
-        // required because these are INLINE writes, which beat plain class
-        // rules; with !important the suppressed states genuinely win.
-        var bleedNext = ilBleedSide === 'a' ? ilBleedB : ilBleedA;
-        var bleedCurr = ilBleedSide === 'a' ? ilBleedA : ilBleedB;
-        bleedNext.style.backgroundImage = artCss;
-        bleedNext.style.opacity = IL_BLEED_MAX;
-        bleedCurr.style.opacity = '0';
-        if (ilBleedScrim) ilBleedScrim.style.opacity = '1';
-        ilBleedSide = ilBleedSide === 'a' ? 'b' : 'a';
-      }
-
-      // Hero cost attribution: `cached` distinguishes the near-free color-leads
-      // path from a full network+decode swap on the tv.log timeline.
-      tvLog('perf', 'home:hero-swap', { cached: wasCached });
-    });
-
-    // Hard ceiling mirrors the old 6s settle: if the read never resolves (B8
-    // can stall a slow transcode), release the swap so a later focus can start
-    // fresh. getPalette never rejects, so this only fires on a true stall.
-    setTimeout(function () { if (!settled) settled = true; }, 6000);
+    // ── AMBIENT WASH colors from PMS /services/ultrablur/colors — the SAME
+    // source the detail backdrop uses (proven on-device), and home already
+    // prefetches it on focus at 250ms so by this 500ms settle it is usually
+    // cache-warm. Independent of the image crossfade above ("color leads,
+    // image follows" still holds when colors resolve first). No canvas, no
+    // cross-origin byte read — the fragile bits that broke Phase 3.
+    var server = state.activeServer;
+    var artPath = item.artPath || item.art;
+    var colorsFrom = 'none';
+    if (server && artPath) {
+      loadUltraBlurBackdrop(server, artPath).then(function (backdrop) {
+        if (destroyed || swapTok !== ilHeroToken) return;
+        if (backdrop && backdrop.colors) {
+          ilApplyAmbient(backdrop.colors, swapTok);
+          tvLog('perf', 'home:hero-swap', { colorsFrom: 'pms' });
+        } else {
+          tvLog('perf', 'home:hero-swap', { colorsFrom: 'none' });
+        }
+      });
+    } else {
+      tvLog('perf', 'home:hero-swap', { colorsFrom: colorsFrom });
+    }
   }
 
   function ilShowHero(show) {
@@ -692,10 +700,6 @@ function homeScreen(root, params, navigate) {
       ilHeroToken += 1;
       if (posterFocusTimer) { clearTimeout(posterFocusTimer); posterFocusTimer = null; }
       if (ilHeroTimer) { clearTimeout(ilHeroTimer); ilHeroTimer = null; }
-      // Release every decoded hero blob (crisp box + bleed + palette share these
-      // objectURLs). Safe here: the screen is tearing down, so no live layer can
-      // still reference a revoked URL.
-      try { clearPaletteCache(); } catch (e) { /* ignore */ }
       try { abortPrefetch(); } catch (e) { /* ignore */ }
       window.removeEventListener(USERQUEUE_CHANGED_EVENT, onUserQueueChanged);
       detachFocus();
