@@ -184,6 +184,70 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ---
 
+## Motion tokens (foundations)  (added 2026-06-30)
+
+> **Rule:** transitions/animations reference a `--ease-*` / `--dur-*` token in `:root`
+> of `src/styles/app.css` — never re-state a `cubic-bezier(...)` literal per rule.
+> These are **Material 3** curves/durations. The M2-legacy `cubic-bezier(0.4, 0, 0.2, 1)`
+> and bare `ease` keyword are **deprecated** in favour of the M3 emphasized/standard
+> family below. (Slightly TV-shortened durations; M3's expressive 450–600ms "long"
+> curves are intentionally **not** adopted — they feel sluggish at 10 feet.)
+>
+> **Chrome 53 / webOS 4 safety:** custom properties and `cubic-bezier()` are both
+> pre-Chrome 53, so the token block is lint-clean (the block comment carries a
+> documentation `chrome53-ok`). Animate **transform/opacity only** — never layout
+> (width is the one ratified exception on the overlay rail, see Nav item) or big-blur paint.
+
+### Easing ladder (`--ease-*`) — M3 token → cubic-bezier
+
+| Token | M3 name | cubic-bezier | Use |
+|---|---|---|---|
+| `--ease-emphasized` | emphasized | `cubic-bezier(0.2, 0, 0, 1)` | hero/primary on-screen transitions (paired with a longer dur) |
+| `--ease-emphasized-decelerate` | emphasized-decelerate | `cubic-bezier(0.05, 0.7, 0.1, 1)` | elements **entering** the screen |
+| `--ease-emphasized-accelerate` | emphasized-accelerate | `cubic-bezier(0.3, 0, 0.8, 0.15)` | elements **exiting** the screen |
+| `--ease-standard` | standard | `cubic-bezier(0.2, 0, 0, 1)` | simple/small utility + focus-state transitions (current default) |
+| `--ease-standard-decelerate` | standard-decelerate | `cubic-bezier(0, 0, 0, 1)` | standard enter |
+| `--ease-standard-accelerate` | standard-accelerate | `cubic-bezier(0.3, 0, 1, 1)` | standard exit |
+
+### Duration ladder (`--dur-*`) — M3 token → ms
+
+| Token | M3 name | ms | | Token | M3 name | ms |
+|---|---|---|---|---|---|---|
+| `--dur-short2` | short2 | 100ms | | `--dur-medium1` | medium1 | 250ms |
+| `--dur-short3` | short3 | 150ms | | `--dur-medium2` | medium2 | 300ms |
+| `--dur-short4` | short4 | 200ms | | | | |
+
+`--focus-motion-dur: 0.1s` is **kept** as the dedicated focus micro-motion token
+(short1–2 range); it is not replaced by `--dur-short2`.
+
+### Relationship → pattern (M3, for future motion work)
+
+| Relationship | Pattern | Spec (TV-shortened) |
+|---|---|---|
+| parent ↔ child (drill-in/out) | container transform **or** shared-axis Z | morph bounds+radius+cross-fade; deferred on B8 (FLIP/clip cost) — use fade-through floor |
+| peers with sequence/space (tabs, steps) | shared-axis X/Y | 30dp slide + fade, ~`--dur-medium2` |
+| peers without relationship (top-level dests) | fade through | outgoing fade 0–30%, incoming fade+scale 92→100% 30–100%, ~`--dur-medium2` |
+| in-place appear/dismiss (dialog, menu, overlay) | fade | enter `--dur-short4`/`--dur-medium1` decelerate; exit `--dur-short3` accelerate (exits shorter than enters) |
+
+Sequencing rule: **incoming leads** (decelerate); outgoing uses accelerate; in a
+fade-through the two opacities should **not** both be partially visible (sequential, not crossfade).
+
+### As-built (migrated 2026-06-30, pure curve/duration refactor)
+
+- **Focus-state transitions** (`.btn`, player pills, media-card poster wrap, profile-card
+  avatar, `.gt-list-item`, `.server-card__media`): curve `ease` → `var(--ease-standard)`;
+  `--focus-motion-dur` unchanged.
+- **Sidebar overlay width** (`.screen-home`/`.library-screen` browsing-hub host): curve
+  M2-legacy `(0.4,0,0.2,1)` → `var(--ease-standard)`; `180ms` duration kept (no token match).
+- **Intra-screen opacity** (hero overview `--dur-short4`, sidebar-focus hero `--dur-medium2`,
+  profile-picker row `--dur-medium1`): duration tokenized where it maps to an M3 token, curve → `var(--ease-standard)`.
+- **Left as literals** (no matching duration token; one-offs): hero backdrop `0.35s`,
+  splash `0.4s`, `border-color 0.12s`.
+- **Out of scope (owned by sheet/overlay agent — untouched):** player overlay show/hide
+  (`opacity 0.22s`, ~app.css:3385/3393) and sheet/drawer keyframes (`gt-sheet-in`/`gt-drawer-right-in`, ~app.css:5709–5723).
+
+---
+
 ## Component specs
 
 ### Media card  (audited 2026-06-19)
@@ -215,11 +279,22 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - hero: 2:3 poster (NOT JetStream's full-bleed backdrop — platform 2:3 rule) + info column; ultrablur backdrop stays as screen bg.
   - info: title → `detail-meta` dot row (year · runtime · contentRating · **rating badge**) → **genre pills** (≤4, `--radius-pill`) → summary → **credits row** (Director / Writer / Studio, label+value cols) → actions.
   - **rating badge** (`.detail-rating-badge`, added 2026-06-22): `icon` + `score`. The score is always shown; when the rating comes from an official source we have a logo for, the logo is shown — otherwise a **Material Symbols "star" (filled)** icon from the Google design library stands in (`starIconSvg` in `src/ui/icons/navIcons.js`, 24×24 viewBox, inherits `--accent` via `currentColor`). No official-source logo assets are bundled yet, so the star renders for every source today; the source seam is `ratingSourceLabel`/`buildRatingHtml` in `detailScreen.js`. Sized `1em`, `4px` right margin (no flex `gap` — Chrome53). Used in movie/show/episode layouts.
-  - actions: Play (primary) + **icon buttons** Subtitles (Radix chat-bubble) & Quality (Radix mixer) that open `openSidePanel` drawers; label span shows current value. Then **`...` (More) icon button** (`btn-more-options` / `btn-more-actions`) that opens `openActionDialog` with context-aware options: **Mark as Watched** OR **Mark as Unwatched** (one, not both, based on `getWatchStatus`) + **Manage Watchlist…** (if `supportsWatchlistBookmark`). Inline watchlist button and secondary mark-watched/unwatched buttons **removed** (2026-06-26). The `...` icon is `moreOptionsIconSvg()` (three horizontal dots, `navIcons.js`).
+  - actions: Play (primary) + **icon buttons** Subtitles (Radix chat-bubble) & Quality (Radix mixer) that open `openSidePanel` drawers; label span shows current value. Then the **`...` (More) overflow** — see the dedicated **Detail overflow menu** entry below. Movie/episode (`btn-more-options`, `buildMoreMenuHtml`) shows an in-place vertical stack instantly (no animation); show/season (`btn-more-actions`) still opens the flat `openMoreOptionsPanel` (`openSidePanel`) drawer. Both expose context-aware **Mark as Watched / Unwatched** (one, per `getWatchStatus`) + **Add to / Remove from Watchlist** (if `supportsWatchlistBookmark` && `canUseWatchlists`). Inline watchlist button and secondary mark-watched/unwatched buttons **removed** (2026-06-26). The `...` icon is `moreOptionsIconSvg()` (three horizontal dots, `navIcons.js`).
   - **Cast & Crew rail:** circular 104px avatars (JetStream uses 144dp portrait cards → swapped to circular 10-ft convention), name (2-line clamp) + character role; ≤12; display-only (actors not navigable), images via `bindPosterImage`.
   - episode: 16:9 still + series/title/meta/summary + credits + actions + Up Next + cast rail.
 - **Data:** `item.genres/directors/writers/roles/studio`; `writers` added to Plex (`src/plex/library.js`) + Jellyfin (`mapItem.js`) mappers. Cast thumb: full URL passthrough, else `getThumbUrl(server, thumb, 200)`.
 - **Platform deviations (ratified):** 2:3 poster vs JetStream backdrop; circular cast avatars vs portrait cards; flex `gap` retained (codebase convention). Subtitles/Quality kept per user request as icon-button drawer openers.
+
+### Detail overflow menu (added 2026-06-30; animation removed 2026-06-30)
+
+- **Status:** ✅ to-spec · 2026-06-30 — new in-house component. No Figma kit primitive (Android TV has no speed-dial/FAB-menu); composed from the Button/Icon-button gold-standard. **No animation** — an earlier CSS-spring reveal was built and then explicitly removed per product decision; the menu now shows/hides instantly (plain `display` toggle, no transition/keyframe of any kind).
+- **Android TV guideline:** [TV navigation/actions](https://developer.android.com/design/ui/tv) — reconciled to a D-pad-driven expanding action group (not a pointer FAB).
+- **Code:** `src/ui/screens/detailScreen.js` (`buildMoreMenuHtml` / `buildMoreMenuItems` / `wireMoreMenu` / `runMoreMenuAction` / `toggleWatchlistMembership`); styles `.detail-more-menu` / `.detail-more-stack` / `.detail-more-item*` / `.detail-more-trigger` in `src/styles/app.css` (next to `.detail-icon-btn`). Mounted by `buildPlaybackActionsHtml` (movie/episode only; show/season keeps `openMoreOptionsPanel`).
+- **Anatomy:** `.detail-more-menu[data-focus-zone="detail-more-menu"]` (single state class `is-open`) → `.detail-more-stack` (`position:absolute; bottom:100%`, `display:none` by default and `display:flex` only while `.is-open`, normal column → last child nearest trigger; tonal `--bg-elevated` ≈ M3 L2, hairline border, **no large-blur shadow** per Chrome53 paint guardrail) holding `.detail-more-item` buttons (compose `.btn`; leading `.detail-more-item__icon` + label) → `.detail-more-trigger` (= `#btn-more-options`, composes `.btn.detail-icon-btn`, `aria-haspopup`/`aria-expanded`).
+- **Items (data-driven, today):** **Mark as Watched / Unwatched** (toggle via `markWatched`/`markUnwatched` + `applyWatchAction` re-render); **Add to / Remove from Watchlist** (toggle via watchlist store, label/icon updated in place — gated on `supportsWatchlistBookmark` && `canUseWatchlists`, omitted+re-indexed otherwise); **Add to / Remove from Up Next** (toggle via `src/playback/userQueue.js` `addToQueue`/`removeFromQueue`/`isInQueue`, label updated in place — gated to playable leaf types `isQueueableType` = episode/movie/clip, omitted+re-indexed for season/show). Up Next reuses `libraryIconSvg` (video_library glyph — no dedicated queue glyph exists in `navIcons.js`).
+- **Motion:** none. Open/close is an unanimated `is-open` class toggle; items are `hidden`/un-`hidden` in lockstep with the container's `display`. The `--ease-spring` token that powered the removed reveal was deleted from `:root` (app.css) — it had no other consumers.
+- **Focus (D-pad):** items ship `hidden` (non-focusable per `isNavFocusable`) until opened. Open → un-hide + `is-open`, focus the nearest item, set trigger `data-nav-up`→nearest. Up/Down walk the stack via per-item `data-nav-up`/`-down` (resolved before geometry); top item self-traps Up, bottom item Down→trigger; Left/Right trapped to self. Back (461/27/8/Backspace/GoBack) intercepted capture-phase → close + return focus to trigger; also closes on `focusout` of the container. No `:focus-within`. Uses `data-nav-*` attributes (die with the DOM) rather than `addNavOverride` (which `clearNavOverrides` would wipe globally).
+- **Platform deviations (ratified):** in-house (no kit source); tonal elevation + hairline instead of M3 drop shadow; no entry/exit motion by product decision.
 
 ### Button  ⭐ gold-standard reference entry
 
@@ -340,8 +415,9 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   - container `min-height: var(--target-min)` = **52px** — ratified deviation from kit 48. `--target-min` is the global 10-foot focus/hit floor used app-wide; kept ≥48 rather than pinned to 48 for d-pad target consistency. Container is `display:flex; align-items:center` so glyph/label center within the 52px row.
   - expand/collapse via JS classes ✅ (Chrome53-correct, NO `:focus-within`).
   - **width-expand animation (perf, 2026-06-27):** the eased `width 180ms` slide is applied ONLY on the overlay screens (`.screen-home` / `.library-screen`), where the absolute rail reflows just its own ~8 items. On the in-flow screens (search/settings/detail/watchlist) the rail snaps open with NO transition — animating `width` there reflowed the heavy main-content sibling every frame (the "laggy sidebar on entry" stutter). Visual: smooth slide on home/library, instant snap elsewhere; anatomy unchanged. `refreshHubNavIcons` now rewrites only the watchlist glyph SVG (the sole shape that changes with active state) and only on an actual flip, gated by `data-icon-filled`.
-- **Contract (unchanged):** nav order Home · Library · Search · Settings (Media / Search / System sections in `browsingHubNav.js`).
-- **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host`; CSS-only change, 600/600 tests pass.
+- **Contract:** nav order Home · Watchlist (cond.) · **Leaving Soon** · Library… · Search · Settings (Media / Search / System sections in `browsingHubNav.js`).
+- **Leaving Soon destination (2026-06-30):** new Media-section item `{ id:'leavingSoon', label:'Leaving Soon', iconKind:'leavingSoon' }` added after Watchlist, before the per-library entries. Available to **every** profile (not gated like Watchlist). Like Watchlist it is a **hub mode of the Home screen**, NOT a separate route — `handleHubNavSelect` calls `navigate('home', { hub:'leavingSoon' })`; `homeScreen` dispatches `loadLeavingSoonHub()`. Reuses the `.browsing-hub-item` anatomy verbatim (no per-instance CSS). Icon = Radix "clock" glyph (`P_CLOCK`, `leavingSoonIconSvg`, `navIcons.js`, 15×15, currentColor) — static shape (does NOT flip with active state, unlike the watchlist bookmark). **Leaving Soon was REMOVED from the default Home rails** (`composeHomeRows` in `homeFeed.js` drops any hub matching `isLeavingSoonHub` — the "expiring"/"leaving" promoted hub Plex surfaces); its dedicated screen reuses the same `/hubs/promoted` source via `loadLeavingSoonRows` (filters to leaving hubs, scopes to accessible libraries, full 40-card rows). The full screen reconciles closest to the **Library / Watchlist screen** pattern: renders `renderHubRow` rows into `.home-feed` with the same `.status-msg` empty state, vertical 2:3 cards, caps-motion focus grow, no `:focus-within`.
+- **Hosts verified:** Home, Library, Settings, Search, Detail, Watchlist all mount `.browsing-hub-nav-host`; CSS-only change, 658/658 tests pass.
 
 ### Rail row
 
@@ -376,6 +452,8 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 - **Vertical movement (anchored rails):** moving down keeps the ring in a fixed vertical slot; the feed scrolls so the new rail slides into it (`scrollHomeRailAnchored`).
 - **Motion timing (`NAV_SCROLL_MS`):** a short RAF ease-out-cubic glide on **every engine incl. webOS4/Chromium 53** — **`150ms`** (down from 220). Gliding was always viable on Chromium 53 (rAF since Chrome 24; Enact glided via GPU transforms); only the declarative `scroll-behavior: smooth` CSS was post-53. In-flight glides cancel so a held d-pad chases focus. If the per-frame `scrollLeft`/`scrollTop` reflow ever stutters on the B8, the period-correct upgrade is a `translate3d` track (Enact approach). Focus transition `--focus-motion-dur 0.1s`, transform-only.
 - **Platform notes:** focus motion (`html.caps-motion`) is **enabled for webOS 4+ incl. the B8** (`app.js` `applyMotionCapabilityClass`: `osMajor >= 4 || dev`); the scale grow DOES run on the B8 and stays smooth because only transform/opacity animate. The hard focus ring is the always-on primary cue. (Historic bug: firmware-number misread once enabled a janky grow + big-blur shadow — see [[caps-motion-gate-bug]]; now strict OS major + transform-only.) Chrome53 ignores `scrollIntoViewOptions` (manual math). No `:focus-within`.
+- **Default rails declutter (2026-06-30):** "Leaving Soon" is **no longer a default home rail** — `composeHomeRows` (`homeFeed.js`) filters out the Plex "expiring"/"leaving" promoted hub via `isLeavingSoonHub`. It now lives in its own sidebar destination (see the Nav-item entry's Leaving Soon note), which reuses the same `/hubs/promoted` data via `loadLeavingSoonRows`.
+- **"Up Next" rail (userQueue, 2026-06-30):** a dedicated Home rail for manually-queued items. **Source:** `getQueueItems(activeHomeUser || user)` (`src/playback/userQueue.js`) → `queueToHubRow` (`src/watchlists/resolve.js`, mirrors `watchlistToHubRow`: `displayVariant:'compact'`, `hubIdentifier:'home.userqueue'`, title "Up Next"). Renders through the SAME `renderHubRow`/`createMediaCard` path as every other rail, so vertical 2:3 cards, 1.03 caps-motion focus grow, anchored-slot scroll, poster priming and detail-on-select all come for free (no per-instance CSS, no `:focus-within`). **Placement:** injected in `pinContinueWatchingFirst` immediately AFTER Continue Watching / On Deck (or first when there's no resume rail), ahead of algorithmic recommendation rails — a manual queue is a deliberate "watch next" signal. **Empty state:** empty queue → `buildUserQueueRow` returns null → NO rail (never an empty row). It can be the ONLY content on Home; the "No recommendations yet" empty-state copy is guarded to not clobber a rendered `.row-section`. **Injection guard:** only added on the fresh (non-append) render (`pinContinueWatchingFirst(rows, !append)`) so the deferred-rows append can't duplicate it. **Live refresh:** `homeScreen` listens on `window` for `xplay:userqueue-changed` (`USERQUEUE_CHANGED_EVENT`); when in `home` hub mode and the event's `detail.profile` matches the active profile, it re-runs `loadHomeHub()`. Listener removed in `destroy()` (no leak). Chrome53-safe (plain `addEventListener`; dispatcher feature-detects `CustomEvent`).
 - **Loading skeletons / empty rails:** `renderRowSkeletons` paints 3 grey placeholder rails while loading. A non-append (fresh) render in `renderRowsIntoFeed` **must clear them even when its `rows` are empty** — otherwise the initial phase resolving empty (e.g. brand-new user: empty On Deck + Recently Added/promoted still deferred) leaves the skeletons, the deferred rows append below them, and the leftover grey boxes clip under the immersive hero once a card is focused. Truly-empty rows never render a section (`renderHubRow` early-returns on `!items.length`).
 
 ### Library / browse grid (Films & TV overview)
@@ -465,7 +543,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
   | Element | Kit (node `8842:27004` / composed) | As-built | Resolution |
   |---|---|---|---|
   | **overlay scrim** | full-bleed gradient (JetStream vertical black 0.1→0.8, top→bottom) | `linear-gradient(180deg, transparent 0%, rgba(10,10,15,.92) 40%, rgba(10,10,15,.98) 100%)`; `position:fixed; bottom/left/right:0`; padding `--space-7 / --pad-screen-x / --space-9` (28 / 116 / 40px) | ✅ **to-spec** — bottom-anchored gradient + safe-x gutter. Darker tail than JetStream (ratified: legibility over bright 1080p video). `--pad-screen-x` = `--safe-x` 116px ≈ kit's 56dp overscan ×2. |
-  | **show/hide** | JetStream slide-in/fade-in, focus requested on show | `opacity 0.22s ease` (+ delayed `visibility`); transport/meta toggled by class | ✅ **to-spec for platform** — opacity-only transition is Chrome53-safe; the slide is intentionally dropped (ratified — class toggle, transform/opacity only, no layout anim). Focus defaults to play/pause on open (`focusOverlayDefault`). |
+  | **show/hide** | JetStream slide-in/fade-in, focus requested on show | **M3 asymmetric Fade** (2026-06-30): enter `opacity var(--dur-short4) var(--ease-emphasized-decelerate)` (200ms, emphasized-decelerate); exit `opacity var(--dur-short3) var(--ease-emphasized-accelerate)` (150ms, emphasized-accelerate) + delayed `visibility 0s linear var(--dur-short3)`. Transport/meta toggled by class. | ✅ **to-spec for platform** — opacity-only transition is Chrome53-safe; the slide is intentionally dropped (ratified — class toggle, transform/opacity only, no layout anim). Retimed from `0.22s ease` symmetric to M3 asymmetric (exit shorter than enter — M3 rule); ungated (runs on all engines, compositor-cheap). Focus defaults to play/pause on open (`focusOverlayDefault`). |
   | **title** | line `w200 h24` (`26355`); JetStream `headlineMedium` | `.player-now-playing-title` `--font-title` **52** / `--gt-weight-display` 400 / `--gt-ls-display`, 1.1, ellipsis nowrap | ✅ **to-spec** — display size + regular weight (kit ratio 24/86 ≈ 0.28 of band → up-scaled to 10-ft display). |
   | **subtitle** | line `w120 h16` (`26354`); JetStream `bodyLarge` | `.player-now-playing-subtitle` **20px** / 1.25 / `--text-secondary`, ellipsis | ⚠️ **minor** — works, but 20px is a bare literal; closest token is `--font-meta` (22) = the app's body/large up-scale. **Proposed:** `font-size: var(--font-meta)` for token alignment. Low priority. |
   | **up-next** | (Plax) | `.player-next-up` **18px** / `--text-secondary`, ellipsis | ➕ Plax extension (no kit slot). Acceptable; if tokenized → `--font-small`. |
@@ -480,7 +558,9 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 - **Auto-hide / Back behavior (resolved):**
   - Idle auto-hide **3000ms** (`OVERLAY_HIDE_MS`); suppressed while a menu/info/media-info/autoplay panel is open or the motion cursor is visible (`scheduleOverlayHide` guards). On hide, if a skip prompt is active it takes focus.
-  - **Layered Back dismissal** (ratified): Back closes the topmost layer first — track-modal → overlay-visible → exit player — rather than quitting outright.
+  - **Layered Back dismissal** (ratified, extended 2026-06-30): a short Back closes the topmost layer first — track-modal → media-info → info-panel → autoplay-countdown → overlay-visible → **previous episode in queue** → exit player — rather than quitting outright (`handlePlayerBack`).
+  - **Back → previous episode (added 2026-06-30):** once everything dismissable is closed, if `queue.hasPrevious()` a short Back steps to the prior episode (`playPreviousInQueue` → `stopPlaybackForQueueAdvance` → `loadAndPlay`) instead of exiting. This mirrors the explicit `btn-prev` transport pill. At the queue start (or single-item/no queue) Back **exits** the player as before, so the user is never trapped. The forward direction stays explicit (`btn-next` / autoplay) — Back is rewind-only by design.
+  - **Long-press Back still quits the app:** `handlePlayerBack` early-returns on `e.repeat` (held key), letting the held Back bubble to the router's global 700ms long-press handler (`core/router.js`, `BACK_HOLD_MS`). The player consumes only the *first* (non-repeat) Back, so the global Exit = long-press Back convention is preserved from inside the player; this also fixed a latent bug where held Back was previously swallowed by the player.
 
 - **Platform deviations (ratified):**
   - **Material 3 blue, not kit white/purple:** played fill + accents = `--accent #A8C7FA` (see fill fix); surfaces `#1E1F20`/`#131314`; status text `--accent`.
@@ -538,7 +618,8 @@ Kit container (node `4498:31402` Right / detail `4616:28363`): `bg #1E1F20` (sur
 | item control | trailing 24 radio/check (`control`) | `.player-menu-option-check` 24px radio (`--icon-md`); inner dot revealed via `::after scale()` (transform/opacity only) ✅ | — |
 | item Selected | light fill `#E3E3E3` + dark text `#131314` | `--active` = soft `rgba(227,227,227,.16)` + filled `--accent` radio (current); `:focus` = full light-fill inversion `--focus-fill`/`--focus-on-fill` (cursor) | **ratified** — two-tier: "current" (soft) vs "focused" (inverted); blue `--accent` radio dot is the M3-blue expression of kit Selected |
 | selected/active cue | `:focus-within`-driven in kit | **JS classes** (`--active` / element `:focus`) | **required** — Chrome53 discards any rule using `:focus-within` |
-| slide-in | — | `@keyframes gt-drawer-right-in` (opacity + `translateX(24px)→0`) under `html.caps-motion`; else instant show | **required** — transform/opacity only; instant on webOS4 without caps-motion |
+| slide-in | — | `@keyframes gt-drawer-right-in` (opacity + `translateX(24px)→0`) under `html.caps-motion`; else instant show. **M3 enter timing** (2026-06-30): `var(--dur-medium1)` 250ms `var(--ease-emphasized-decelerate)` (replaced M2-legacy `0.2s cubic-bezier(0.4,0,0.2,1)`). Scrim/container fade `gt-overlay-in` retimed to `var(--dur-short4)` 200ms emphasized-decelerate; bottom-sheet `gt-sheet-in` (translateY 14px) likewise `medium1`/emphasized-decelerate. Kept ≤300ms (no M3 450–600ms longs on TV). | **required** — transform/opacity only; instant on webOS4 without caps-motion |
+| slide-out (exit) | — | **none — instant DOM removal** (`removeChild` in `controls.js` `close()`/`openSidePanel`, playerScreen `overlay.remove()`). Entrance-only; no symmetric exit keyframe. | **ratified** — dismissal is instant; no exit anim invented (would over-engineer). Scrim untouched (`rgba(0,0,0,0.6)` ✅). |
 
 Media-info panel (`.player-media-info-sheet`) reuses the same panel box (bg/radius/padding/shadow/min-h identical); body `.player-media-info-body` is the flex scroll region. **Player-only footer** (`.player-track-modal-footer` Cancel = `.btn .btn-outline .btn--sm`) is a ratified addition — the kit side panel has no footer; it is borderless.
 

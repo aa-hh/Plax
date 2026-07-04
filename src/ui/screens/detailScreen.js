@@ -49,7 +49,7 @@ import {
 } from '../resumeChoice.js';
 import { prefetchDetailItems, abortPrefetch } from '../../core/idlePrefetch.js';
 import { getThumbUrl } from '../../backends/index.js';
-import { subtitlesIconSvg, qualityIconSvg, moreOptionsIconSvg, bookmarkIconSvg, starIconSvg } from '../icons/navIcons.js';
+import { subtitlesIconSvg, qualityIconSvg, moreOptionsIconSvg, bookmarkIconSvg, starIconSvg, libraryIconSvg } from '../icons/navIcons.js';
 import {
   findWatchlistsContainingItem,
   ensureDefaultWatchlist,
@@ -57,6 +57,11 @@ import {
   removeItemFromWatchlist
 } from '../../watchlists/store.js';
 import { canUseWatchlists } from '../../watchlists/access.js';
+import {
+  addToQueue,
+  removeFromQueue,
+  isInQueue
+} from '../../playback/userQueue.js';
 
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
@@ -907,7 +912,7 @@ function detailScreen(root, params, navigate) {
       (item.viewOffset ? 'Resume from ' + formatTimeOffset(item) : 'Play') + '</button>' +
       iconActionButtonHtml('btn-subtitles', 'Subtitles', subtitlesIconSvg()) +
       iconActionButtonHtml('btn-quality', 'Quality', qualityIconSvg()) +
-      iconActionButtonHtml('btn-more-options', 'More', moreOptionsIconSvg()) +
+      buildMoreMenuHtml(item) +
       '</div>';
   }
 
@@ -959,16 +964,201 @@ function detailScreen(root, params, navigate) {
     });
   }
 
+  // Build the "•••" overflow menu: a trigger + an upward stack of secondary
+  // actions that opens instantly (no animation). Items carry data-nav-* so D-pad
+  // Up/Down walks the stack (checked before geometry) and Left/Right is trapped
+  // while open. Items
+  // ship `hidden` (non-focusable per isNavFocusable) until expanded.
+  function buildMoreMenuItems(item) {
+    var items = [];
+    var status = getWatchStatus(item);
+    items.push({
+      id: 'more-item-watched',
+      action: 'watched-toggle',
+      label: status === 'watched' ? 'Mark as Unwatched' : 'Mark as Watched',
+      icon: starIconSvg()
+    });
+    var user = getState().activeHomeUser || getState().user;
+    if (supportsWatchlistBookmark(item) && canUseWatchlists(user)) {
+      var inWl = findWatchlistsContainingItem(user, item.ratingKey).length > 0;
+      items.push({
+        id: 'more-item-watchlist',
+        action: 'watchlist-toggle',
+        label: inWl ? 'Remove from Watchlist' : 'Add to Watchlist',
+        icon: bookmarkIconSvg(inWl)
+      });
+    }
+    // "Add to Up Next" — the user-curated playback queue (userQueue.js). Only
+    // playable leaf items (episodes / movies / clips) belong in Up Next; a
+    // season/show would enqueue a non-playable container, so gate them out.
+    if (isQueueableType(item.type)) {
+      var inQueue = isInQueue(user, item.ratingKey);
+      items.push({
+        id: 'more-item-upnext',
+        action: 'upnext-toggle',
+        label: inQueue ? 'Remove from Up Next' : 'Add to Up Next',
+        icon: libraryIconSvg()
+      });
+    }
+    return items;
+  }
+
+  function isQueueableType(type) {
+    var t = String(type || '').toLowerCase();
+    return t === 'episode' || t === 'movie' || t === 'clip';
+  }
+
+  function buildMoreMenuHtml(item) {
+    var items = buildMoreMenuItems(item);
+    var n = items.length;
+    // DOM order top→bottom; the LAST child sits nearest the trigger.
+    var stack = items.map(function (it, i) {
+      var up = i > 0 ? '#' + items[i - 1].id : '#' + it.id; // top item self-traps
+      var down = i < n - 1 ? '#' + items[i + 1].id : '#btn-more-options';
+      return '<button class="btn detail-more-item" id="' + it.id + '" tabindex="0" hidden' +
+        ' data-action="' + it.action + '"' +
+        ' data-nav-up="' + up + '" data-nav-down="' + down + '"' +
+        ' data-nav-left="#' + it.id + '" data-nav-right="#' + it.id + '">' +
+        '<span class="detail-more-item__icon" aria-hidden="true">' + it.icon + '</span>' +
+        '<span class="detail-more-item__label">' + escapeHtml(it.label) + '</span>' +
+        '</button>';
+    }).join('');
+    var trigger = '<button class="btn detail-icon-btn detail-more-trigger" id="btn-more-options"' +
+      ' tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="More options">' +
+      '<span class="detail-icon-btn__icon" aria-hidden="true">' + moreOptionsIconSvg() + '</span>' +
+      '<span class="detail-icon-btn__label" id="btn-more-options-label">More</span></button>';
+    return '<div class="detail-more-menu" data-focus-zone="detail-more-menu">' +
+      '<div class="detail-more-stack">' + stack + '</div>' + trigger + '</div>';
+  }
+
+  function toggleWatchlistMembership(item, btn) {
+    var user = getState().activeHomeUser || getState().user;
+    if (!canUseWatchlists(user)) return;
+    var containing = findWatchlistsContainingItem(user, item.ratingKey);
+    var inWl = containing.length > 0;
+    if (inWl) {
+      for (var i = 0; i < containing.length; i++) {
+        removeItemFromWatchlist(user, containing[i].id, item.ratingKey);
+      }
+    } else {
+      var wl = ensureDefaultWatchlist(user);
+      addItemToWatchlist(user, wl.id, item);
+    }
+    // Reflect the new state on the (closing) button so the next open reads right
+    // without a full re-render.
+    var nowIn = !inWl;
+    var label = btn.querySelector('.detail-more-item__label');
+    var icon = btn.querySelector('.detail-more-item__icon');
+    if (label) label.textContent = nowIn ? 'Remove from Watchlist' : 'Add to Watchlist';
+    if (icon) icon.innerHTML = bookmarkIconSvg(nowIn);
+  }
+
+  function toggleUpNextMembership(item, btn) {
+    var user = getState().activeHomeUser || getState().user;
+    var inQueue = isInQueue(user, item.ratingKey);
+    if (inQueue) {
+      removeFromQueue(user, item.ratingKey);
+    } else {
+      addToQueue(user, item);
+    }
+    // Reflect the new state on the (closing) button so the next open reads right
+    // without a full re-render — mirrors toggleWatchlistMembership.
+    var nowIn = !inQueue;
+    var label = btn.querySelector('.detail-more-item__label');
+    if (label) label.textContent = nowIn ? 'Remove from Up Next' : 'Add to Up Next';
+  }
+
+  function runMoreMenuAction(action, item, btn) {
+    if (action === 'watched-toggle') {
+      if (getWatchStatus(item) === 'watched') {
+        applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
+      } else {
+        applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
+      }
+    } else if (action === 'watchlist-toggle') {
+      toggleWatchlistMembership(item, btn);
+    } else if (action === 'upnext-toggle') {
+      toggleUpNextMembership(item, btn);
+    }
+  }
+
+  function wireMoreMenu(item) {
+    var menu = screen.querySelector('.detail-more-menu');
+    if (!menu) return;
+    var trigger = menu.querySelector('#btn-more-options');
+    var items = Array.prototype.slice.call(menu.querySelectorAll('.detail-more-item'));
+    if (!trigger || !items.length) return;
+    var backHandler = null;
+
+    function isOpen() {
+      return menu.classList.contains('is-open');
+    }
+
+    function attachBack() {
+      if (backHandler) return;
+      backHandler = function (e) {
+        var k = e.keyCode;
+        var isBack = k === 461 || k === 27 || k === 8 || e.key === 'Backspace' || e.key === 'GoBack';
+        if (isBack && isOpen()) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeMenu(true);
+        }
+      };
+      document.addEventListener('keydown', backHandler, true);
+    }
+    function detachBack() {
+      if (!backHandler) return;
+      document.removeEventListener('keydown', backHandler, true);
+      backHandler = null;
+    }
+
+    function openMenu() {
+      if (isOpen()) return;
+      items.forEach(function (el) { el.hidden = false; });
+      menu.classList.add('is-open');
+      trigger.setAttribute('aria-expanded', 'true');
+      trigger.setAttribute('data-nav-up', '#' + items[items.length - 1].id); // Up → nearest item
+      items[items.length - 1].focus();
+      attachBack();
+    }
+
+    function closeMenu(returnFocusToTrigger) {
+      if (!isOpen()) return;
+      menu.classList.remove('is-open');
+      items.forEach(function (el) { el.hidden = true; });
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.removeAttribute('data-nav-up');
+      detachBack();
+      if (returnFocusToTrigger) trigger.focus();
+    }
+
+    trigger.addEventListener('click', function () {
+      if (isOpen()) closeMenu(true);
+      else openMenu();
+    });
+
+    items.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var action = btn.getAttribute('data-action');
+        closeMenu(false);
+        runMoreMenuAction(action, item, btn);
+      });
+    });
+
+    // Close if focus leaves the menu (e.g. D-pad Down off the trigger).
+    menu.addEventListener('focusout', function () {
+      setTimeout(function () {
+        if (isOpen() && !menu.contains(document.activeElement)) closeMenu(false);
+      }, 0);
+    });
+  }
+
   function wirePlaybackActions(item) {
     screen.querySelector('#btn-start').addEventListener('click', function () {
       offerResumeChoiceOrPlay(0);
     });
-    var btnMoreOptions = screen.querySelector('#btn-more-options');
-    if (btnMoreOptions) {
-      btnMoreOptions.addEventListener('click', function () {
-        openMoreOptionsPanel(item);
-      });
-    }
+    wireMoreMenu(item);
   }
 
   function renderEpisodeDetail(item) {

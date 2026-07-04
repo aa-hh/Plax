@@ -64,9 +64,30 @@ function watchlistToHubRow(watchlist, items) {
   };
 }
 
+/**
+ * Build a Home "Up Next" rail from userQueue snapshots. Mirrors
+ * `watchlistToHubRow` so `renderHubRow` + `createMediaCard` give us vertical
+ * 2:3 cards, focus motion and poster priming for free. Snapshots already carry
+ * enough to render + navigate (no backend resolve needed — the detail screen
+ * re-fetches on select), so we render them directly.
+ */
+function queueToHubRow(items) {
+  var list = items || [];
+  var contentKind = classifyWatchlistRowKind(list);
+  return {
+    title: 'Up Next',
+    hubIdentifier: 'home.userqueue',
+    displayVariant: 'compact',
+    preferSeriesPoster: contentKind === 'tv' || contentKind === 'mixed',
+    contentKind: contentKind,
+    items: list
+  };
+}
+
 export {
   resolveWatchlistItems,
   watchlistToHubRow,
+  queueToHubRow,
   classifyWatchlistRowKind,
   mergeResolvedItem
 };

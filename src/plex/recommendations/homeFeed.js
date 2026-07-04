@@ -7,6 +7,8 @@ import {
   getRecentlyAdded,
   getOnDeck
 } from '../library.js';
+
+var LEAVING_SOON_HUB_SIZE = 40;
 import {
   filterLibrariesForUser,
   isMovieOrTvSection,
@@ -112,6 +114,29 @@ function isRecentlyAddedHub(row) {
     row.title || ''
   ].join(' ').toLowerCase();
   return hints.indexOf('recentlyadded') >= 0 || hints.indexOf('recently added') >= 0;
+}
+
+// "Leaving Soon" is a Plex server promoted hub (expiring rentals / studio
+// licences). Plex identifies it by an "expiring"/"leaving" token in its
+// hubIdentifier/context/title (e.g. hubIdentifier "movie.recentlyadded" is
+// distinct; the leaving hub carries "expiring"). Match on the hint string the
+// same way isContinueHubRow / isRecentlyAddedHub do so it survives server
+// title localisation drift.
+function isLeavingSoonHub(row) {
+  if (!row) return false;
+  var hints = [
+    row.hubIdentifier || '',
+    row.key || '',
+    row.hubKey || '',
+    row.context || '',
+    row.title || ''
+  ].join(' ').toLowerCase();
+  return (
+    hints.indexOf('expiring') >= 0 ||
+    hints.indexOf('leaving soon') >= 0 ||
+    hints.indexOf('leavingsoon') >= 0 ||
+    hints.indexOf('leaving') >= 0
+  );
 }
 
 function normalizeToken(value) {
@@ -386,6 +411,10 @@ function composeHomeRows(continueRow, sectionRows, promotedRows, opts) {
     if (!row) return false;
     if (hasContinue && isContinueHubRow(row)) return false;
     if (hasSectionRecentRows && isRecentlyAddedHub(row)) return false;
+    // "Leaving Soon" no longer lives in the default home rails — it has its own
+    // sidebar destination (loadLeavingSoonRows). Drop it here so Home stays
+    // decluttered regardless of where the server slots it in /hubs/promoted.
+    if (isLeavingSoonHub(row)) return false;
     return true;
   });
   var mergedRows = []
@@ -586,8 +615,32 @@ function loadHomeFeedPhased(server) {
   });
 }
 
+// Dedicated "Leaving Soon" destination data source. Reuses the same promoted
+// hub list the home feed reads, but keeps ONLY the leaving-soon hub(s) (the
+// inverse of the composeHomeRows filter) and loads their full rows. Scoped to
+// the active user's accessible libraries exactly like the home feed so a
+// restricted profile can't see expiring titles from libraries it can't browse.
+function loadLeavingSoonRows(server) {
+  var opts = arguments.length > 1 && arguments[1] ? arguments[1] : {};
+  var restricted = isRestrictedProfile(opts.activeHomeUser || null);
+  var accessibleLibraries = selectAccessibleHomeLibraries(opts.libraries || [], opts.activeHomeUser || null);
+
+  return getPromotedHubList(server, 16).then(function (hubList) {
+    var leavingHubs = (hubList || []).filter(isLeavingSoonHub);
+    if (!leavingHubs.length) return [];
+    return loadHubRows(server, leavingHubs, LEAVING_SOON_HUB_SIZE).then(function (rows) {
+      var scoped = scopeRowsToLibraries(rows || [], accessibleLibraries, restricted);
+      return normalizeRows(scoped);
+    });
+  }).catch(function () {
+    return [];
+  });
+}
+
 export {
   loadHomeFeedPhased,
+  loadLeavingSoonRows,
+  isLeavingSoonHub,
   selectAccessibleHomeLibraries,
   isContinueHubRow,
   isRecentlyAddedHub,

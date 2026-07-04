@@ -15,6 +15,10 @@ function buildHubNavItems(state) {
     items.push({ id: 'watchlist', label: 'Watchlist', iconKind: 'watchlist' });
   }
 
+  // Leaving Soon — its own destination (moved out of the default home rails).
+  // Sits after Watchlist, before the per-library entries.
+  items.push({ id: 'leavingSoon', label: 'Leaving Soon', iconKind: 'leavingSoon' });
+
   var libraries = filterLibrariesForUser(state.libraries || [], user).filter(isMovieOrTvSection);
   libraries.forEach(function (lib) {
     items.push({
@@ -87,6 +91,10 @@ function handleHubNavSelect(item, navigate, callbacks) {
   }
   if (item.id === 'watchlist') {
     navigate('home', { hub: 'watchlist' });
+    return;
+  }
+  if (item.id === 'leavingSoon') {
+    navigate('home', { hub: 'leavingSoon' });
     return;
   }
   if (item.id === 'search') {
