@@ -120,6 +120,27 @@
      it stays smooth on webOS 4 / Chromium 53). Pair with the instant nav-scroll
      jump on that engine (focus.js NAV_SCROLL_MS). */
   --focus-motion-dur: 0.1s;
+  /* ─── Material 3 motion system (Chrome53 / webOS4 floor) ──────────────────
+     Single source of truth for easing + duration. cubic-bezier and custom
+     props predate Chrome53, so these need no chrome53-ok marker. M3's true
+     "emphasized" curve is a two-part spline (CSS linear(), Chrome 113+), so on
+     our floor we approximate it with the closest single bezier.
+     RULES (see docs/design-system/component-registry.md, Motion section):
+       - animate transform/opacity ONLY (compositor; never layout/paint)
+       - enter decelerates, exit accelerates, exit shorter than enter
+       - cap at --dur-medium2 (300ms); M3 450-600ms longs feel sluggish at 10ft */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --ease-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1); /* single-bezier stand-in for M3 emphasized spline */
+  --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ease-spring: cubic-bezier(0.2, 0, 0, 1.2); /* baked overshoot — NOT a JS spring (B8 budget) */
+  --dur-short2: 100ms;
+  --dur-short3: 150ms;
+  --dur-short4: 200ms;
+  --dur-medium1: 250ms;
+  --dur-medium2: 300ms;
   /* Space for focus ring + (motion) scale outside poster */
   --focus-ring-pad: 16px;  /* room for the composited focus scale + ring (no clip) */
   /* Precomputed gutter halves — avoid calc() division on webOS 4 Chromium */
@@ -569,7 +590,7 @@ html.caps-motion .detail-watchlist-btn:focus {
   /* Eased slide is cheap here: the rail is an absolute OVERLAY, so growing its
      width reflows only its own ~8 items, never the feed. (In-flow screens snap
      instantly — see the base rule.) */
-  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 180ms var(--ease-standard);
 }
 .screen-home .home-main {
   margin-left: 0;
@@ -1205,7 +1226,7 @@ html.caps-motion .detail-watchlist-btn:focus {
   z-index: 5;
   background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
   /* Overlay rail: eased width slide is free (reflows only the rail subtree). */
-  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 180ms var(--ease-standard);
 }
 
 .library-item {
@@ -1570,6 +1591,16 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 html.caps-motion .media-card:focus .card-poster-wrap {
   transform: scale(var(--gt-focus-scale));
   box-shadow: var(--focus-shadow);
+}
+/* caps-motion-rich (webOS 5+ / fast Chromium / simulator): a more dimensional
+   focus — the poster lifts as it scales and casts a soft elevation shadow (the
+   tvOS "lift off the surface" depth cue). The B8 (.caps-motion only) never sees
+   this. The lift folds into the already-transitioned transform (compositor); the
+   elevation shadow is a STATIC focused-state property — not transitioned — so
+   there is no per-frame raster even on the richer engine. */
+html.caps-motion-rich .media-card:focus .card-poster-wrap {
+  transform: scale(var(--gt-focus-scale)) translateY(-4px);
+  box-shadow: var(--focus-shadow), 0 10px 24px rgba(0, 0, 0, 0.5);
 }
 /* Edge-aware focus origin (Google: "scaling can vary based on position", and
    don't hard-clip focused foreground content). The first card in a home rail
@@ -5685,6 +5716,36 @@ html.caps-motion .gt-list-item:focus {
 /* gt-chip / gt-tab focus = the W1-style light-fill inversion above; the bg change
    is instant (cheap). No motion-specific override needed. */
 
+/* ── Cross-screen fade-through (router.js builds a fresh `.screen-host` per
+   forward navigation). The new screen fades in; opacity-only so it's compositor-
+   cheap on Chromium 53 and adds ZERO latency (content builds immediately, the
+   fade is non-blocking). caps-motion-gated → webOS4-without-motion hard-cuts.
+   Retained Back re-shows are not re-animated (host already exists). ── */
+@keyframes screen-enter-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+html.caps-motion .screen-host--enter {
+  animation: screen-enter-fade var(--dur-short4) var(--ease-standard-decelerate);
+}
+
+/* ── Staggered screen-enter reveal: home-feed rows rise + fade as they mount
+   (homeScreen.js applyRowEnterStagger sets a capped per-row animation-delay).
+   transform/opacity only; `backwards` fill keeps the row hidden during its
+   delay (no pre-flash) and leaves NO retained compositing layer afterwards. ── */
+@keyframes row-section-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+html.caps-motion .row-section--enter {
+  animation: row-section-enter var(--dur-medium1) var(--ease-standard-decelerate) backwards;
+}
+/* Rich tier graduates the same reveal — a touch longer for a more luxurious
+   cascade on engines with the headroom (the B8 keeps the snappier 250ms). */
+html.caps-motion-rich .row-section--enter {
+  animation-duration: var(--dur-medium2);
+}
+
 /* ── Modal / picker entrance (compositor-only: opacity + translateY, no scale so
    text never fuzzes). Plays once when the modal element is inserted/shown. ── */
 @keyframes gt-overlay-in {
@@ -5706,19 +5767,19 @@ html.caps-motion .gt-dialog,
 html.caps-motion .gt-side-panel,
 html.caps-motion .player-track-modal,
 html.caps-motion .player-media-info-modal {
-  animation: gt-overlay-in 0.16s ease;
+  animation: gt-overlay-in var(--dur-short3) var(--ease-standard);
 }
 html.caps-motion .detail-modal-sheet,
 html.caps-motion .gt-modal-sheet,
 html.caps-motion .gt-dialog-sheet {
-  animation: gt-sheet-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: gt-sheet-in var(--dur-medium1) var(--ease-emphasized-decelerate);
 }
 /* Side panel = kit Direction=Right → slides in from the right edge (compositor
    translateX only). Matches the player track-selector / media-info drawers. */
 html.caps-motion .player-track-modal-sheet,
 html.caps-motion .player-media-info-sheet,
 html.caps-motion .gt-side-panel-sheet {
-  animation: gt-drawer-right-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: gt-drawer-right-in var(--dur-medium1) var(--ease-emphasized-decelerate);
 }
 html.caps-motion .gt-list-item:focus {
   transform: scale(1.025);

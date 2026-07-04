@@ -272,9 +272,22 @@ function strictWebosMajor(device) {
  */
 function applyMotionCapabilityClass(device, reason) {
   var osMajor = strictWebosMajor(device);
+  // Baseline tier (caps-motion): the whole supported range incl. the B8 — focus
+  // scale/glide, sheet/drawer slide-ins, staggered reveal, cross-screen fade.
   var motionCapable = reason === 'dev-browser' || osMajor >= 4 || osMajor === 0;
-  document.documentElement.classList.toggle('caps-motion', motionCapable);
-  tvLog('boot', 'motion-capability', { osMajor: osMajor, reason: reason || null, capsMotion: motionCapable });
+  // Rich tier (caps-motion-rich): higher-headroom engines only — webOS 5+, the
+  // desktop simulator (osMajor 0), and the dev browser. Adds depth flourishes
+  // too costly for the B8 (focus parallax / lift-shadow, longer reveal chains).
+  // It is a SUPERSET of caps-motion (every rich engine also clears the baseline),
+  // so the B8 silently runs the safe subset. See component-registry.md → Motion.
+  var motionRich = reason === 'dev-browser' || osMajor >= 5 || osMajor === 0;
+  var root = document.documentElement;
+  root.classList.toggle('caps-motion', motionCapable);
+  root.classList.toggle('caps-motion-rich', motionRich);
+  tvLog('boot', 'motion-capability', {
+    osMajor: osMajor, reason: reason || null,
+    capsMotion: motionCapable, capsMotionRich: motionRich
+  });
 }
 
 if (document.readyState === 'loading') {

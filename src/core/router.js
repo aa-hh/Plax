@@ -337,7 +337,11 @@ function render() {
   var startedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
 
   var host = document.createElement('div');
-  host.className = 'screen-host';
+  // Cross-screen fade-through: a freshly-built screen fades in (opacity-only,
+  // compositor, caps-motion-gated in CSS). Retained Back re-shows are NOT
+  // re-animated — they snap instantly, keeping the retention promise that Back
+  // feels like the screen never went away.
+  host.className = 'screen-host screen-host--enter';
   host.setAttribute('data-route', currentRoute);
   rootEl.appendChild(host);
 

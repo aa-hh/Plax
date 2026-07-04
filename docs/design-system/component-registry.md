@@ -184,6 +184,48 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 
 ---
 
+## Motion  ✅ Material 3 motion system (2026-06-30)
+
+- **Status:** ✅ tokens + tiers + effects · 2026-06-30 — M3 easing/duration tokens in `src/styles/app.css` `:root`; legacy M2 curve `cubic-bezier(0.4,0,0.2,1)` + bare `ease` deprecated and migrated. Shipped effects: focus scale/glide, sheet/drawer slide-ins, **staggered screen-enter reveal (home-feed rows), cross-screen fade-through, `caps-motion-rich` tier (focus lift + elevation shadow on webOS 5+)**.
+- **Source:** [Material 3 Motion](https://m3.material.io/styles/motion), reconciled to the Chrome 53 / webOS 4 floor. M3's true "emphasized" curve is a two-part spline via CSS `linear()` (Chrome 113+); on our floor it's approximated with the closest single `cubic-bezier`. cubic-bezier + custom props predate Chrome 53 → no `/* chrome53-ok */` marker.
+- **THE RULE (non-negotiable):** animate **`transform` + `opacity` only** — the compositor-only properties. Never layout (width/height/margin/top/left) or paint (box-shadow/background/filter-blur) per frame. Holds 60fps on the B8. (History: [[caps-motion-gate-bug]].)
+- **Timing discipline:** enter **decelerates**, exit **accelerates**, exit shorter than enter; cap at `--dur-medium2` (300ms).
+- **No JS/rAF spring integrators** on the baseline tier — per-frame writes contend with the `focus.js` scroll glide. "Spring feel" = `--ease-spring` overshoot + `transition-delay`, transform/opacity only.
+
+**Easing tokens** (`:root`):
+
+| token | value | use |
+| --- | --- | --- |
+| `--ease-standard` | `cubic-bezier(0.2,0,0,1)` | default in/out |
+| `--ease-standard-decelerate` | `cubic-bezier(0,0,0,1)` | enter |
+| `--ease-standard-accelerate` | `cubic-bezier(0.3,0,1,1)` | exit |
+| `--ease-emphasized` | `cubic-bezier(0.2,0,0,1)` | hero/expressive (single-bezier stand-in) |
+| `--ease-emphasized-decelerate` | `cubic-bezier(0.05,0.7,0.1,1)` | emphasized enter (sheets/drawers) |
+| `--ease-emphasized-accelerate` | `cubic-bezier(0.3,0,0.8,0.15)` | emphasized exit |
+| `--ease-spring` | `cubic-bezier(0.2,0,0,1.2)` | baked overshoot for discrete pops — never a JS spring |
+
+**Duration tokens** (`:root`): `--dur-short2` 100ms · `--dur-short3` 150ms · `--dur-short4` 200ms · `--dur-medium1` 250ms · `--dur-medium2` 300ms (hard cap).
+
+**Capability tiers** (`app.js` `applyMotionCapabilityClass`, classes on `<html>`):
+
+| tier | engines | what runs |
+| --- | --- | --- |
+| `html.caps-motion` (baseline) | webOS 4+ incl. B8, sim, dev | focus scale/glide, sheet/drawer slide-ins, staggered screen-enter reveal, cross-screen fade-through — all transform/opacity only |
+| `html.caps-motion-rich` | webOS 5+ / fast Chromium | adds focus **lift + elevation shadow** on media cards, longer reveal chain. The B8 silently skips these. |
+
+**Pattern → timing map:**
+
+| pattern | enter | exit | easing |
+| --- | --- | --- | --- |
+| focus scale/ring | 100ms | — | standard |
+| nav-scroll glide | 150ms rAF ease-out-cubic | — | (JS, `focus.js`) |
+| overlay / transport | 200ms | 150ms | standard / decelerate-in |
+| sheet / side drawer | 250ms (`--dur-medium1`) | instant | emphasized-decelerate |
+| staggered screen-enter | ≤40ms step, ≤300ms total | — | standard-decelerate |
+| cross-screen fade-through | 200ms in (fresh builds only) | — | standard-decelerate |
+
+---
+
 ## Component specs
 
 ### Media card  (audited 2026-06-19)
