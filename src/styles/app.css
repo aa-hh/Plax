@@ -694,6 +694,14 @@ html.caps-motion .detail-watchlist-btn:focus {
   flex: 1;
   min-height: 0;
   align-items: stretch;
+  /* Containing block + STACKING CONTEXT for the immersive layers (merge review):
+     position alone doesn't create a context — the explicit z-index:0 does. The
+     layers use NEGATIVE z-index inside this context, which paints them above
+     the body's surface-dim but categorically UNDER every piece of home content
+     (non-positioned text included — a positive-z layer would veil it: CSS2.1
+     App. E paints inline content BEFORE positive-z positioned siblings). */
+  position: relative;
+  z-index: 0;
 }
 
 .home-layout > * + * {
@@ -1260,7 +1268,7 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 0;
+  z-index: -3; /* negative inside .home-layout's context — see its comment */
   opacity: 0;
   /* Tiny noise tile tiles; the radial-gradient wash layers do not. The inline
      background-image is set from JS (buildCornerWashCss); the per-layer repeat
@@ -1285,7 +1293,7 @@ html.caps-motion .il-ambient {
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 1;
+  z-index: -2; /* above ambient, still under ALL content */
   opacity: 0;
   background-position: top right;
   background-repeat: no-repeat;
@@ -1304,7 +1312,7 @@ html.caps-motion .il-hero__bleed {
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 1;
+  z-index: -1; /* above the bleed art it scrims, still under ALL content */
   pointer-events: none;
   background:
     linear-gradient(to right, rgba(19,19,19,0.85) 0%, rgba(19,19,19,0.6) 34%, rgba(19,19,19,0.55) 100%),
@@ -1320,8 +1328,11 @@ html:not(.caps-motion) .il-hero__bleed,
 html:not(.caps-motion) .il-hero__bleed-scrim,
 .il--no-bleed .il-hero__bleed,
 .il--no-bleed .il-hero__bleed-scrim {
-  opacity: 0;
-  background-image: none;
+  /* !important is load-bearing (merge review): the swap in homeScreen sets
+     opacity/background-image INLINE, and inline style beats any class rule —
+     without !important both this gate and the kill-switch silently lose. */
+  opacity: 0 !important;
+  background-image: none !important;
 }
 
 .home-feed {

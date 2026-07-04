@@ -197,8 +197,9 @@ function homeScreen(root, params, navigate) {
         boxCurr.style.opacity = '0';
         ilSide = ilSide === 'a' ? 'b' : 'a';
 
-        // Bleed is caps-motion + kill-switch gated in CSS; setting the image/
-        // opacity here is harmless when suppressed (opacity is overridden to 0).
+        // Bleed is caps-motion + kill-switch gated in CSS via !important —
+        // required because these are INLINE writes, which beat plain class
+        // rules; with !important the suppressed states genuinely win.
         var bleedNext = ilBleedSide === 'a' ? ilBleedB : ilBleedA;
         var bleedCurr = ilBleedSide === 'a' ? ilBleedA : ilBleedB;
         bleedNext.style.backgroundImage = artCss;
