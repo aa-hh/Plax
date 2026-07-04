@@ -30,7 +30,13 @@ function homeScreen(root, params, navigate) {
   var state = getState();
   var user = state.activeHomeUser || state.user;
   var screen = document.createElement('div');
-  screen.className = 'screen screen-home';
+  // il--no-bleed: DESIGN verdict, not a perf fallback (2026-07-04, on-device).
+  // The soft full-bleed art layer read as a duplicated poster echo behind the
+  // crisp corner box — a 720→1920 upscale is not soft enough to register as
+  // ambient glow. The immersive response is carried by the ambient color wash
+  // + the crisp subject box. Remove this class only with a REAL blur source
+  // (e.g. server-blurred art), never the raw upscale.
+  screen.className = 'screen screen-home il--no-bleed';
   screen.innerHTML =
     '<div class="home-layout">' +
     // Layered immersive hero — full-screen ambient wash (a/b) + soft art bleed
