@@ -427,6 +427,18 @@ function spatialMove(container, key) {
     var score = scoreCandidate(aRect, cRect, key);
     if (score < bestScore) { bestScore = score; best = c; }
   }
+  // LEFT that crosses from main content INTO the sidebar should always land on
+  // the TOP nav item (Home), not the geometrically-nearest one — otherwise the
+  // selector jumps to whatever item happens to sit at the card's vertical
+  // position (Search, a library, …), which reads as random. When the leftmost
+  // content's only LEFT move is "open the sidebar", that move means "go to nav",
+  // and nav starts at the top. (Moving LEFT *within* the sidebar has no
+  // candidate, so this never hijacks intra-sidebar navigation.)
+  if (key === ARROW_LEFT && !activeSideNav && best && isInSideNav(best)) {
+    var hubHost = sideNavHostOf(best);
+    var firstHub = hubHost && hubHost.querySelector('.browsing-hub-item');
+    if (firstHub && isNavFocusable(firstHub)) return firstHub;
+  }
   return best;
 }
 

@@ -1440,6 +1440,10 @@ function playerScreen(root, params, navigate) {
 
   function handlePlayerBack(e) {
     if (e.keyCode !== KEYS.BACK && e.key !== 'GoBack' && e.keyCode !== 8) return;
+    // Auto-repeat Back = the user is HOLDING the key. Don't consume it: let it
+    // bubble to the router's global long-press handler so 700ms-hold still quits
+    // the app from inside the player (Exit = long-press Back convention).
+    if (e.repeat) return;
     if (menuOpen) {
       closeMenu();
       e.preventDefault();
@@ -1467,6 +1471,17 @@ function playerScreen(root, params, navigate) {
     }
     if (overlayVisible) {
       setOverlayVisible(false);
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    // Honor the user's "Back goes to the previous episode" request: when a queue
+    // has an earlier episode, a short Back steps back through the queue instead
+    // of leaving the player. At the queue start (or with no queue) Back exits as
+    // before — so the user is never trapped. Long-press Back still quits the app
+    // (handled by the e.repeat fall-through above + the router's global handler).
+    if (queue.hasPrevious && queue.hasPrevious() && !advancing) {
+      playPreviousInQueue();
       e.preventDefault();
       e.stopImmediatePropagation();
       return;

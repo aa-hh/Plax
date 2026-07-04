@@ -35,6 +35,8 @@ import { providerPickerScreen } from '../ui/screens/providerPickerScreen.js';
 import { jellyfinLoginScreen } from '../ui/screens/jellyfinLoginScreen.js';
 import { jellyfinUserPickerScreen } from '../ui/screens/jellyfinUserPickerScreen.js';
 import { serverPickerScreen } from '../ui/screens/serverPickerScreen.js';
+import { appearanceScreen } from '../ui/screens/appearanceScreen.js';
+import { loadAppearancePrefs, applyAppearance, getAppearancePrefs } from '../settings/appearancePrefs.js';
 
 /**
  * One-shot boot diagnostic settling the webOS engine question: dumps the UA,
@@ -96,6 +98,7 @@ function startApp(platformMajor) {
   register('detail', detailScreen);
   register('player', playerScreen);
   register('settings', settingsScreen);
+  register('appearance', appearanceScreen);
   register('search', searchScreen);
   register('watchlist', watchlistScreen);
   register('design-review', designReviewScreen);
@@ -306,6 +309,28 @@ function applyMotionCapabilityClass(device, reason) {
     capsMotion: motionCapable, capsMotionRich: motionRich
   });
 }
+
+/*
+ * MTB theme preview (reversible). Re-points the app's color tokens to the
+ * Material Theme Builder dark export via the `html.theme-mtb` block in
+ * app.css. Flip at runtime with plaxTheme(true|false); persists in
+ * localStorage so a packaged build can be pre-set to preview on the TV.
+ */
+// Appearance prefs: load persisted theme + per-element overrides into state and
+// apply them to documentElement (data-theme + --role-* indirection vars) before
+// first paint. Supersedes the old plax_theme_mtb localStorage preview path.
+try {
+  loadAppearancePrefs();
+  applyAppearance(getAppearancePrefs());
+} catch (e) { /* prefs/storage unavailable — fall through to default look */ }
+
+// Back-compat shim: keep the old MTB preview toggle working (some console flows
+// / docs reference it). Independent of the appearance system above.
+window.plaxTheme = function (on) {
+  try { localStorage.setItem('plax_theme_mtb', on ? '1' : '0'); } catch (e) { /* ignore */ }
+  document.documentElement.classList.toggle('theme-mtb', !!on);
+  return !!on;
+};
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot);

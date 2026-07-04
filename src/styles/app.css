@@ -13,14 +13,16 @@
   --text-secondary: #C4C7C5;     /* on-surface-variant */
   --text-muted: #8E918F;         /* outline (hints/muted) */
   --accent: #A8C7FA;             /* primary (Google TV blue) */
-  --accent-soft: rgba(168, 199, 250, 0.18);
+  --accent-rgb: 168,199,250;     /* --accent as comma-rgb for rgba(var(--accent-rgb), α) */
+  --text-muted-rgb: 142,145,143; /* --text-muted as comma-rgb */
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
   /* Progress bar (kit 719:6043) — one token-driven definition for all 3 bars.
      Height: kit 3; we use 4 (10-ft: 3px reads too thin over poster art @1080p).
      Track: opaque dark scrim (legible over art) vs kit white@20%.
      Fill:  blue --accent ratified as the app's Material 3 progress/seek color. */
   --progress-track-h: 4px;
   --progress-track-color: rgba(0, 0, 0, 0.55);
-  --progress-fill-color: var(--accent);
+  --progress-fill-color: var(--role-progress-fill, var(--accent));
   --progress-radius: 2px;
   /* Player seek track is taller than the 4px badge bar: the 28px scrub thumb
      makes a 4px track read thin, so the player uses a dedicated 6px height
@@ -29,7 +31,7 @@
   --brand: #e50914;
   --brand-soft: rgba(229, 9, 20, 0.14);
   --border: #444746;             /* outline-variant */
-  --border-focus: #A8C7FA;       /* focus ring = primary */
+  --border-focus: var(--role-accent, var(--accent)); /* focus ring = primary (themeable via --role-accent) */
   --success: #5cb85c;
   --warning: #e5a00d;
   --warning-bg: rgba(229, 160, 13, 0.1);
@@ -170,6 +172,36 @@
   --drawer-player-bottom: 280px;
   --drawer-dialog-h: 200px;     /* kit Modal drawer action dialog (Top/Bottom) */
   --drawer-actions-w: 268px;    /* kit dialog Actions column */
+  /* Navigation drawer — kit Navigation drawer 563:4331 / Nav item 9:161. Geometry
+     is the redline dp taken literally 1:1 as px (expanded rail max 280, collapsed
+     max 80, item 48, icon 24, gap 12, band 80) — NOT doubled. An earlier pass here
+     doubled everything, reasoning the kit's "Usage" frames are drawn on a 960×540
+     "TV Frame" (half 1920×1080) — plausible-looking, but WRONG: checked against
+     real shipping code (android/tv-samples JetStreamCompose `DashboardTopBar.kt` +
+     `Type.kt`), Google's own polished sample uses a 32dp tab height and a 14sp
+     label for its persistent nav chrome — smaller than even the undoubled kit
+     defaults, and nowhere near double. Android's dp/sp units are already
+     calibrated for 10-foot viewing by the OS; a Figma frame drawn at a smaller
+     canvas for workspace convenience is not an instruction to double values in
+     code. The ×2 pass shipped and was confirmed "far too large." Reverted.
+     Icon uses the shared `--icon-md` (24px, same token as hub-icon/player-menu/
+     etc. elsewhere) rather than a nav-only token — no evidence supports the nav
+     icon being different from every other icon slot in the app. Label is the one
+     value the redline doesn't cover at all (no type spec) — kept at --font-body
+     (24px), this app's own already-shipped Button/Chip 10-foot scale, since
+     JetStream's 14sp scales down to roughly this ballpark once density is
+     accounted for, and it's what the user directly asked for earlier
+     ("why aren't we using ... 24 labels"). */
+  --nav-rail-w: 96px;             /* collapsed — widened from the kit's 80dp (2026-07-04) so a
+     72px circular pill (= --nav-item-h) fits with the SAME 12px host padding used when
+     expanded (96 = 12 + 72 + 12) — this keeps the icon at a constant x position in both
+     states instead of shrinking host padding to fit the circle, which shifted the icon left. */
+  --nav-rail-w-expanded: 280px;   /* expanded — 280dp kit max, literal */
+  --nav-item-h: 72px;             /* test: 72px item height for 10-foot scale */
+  --nav-band-h: 80px;             /* header + footer band — 80dp kit, literal */
+  --nav-icon-md-nav: 36px;        /* test: 36px nav icons */
+  --nav-selected-bg: rgba(0, 74, 119, 0.4); /* secondaryContainer.copy(alpha=.4f) — selected indicator */
+  --font-nav-label: 24px;         /* nav label — 24px for legibility */
   --provider-card-w: 420px;
   --provider-card-media-h: 200px;
   --server-card-w: 240px;        /* server-picker square card (logo tile + caption) */
@@ -180,6 +212,102 @@
   --z-player-overlay: 1002;
   --z-loading: 1005;
   --z-hud: 1800;
+
+  /* ── Tonal palette ladders (Material 3 tones 0–100) ───────────────────────
+     DEFAULT blue ramp — approximate (generated from Google-TV-blue #A8C7FA;
+     real MTB export only for cyan/teal/gold theme blocks). Themes override the
+     full set; JS may also read these to derive --role-* overrides. */
+  /* DEFAULT blue ramp — approximate */
+  --palette-primary-0: #000000;
+  --palette-primary-5: #001129;
+  --palette-primary-10: #001C3A;
+  --palette-primary-15: #00264B;
+  --palette-primary-20: #08305C;
+  --palette-primary-25: #1A3B68;
+  --palette-primary-30: #284775;
+  --palette-primary-35: #355382;
+  --palette-primary-40: #425F8F;
+  --palette-primary-50: #5B78A9;
+  --palette-primary-60: #7592C4;
+  --palette-primary-70: #8FACE0;
+  --palette-primary-80: #A8C7FA;
+  --palette-primary-90: #D6E3FF;
+  --palette-primary-95: #ECF0FF;
+  --palette-primary-98: #F9F9FF;
+  --palette-primary-99: #FDFCFF;
+  --palette-primary-100: #FFFFFF;
+  --palette-secondary-0: #000000;
+  --palette-secondary-5: #001129;
+  --palette-secondary-10: #051C2C;
+  --palette-secondary-15: #102637;
+  --palette-secondary-20: #1B3142;
+  --palette-secondary-25: #263C4D;
+  --palette-secondary-30: #324859;
+  --palette-secondary-35: #3D5365;
+  --palette-secondary-40: #495F71;
+  --palette-secondary-50: #62788B;
+  --palette-secondary-60: #7C92A5;
+  --palette-secondary-70: #96ACC0;
+  --palette-secondary-80: #B1C8DC;
+  --palette-secondary-90: #CDE5F9;
+  --palette-secondary-95: #DBF2FF;
+  --palette-secondary-98: #F3FAFF;
+  --palette-secondary-99: #FAFDFF;
+  --palette-secondary-100: #FFFFFF;
+  --palette-tertiary-0: #000000;
+  --palette-tertiary-5: #1A1130;
+  --palette-tertiary-10: #251A3D;
+  --palette-tertiary-15: #302548;
+  --palette-tertiary-20: #3B3054;
+  --palette-tertiary-25: #473B60;
+  --palette-tertiary-30: #53476C;
+  --palette-tertiary-35: #5F5279;
+  --palette-tertiary-40: #6C5E86;
+  --palette-tertiary-50: #85769F;
+  --palette-tertiary-60: #9F90BA;
+  --palette-tertiary-70: #BAAAD5;
+  --palette-tertiary-80: #D6C5F2;
+  --palette-tertiary-90: #EDDDFF;
+  --palette-tertiary-95: #F7EDFF;
+  --palette-tertiary-98: #FFF7FF;
+  --palette-tertiary-99: #FFFBFF;
+  --palette-tertiary-100: #FFFFFF;
+  --palette-neutral-0: #000000;
+  --palette-neutral-5: #101113;
+  --palette-neutral-10: #1A1C1E;
+  --palette-neutral-15: #242628;
+  --palette-neutral-20: #2E3133;
+  --palette-neutral-25: #393C3E;
+  --palette-neutral-30: #45474A;
+  --palette-neutral-35: #515356;
+  --palette-neutral-40: #5C5F62;
+  --palette-neutral-50: #75777A;
+  --palette-neutral-60: #8F9194;
+  --palette-neutral-70: #AAACAF;
+  --palette-neutral-80: #C5C7CA;
+  --palette-neutral-90: #E2E2E6;
+  --palette-neutral-95: #F0F0F4;
+  --palette-neutral-98: #F9F9FC;
+  --palette-neutral-99: #FCFCFF;
+  --palette-neutral-100: #FFFFFF;
+  --palette-neutral-variant-0: #000000;
+  --palette-neutral-variant-5: #0E1218;
+  --palette-neutral-variant-10: #191C22;
+  --palette-neutral-variant-15: #23262D;
+  --palette-neutral-variant-20: #2D3038;
+  --palette-neutral-variant-25: #393C43;
+  --palette-neutral-variant-30: #44474F;
+  --palette-neutral-variant-35: #50525B;
+  --palette-neutral-variant-40: #5C5E67;
+  --palette-neutral-variant-50: #757780;
+  --palette-neutral-variant-60: #8F909A;
+  --palette-neutral-variant-70: #A9ABB4;
+  --palette-neutral-variant-80: #C5C6D0;
+  --palette-neutral-variant-90: #E1E2EC;
+  --palette-neutral-variant-95: #EFF0FA;
+  --palette-neutral-variant-98: #F9F9FF;
+  --palette-neutral-variant-99: #FDFCFF;
+  --palette-neutral-variant-100: #FFFFFF;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -197,6 +325,9 @@
   --gt-secondary-container: #004A77;      /* sys/dark/secondary-container — selected chip fill */
   --gt-on-secondary-container: #C2E7FF;   /* sys/dark/on-secondary-container — selected chip label */
   --gt-tertiary: #6DD58C;                 /* sys/dark/tertiary */
+  --gt-on-tertiary: #003917;              /* sys/dark/on-tertiary */
+  --gt-tertiary-container: #00522A;       /* sys/dark/tertiary-container */
+  --gt-on-tertiary-container: #89F8AB;    /* sys/dark/on-tertiary-container */
   --gt-bg: var(--bg-base);
   --gt-surface-0: var(--bg-base);         /* tonal elevation 0 → 3 */
   --gt-surface-1: var(--bg-elevated);
@@ -208,8 +339,7 @@
   --gt-text-muted: var(--text-muted);     /* disabled/hint */
   --gt-scrim: rgba(0, 0, 0, 0.6);         /* over imagery for legibility */
 
-  /* Typography — Roboto (TV-scaled Material 3 roles); system fallback on B8.
-     Roboto delivery (bundled subset vs system) decided during component work. */
+  /* Typography — TV-scaled to the Material 3 type roles. */
   --gt-font: 'Roboto', 'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --gt-weight-regular: 400;
   --gt-weight-medium: 500;
@@ -249,7 +379,7 @@
   --gt-focus-scale: 1.1;                  /* large items (cards) */
   --gt-focus-scale-med: 1.05;             /* medium items (buttons/chips) */
   --gt-focus-outline-w: var(--focus-w);   /* 3px */
-  --gt-focus-outline: var(--accent);
+  --gt-focus-outline: var(--role-accent, var(--accent));
   --gt-focus-ring: var(--focus-shadow);   /* strong static ring (B8 cue) */
   --gt-focus-glow: 0 12px 32px rgba(168, 199, 250, 0.28); /* elevation glow (webOS5+) */
 
@@ -458,7 +588,7 @@ html.caps-motion .detail-network-info-btn,
 html.caps-motion .detail-watchlist-btn {
   /* Transform-only = GPU-composited, no per-frame repaint (webOS 4 smooth). The
      focus ring (box-shadow) applies instantly — cheap, and not animated. */
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 
 /* Text-bearing CTA buttons do NOT scale: Chromium 53 rasterises the layer at
@@ -466,7 +596,7 @@ html.caps-motion .detail-watchlist-btn {
    instant focus ring + a composited background lift (matches the player pills). */
 html.caps-motion .btn,
 html.caps-motion #btn-test-connection {
-  transition: background var(--focus-motion-dur) ease;
+  transition: background var(--focus-motion-dur) var(--ease-standard);
 }
 
 /* Player pills keep their size on focus (no scale → never clip in tight rows or
@@ -474,7 +604,7 @@ html.caps-motion #btn-test-connection {
    only the shadow/background transition needs smoothing. */
 html.caps-motion .player-control-pill,
 html.caps-motion .player-stream-pill {
-  transition: box-shadow var(--focus-motion-dur) ease, background var(--focus-motion-dur) ease;
+  transition: box-shadow var(--focus-motion-dur) var(--ease-standard), background var(--focus-motion-dur) var(--ease-standard);
 }
 
 html.caps-motion .card:not(.media-card):not(.profile-card):not(.provider-card):focus,
@@ -584,13 +714,52 @@ html.caps-motion .detail-watchlist-btn:focus {
   /* pull out of the padded content box into the left safe-area gutter */
   left: calc(-1 * var(--safe-x));
   z-index: 5;
-  /* Solid backing under the icons/labels (rail overlays the bled hero), fading
-     only at the very right edge so it blends into the content. */
-  background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
+  /* Collapsed: OPAQUE backing, hard edge, no fade — feed content scrolling
+     under the rail simply disappears behind it (no scrim in collapsed state). */
+  background: var(--bg-base);
   /* Eased slide is cheap here: the rail is an absolute OVERLAY, so growing its
      width reflows only its own ~8 items, never the feed. (In-flow screens snap
      instantly — see the base rule.) */
   transition: width 180ms var(--ease-standard);
+}
+
+/* Expanded-drawer SCRIM (kit modal-drawer anatomy: drawer + Scrim over content,
+   node 8689:45284). position:fixed escapes the host's overflow:hidden clip
+   (the host has NO transform/filter — adding one would re-capture the fixed
+   pseudo and break this). Constant geometry, opacity-only toggle: invisible +
+   pointer-events:none when collapsed (no scrim in the collapsed state — the
+   rail's opaque background alone hides scrolling content), fading in over the
+   content when the drawer expands. z-index:-1 keeps it under the rail's own
+   surface inside the host's stacking context while still painting above the
+   page content. */
+.screen-home .browsing-hub-nav-host::before,
+.library-screen .browsing-hub-nav-host::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50vw;
+  background: linear-gradient(to right,
+    var(--bg-base) 0%,
+    var(--bg-base) 30%,
+    rgba(19, 19, 20, 0.72) 55%,
+    rgba(19, 19, 20, 0) 100%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+.screen-home .browsing-hub-nav-host--peek::before,
+.screen-home .browsing-hub-nav-host--expanded::before,
+.library-screen .browsing-hub-nav-host--peek::before,
+.library-screen .browsing-hub-nav-host--expanded::before {
+  opacity: 1;
+}
+/* Fade is motion-gated; engines without caps-motion just snap the opacity. */
+html.caps-motion .screen-home .browsing-hub-nav-host::before,
+html.caps-motion .library-screen .browsing-hub-nav-host::before {
+  transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
+
 }
 .screen-home .home-main {
   margin-left: 0;
@@ -680,13 +849,14 @@ html.caps-motion .detail-watchlist-btn:focus {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  width: 72px;
-  /* Horizontal padding keeps items + focus ring off the rail edges. With that
-     8px inset the ring fits inside the rail, so overflow:hidden is safe again —
-     and it makes the expanding width *reveal* the labels (no display pop). */
-  padding: var(--space-3) var(--space-2);
+  width: var(--nav-rail-w);
+  /* Kit drawer padding is 12px each side (563:4331 px-[12px]); with that inset the
+     focus pill fits inside the rail, so overflow:hidden is safe and the expanding
+     width reveals the labels (no sliver). */
+  padding: var(--space-3) var(--space-3);
   overflow: hidden;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  /* No divider: the rail separates from content by its opaque backing when
+     collapsed and by the scrim when expanded (overlay screens), not a border. */
   /* No width transition by DEFAULT: on the in-flow screens (search, settings,
      detail, watchlist) the rail's sibling is the main content, so animating
      `width` reflows that whole (often heavy) subtree every frame for 180ms —
@@ -703,7 +873,7 @@ html.caps-motion .detail-watchlist-btn:focus {
    which previously killed both the expand and the label-hide rules on the B8. */
 .browsing-hub-nav-host--peek,
 .browsing-hub-nav-host--expanded {
-  width: 220px;
+  width: var(--nav-rail-w-expanded);
 }
 
 /* Hide labels and section headings when collapsed. */
@@ -712,50 +882,39 @@ html.caps-motion .detail-watchlist-btn:focus {
   display: none;
 }
 
+/* Collapsed rail circle (2026-07-04, take 2): host padding stays the SAME
+   12px in every state (no override here) — a previous pass shrank it to 4px
+   to make room for the circle, which shifted the icon ~8px left on collapse
+   and caused a visible jump. Instead --nav-rail-w was widened to 96px so the
+   host's content box (96 − 2×12 = 72) already equals --nav-item-h; the item
+   is width:100% of that box, so its pill (background covers the full item
+   box regardless of the item's own internal padding) is a 72×72 circle for
+   free, and the icon's x position only moves ~2px between collapsed/expanded
+   (imperceptible) instead of jumping. */
 .browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
   padding-left: 14px;
   padding-right: 14px;
   justify-content: center;
 }
 
-/* Collapsed-but-labelled active section (E): when the rail is collapsed and not
-   peeking, the active item (aria-current="page") stacks its icon over a compact
-   accent label so the current section stays legible from a cold landing. The
-   72px width holds it; other items remain icon-only. */
-.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] {
-  flex-direction: column;
-  justify-content: center;
-  padding-top: var(--space-2);
-  padding-bottom: var(--space-2);
-}
-
-.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] .browsing-hub-item__label {
-  display: block;
-  flex: none;
-  width: 100%;
-  margin-left: 0;
-  margin-top: var(--space-1);
-  text-align: center;
-  font-size: var(--font-card-meta);
-  font-weight: 600;
-  color: var(--accent);
-}
-
-/* Stacked active item: drop the horizontal icon->label gap. */
-.browsing-hub-nav-host--label-active:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item[aria-current="page"] .browsing-hub-item__icon + .browsing-hub-item__label {
-  margin-left: 0;
+/* Drawer-focused brighten (kit: contentColor = drawerHasFocus ? onSurface :
+   onSurfaceVariant). Entering the rail (--expanded) lifts every resting item from
+   on-surface-variant to on-surface; the focused/selected items override below. */
+.browsing-hub-nav-host--peek .browsing-hub-item,
+.browsing-hub-nav-host--expanded .browsing-hub-item {
+  color: var(--gt-text);
 }
 
 .browsing-hub-nav-host > * + * {
   margin-top: var(--space-5);
 }
 
-.browsing-hub-section--search,
-.browsing-hub-section--system {
-  margin-top: var(--space-2);
-  padding-top: var(--space-4);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
+/* Kit drawer 563:4331 has no dividers/headings — the footer-pinned Settings and
+   the inter-section gap carry the grouping. (Guideline: use dividers sparingly.)
+   A parallel main-branch pass gave the Footer item a taller h-56 vs the body's
+   h-48 (kit's own distinction) — dropped here in favor of the single, uniform
+   --nav-item-h (72px) the user validated live across several rounds; revisit
+   if a footer-height distinction is wanted again, scaled off 72 not 48. */
 
 .browsing-hub-section__title {
   display: none;
@@ -790,36 +949,44 @@ html.caps-motion .detail-watchlist-btn:focus {
   width: 100%;
 }
 
+/* Kit nav-items column gap (563:4331 gap-[12px], literal). */
 .browsing-hub-nav > * + * {
-  margin-top: 2px;
+  margin-top: 12px;
 }
 
+/* Kit Nav item (9:161): pill, height/gap/icon the redline dp literal (see the
+   geometry note above `--nav-rail-w`). Label is the one deliberate exception
+   (--font-body, not kit-derived — see the token comment). Default content =
+   on-surface-variant; brightens to on-surface when the drawer is focused
+   (.--expanded rule above). */
 .browsing-hub-item {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: var(--target-min);
+  min-height: var(--nav-item-h);
   text-align: left;
-  padding: var(--space-3) 16px;
-  margin-bottom: 2px;
+  padding: 0 16px;
   border-radius: var(--gt-radius-button);
   background: transparent;
-  color: var(--gt-text-2);
+  color: var(--gt-text-2);     /* on-surface-variant — idle label */
   border: none;
-  font-size: var(--gt-body);
+  font-size: var(--font-nav-label);
+  font-weight: var(--gt-weight-medium);
+  line-height: 1.3;
+  letter-spacing: var(--gt-ls-title);
 }
 
 .browsing-hub-item__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--icon-md);
-  height: var(--icon-md);
+  width: var(--nav-icon-md-nav);
+  height: var(--nav-icon-md-nav);
   flex-shrink: 0;
 }
 
 .browsing-hub-item__icon + .browsing-hub-item__label {
-  margin-left: var(--space-3);
+  margin-left: 18px;
 }
 
 .browsing-hub-item__label {
@@ -830,34 +997,51 @@ html.caps-motion .detail-watchlist-btn:focus {
   white-space: nowrap;
 }
 
+/* Icon follows the item's per-state content color (kit: icon + label share the
+   content color). currentColor inherits Default/Selected/Focused alike. */
 .browsing-hub-item .hub-icon {
-  width: var(--icon-md);
-  height: var(--icon-md);
-  color: var(--text-muted);
+  width: var(--nav-icon-md-nav);
+  height: var(--nav-icon-md-nav);
+  color: currentColor;
 }
 
+/* Selected = secondaryContainer @40% pill + on-secondary-container (kit Selected). */
 .browsing-hub-item.active {
-  color: var(--gt-primary);
-  background: var(--accent-soft);
-  font-weight: var(--gt-weight-medium);
+  color: var(--gt-on-secondary-container);
+  background: var(--nav-selected-bg);
 }
 
-.browsing-hub-item.active .hub-icon {
-  color: var(--accent);
-}
-
+/* Focused = inverse-surface pill + inverse-on-surface (kit Focussed) — the shared
+   control inversion (Button/Chip/Menu). Controls invert; only posters get the ring. */
 .browsing-hub-item:focus {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-  box-shadow: var(--focus-shadow);
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
 }
 
-.browsing-hub-item:focus .hub-icon {
-  color: var(--text-primary);
+/* Focused + selected → focus wins (explicit; mirrors the Chip --active:focus fix so
+   the selected fill can't beat :focus at equal specificity on Chrome 53). */
+.browsing-hub-item.active:focus {
+  background: var(--focus-fill);
+  color: var(--focus-on-fill);
 }
 
-.browsing-hub-item.active:focus .hub-icon {
-  color: var(--accent);
+/* Motion (html.caps-motion = webOS 4+ incl. B8; app.js applyMotionCapabilityClass).
+   Pills are paint cues → instant + crisp on every engine; here we only soften the
+   paint swap and slide the label in on expand. Transform/opacity-only, so it stays
+   smooth on Chromium 53 and runs at higher FPS on more capable hardware. Text is
+   never GPU-scaled (Chrome 53 blurs stretched text — same rule as text Buttons). */
+html.caps-motion .browsing-hub-item {
+  transition: background-color var(--focus-motion-dur) ease, color var(--focus-motion-dur) ease;
+}
+
+@keyframes navLabelIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+html.caps-motion .browsing-hub-nav-host--peek .browsing-hub-item__label,
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
+  animation: navLabelIn 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .watchlist-row-link {
@@ -994,7 +1178,7 @@ html.caps-motion .detail-watchlist-btn:focus {
   overflow: hidden;
   max-height: 110px;
   opacity: 1;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur-short4) var(--ease-standard);
 }
 .il-hero--blur-overview .il-hero__overview {
   opacity: 0;
@@ -1002,7 +1186,7 @@ html.caps-motion .detail-watchlist-btn:focus {
 /* Fade the whole hero when sidebar has focus (no relevant card) */
 .il-hero--sidebar-focus .il-hero__content {
   opacity: 0.4;
-  transition: opacity 0.3s ease;
+  transition: opacity var(--dur-medium2) var(--ease-standard);
 }
 
 .home-feed {
@@ -1057,8 +1241,8 @@ html.caps-motion .detail-watchlist-btn:focus {
 }
 
 .btn-primary {
-  background: var(--gt-primary);
-  color: var(--gt-on-primary);
+  background: var(--role-primaryBtn-fill, var(--gt-primary));
+  color: var(--role-primaryBtn-on, var(--gt-on-primary));
   font-weight: 600;
 }
 
@@ -1145,9 +1329,9 @@ html.caps-motion .detail-watchlist-btn:focus {
 }
 
 .nav-item.active {
-  background: linear-gradient(180deg, rgba(168, 199, 250, 0.2) 0%, rgba(168, 199, 250, 0.12) 100%);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.2) 0%, rgba(var(--accent-rgb), 0.12) 100%); /* chrome53-ok */
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px rgba(168, 199, 250, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.6); /* chrome53-ok */
 }
 
 .nav-item:focus {
@@ -1224,7 +1408,9 @@ html.caps-motion .detail-watchlist-btn:focus {
   bottom: 0;
   left: calc(-1 * var(--safe-x));
   z-index: 5;
-  background: linear-gradient(to right, var(--bg-base) 0%, var(--bg-base) 82%, rgba(19, 19, 20, 0) 100%);
+  /* Collapsed: opaque hard-edged backing (grid hides behind it) — see the Home
+     overlay rule; the expanded scrim below carries the fade instead. */
+  background: var(--bg-base);
   /* Overlay rail: eased width slide is free (reflows only the rail subtree). */
   transition: width 180ms var(--ease-standard);
 }
@@ -1544,7 +1730,7 @@ html.caps-motion .detail-watchlist-btn:focus {
 html.caps-motion .media-card .card-poster-wrap {
   /* Transform-only = GPU-composited, no per-frame repaint (webOS 4 smooth). The
      focus ring (box-shadow) applies instantly — cheap, and not animated. */
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 
 html.caps-motion .media-card:focus .card-poster-wrap {
@@ -1555,14 +1741,30 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 /* Plax logo at the top of the nav drawer. Full "plax" wordmark when the rail
    has room (peek/expanded); compact "x" mark when collapsed icon-only. Letters
    inherit `color` (white on this dark surface); the x keeps its brand gradient. */
+/* Header region (kit drawer 563:4331 "Header", py-12). We keep the plax brand here
+   instead of the kit's account switcher (ratified). Collapses to the compact mark. */
 .browsing-hub-brand {
   display: flex;
   align-items: center;
-  min-height: var(--target-min);
-  padding: var(--space-2) 16px;
+  /* FIXED band height (not min-height) + no vertical padding: flex centering
+     does the vertical work, and the band can never grow when the lockup swaps
+     mark↔wordmark — the header stays exactly --nav-band-h in both states so
+     the nav items below never shift. */
+  height: var(--nav-band-h);
+  padding: 0 16px;
   margin-bottom: var(--space-4);
   color: var(--gt-text);
 }
+/* Brand lockup — the collapsed "x" mark and the expanded "plax" wordmark must
+   read as the SAME logo at the SAME size and vertical position, so switching
+   states never makes it jump or resize. The mark's viewBox is the x alone
+   (284 units tall → x fills the whole 40px box); the wordmark's viewBox
+   (466 units) includes the letters' ascender/descender, with the x glyph
+   spanning only 275/466 ≈ 59% of it. At equal 40px heights the wordmark's x
+   shrank to ~24px. Fix: wordmark svg height = 40 / (275/466) ≈ 68px, so its
+   x renders at the mark's exact 40px; both lockups are vertically centered in
+   the same fixed 80px --nav-band-h band, so the x also keeps the same vertical
+   position (its center sits within ~1px of the wordmark's own center). */
 .browsing-hub-brand__mark {
   flex-shrink: 0;
   width: 40px;
@@ -1571,7 +1773,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 .browsing-hub-brand__mark svg { display: block; width: 100%; height: 100%; }
 /* Full wordmark hidden until the rail expands (mirrors nav-item label reveal) */
 .browsing-hub-brand__wordmark { display: none; margin-left: 2px; }
-.browsing-hub-brand__wordmark svg { display: block; width: auto; height: 40px; }
+.browsing-hub-brand__wordmark svg { display: block; width: auto; height: 68px; }
 .browsing-hub-nav-host--peek .browsing-hub-brand__wordmark,
 .browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark { display: block; }
 .browsing-hub-nav-host--peek .browsing-hub-brand__mark,
@@ -1582,9 +1784,14 @@ html.caps-motion .media-card:focus .card-poster-wrap {
   padding-left: 14px;
   padding-right: 14px;
 }
-/* Pin the System (settings) section to the bottom of the drawer */
+/* Pin the System (settings) section to the bottom of the drawer, as an 80dp band
+   (kit redline) — the item is centered inside, not stretched to fill it. */
 .browsing-hub-nav-host > .browsing-hub-section--system {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--nav-band-h);
 }
 /* Card focus = Google-style lift via composited scale + the cheap hard ring.
    No large-blur glow — it repaints badly on the B8 and isn't needed for the cue. */
@@ -1621,6 +1828,7 @@ html.caps-motion .media-card:focus .card-poster-wrap::after {
    flourishes beyond the baseline (parallax, longer chains). The former static
    lift-shadow rule that lived here is superseded — the ::after elevation above
    is compositor-safe enough for the whole caps-motion range. */
+
 /* Edge-aware focus origin (Google: "scaling can vary based on position", and
    don't hard-clip focused foreground content). The first card in a home rail
    sits flush against the feed's left clip boundary (overflow-x: hidden), so a
@@ -1993,7 +2201,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .detail-disclosure-toggle {
   background: transparent;
-  border-color: rgba(168, 199, 250, 0.5);
+  border-color: rgba(var(--accent-rgb), 0.5); /* chrome53-ok */
   color: var(--accent);
 }
 
@@ -2045,7 +2253,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   /* kit Chip 2506:17680 — padding 8/16, 1px #8E918F outline, radius 8 */
   padding: var(--space-2) var(--space-4);
   background: transparent;
-  border: 1px solid rgba(142, 145, 143, 0.35);
+  border: 1px solid rgba(var(--text-muted-rgb), 0.35); /* chrome53-ok */
   border-radius: var(--radius-md);
   font-size: var(--font-meta); /* ratified 10-foot up-scale (kit 14) */
   color: var(--text-secondary);
@@ -2056,7 +2264,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .detail-setting-chip--active {
   background: var(--accent-soft);
-  border-color: rgba(168, 199, 250, 0.45);
+  border-color: rgba(var(--accent-rgb), 0.45); /* chrome53-ok */
   color: var(--accent);
   font-weight: 600;
 }
@@ -2387,6 +2595,61 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .detail-icon-btn__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Detail overflow menu — "•••" trigger that opens a vertical stack of secondary
+   actions ABOVE it. No animation: state (open/closed) is a plain display toggle
+   driven by JS classes on .detail-more-menu (no :focus-within — dropped on
+   Chrome53). */
+.detail-more-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.detail-more-stack {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  /* Stack grows upward out of flow so it never reflows the action row. Normal
+     column: first DOM child = top, last = bottom (nearest the trigger). */
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 240px;
+  margin-bottom: 8px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--bg-elevated, #1e1f20);
+  /* Tonal elevation (≈ M3 L2) + hairline; no large-blur shadow (Chrome53 paint cost). */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 40;
+}
+
+/* Only rendered while open — fully absent (not just empty) when closed. */
+.detail-more-menu.is-open .detail-more-stack {
+  display: flex;
+}
+
+.detail-more-item {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+.detail-more-item + .detail-more-item {
+  margin-top: 4px;
+}
+
+.detail-more-item__icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+}
+
+.detail-more-item__icon svg {
   width: 100%;
   height: 100%;
 }
@@ -3300,7 +3563,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-modal-option--active {
   border-left-color: var(--accent);
   color: var(--accent);
-  background: rgba(168, 199, 250, 0.16);
+  background: rgba(var(--accent-rgb), 0.16); /* chrome53-ok */
 }
 
 /* Focused = Google light-fill inversion (overrides selected when both). */
@@ -3432,15 +3695,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 15, 0.92) 40%, rgba(10, 10, 15, 0.98) 100%);
   z-index: var(--z-player-overlay);
   opacity: 1;
-  transition: opacity 0.22s ease;
+  /* M3 Fade pattern — enter: emphasized-decelerate, short4 (200ms). Opacity-only
+     (slide intentionally dropped); ungated — compositor-cheap on all engines. */
+  transition: opacity var(--dur-short4) var(--ease-emphasized-decelerate);
 }
 
 .player-overlay--hidden {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  /* delay visibility:hidden so the opacity fade plays first */
-  transition: opacity 0.22s ease, visibility 0s linear 0.22s;
+  /* M3 Fade pattern — exit: emphasized-accelerate, short3 (150ms). Exit shorter
+     than enter (M3 rule). Delay visibility:hidden so the opacity fade plays first. */
+  transition: opacity var(--dur-short3) var(--ease-emphasized-accelerate), visibility 0s linear var(--dur-short3);
 }
 
 .player-overlay--hidden.player-overlay--skip-intro-active {
@@ -4714,7 +4980,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   /* kit Chip 2506:17680 — padding 8/16, 1px #8E918F outline, radius 8 */
   padding: var(--space-2) var(--space-4);
   background: transparent;
-  border: 1px solid rgba(142, 145, 143, 0.35);
+  border: 1px solid rgba(var(--text-muted-rgb), 0.35); /* chrome53-ok */
   border-radius: var(--radius-md);
   font-size: var(--font-card);
   color: var(--text-secondary);
@@ -4803,7 +5069,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   /* Margins on cards (not gap) — webOS 4 Chromium lacks flex gap; same pattern as .pin-pad-grid. */
   margin: -12px;
   padding: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity var(--dur-medium1) var(--ease-standard);
 }
 
 .profile-picker--pin-mode .profile-picker-row {
@@ -4887,7 +5153,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   color: var(--accent);
 }
 html.caps-motion .profile-card-avatar {
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 html.caps-motion .profile-card:focus .profile-card-avatar {
   transform: scale(var(--gt-focus-scale-med));
@@ -5100,25 +5366,25 @@ video.native-player.subtitle-no-bg ::cue {
   min-height: 56px;
   box-sizing: border-box;
   padding: var(--field-pad-y) var(--field-pad-x); /* base Text field (kit 12×16 scaled for 10-ft) */
-  background: #303030;         /* TV Compose/sys/dark/inverse-on-surface */
-  color: #E3E3E3;              /* TV Compose/sys/dark/on-surface */
+  background: var(--focus-on-fill); /* TV Compose/sys/dark/inverse-on-surface */
+  color: var(--text-primary);  /* TV Compose/sys/dark/on-surface */
   font-size: var(--font-body); /* 24px — kit title/medium 16px scaled (ratified) */
   font-weight: 500;
   font-family: inherit;
   line-height: 1.4;
-  border: 1px solid #8E918F;   /* TV Compose/sys/dark/outline */
+  border: 1px solid var(--text-muted); /* TV Compose/sys/dark/outline */
   border-radius: 8px;
   outline: none;
-  caret-color: #A8C7FA;        /* TV Compose/sys/dark/primary */
+  caret-color: var(--accent);  /* TV Compose/sys/dark/primary */
 }
 
 .search-input::placeholder {
-  color: #8E918F;
+  color: var(--text-muted);
   opacity: 1;
 }
 
 .search-input:focus {
-  border: 2px solid #A8C7FA;   /* TV Compose/sys/dark/primary, 2px active */
+  border: 2px solid var(--accent); /* TV Compose/sys/dark/primary, 2px active */
   background: transparent;
   box-shadow: none;
 }
@@ -5367,7 +5633,7 @@ video.native-player.subtitle-no-bg ::cue {
   justify-content: center;
   min-height: var(--target-min);
   background: transparent;
-  border: 1px solid rgba(142, 145, 143, 0.35);
+  border: 1px solid rgba(var(--text-muted-rgb), 0.35); /* chrome53-ok */
   color: var(--text-secondary);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-4);
@@ -5393,9 +5659,9 @@ video.native-player.subtitle-no-bg ::cue {
 }
 
 .library-filter-chip--active {
-  background: var(--gt-secondary-container);
+  background: var(--role-selChip-fill, var(--gt-secondary-container));
   border-color: transparent;
-  color: var(--gt-on-secondary-container);
+  color: var(--role-selChip-on, var(--gt-on-secondary-container));
 }
 
 /* Focused-while-selected must still invert to the light focus pill. The shared
@@ -5428,7 +5694,7 @@ video.native-player.subtitle-no-bg ::cue {
   background: transparent;
   /* kit Outline border = sys/dark/outline #8E918F @35% (the reconciled value also
      used by .library-scan-btn), not the ad-hoc white@15%. */
-  border: 1px solid rgba(142, 145, 143, 0.35);
+  border: 1px solid rgba(var(--text-muted-rgb), 0.35); /* chrome53-ok */
   color: var(--gt-text-2);
   font-weight: var(--gt-weight-medium);
 }
@@ -5504,7 +5770,7 @@ video.native-player.subtitle-no-bg ::cue {
 }
 .gt-chip--active {
   background: var(--accent-soft);
-  border-color: rgba(168, 199, 250, 0.45);
+  border-color: rgba(var(--accent-rgb), 0.45); /* chrome53-ok */
   color: var(--accent);
   font-weight: 600;
 }
@@ -5546,9 +5812,9 @@ video.native-player.subtitle-no-bg ::cue {
 .gt-tab--active {
   /* Selected = filled pill, Material 3 blue (mirrors .library-filter-chip--active;
      JS sets the class — no :focus-within). */
-  background: var(--gt-secondary-container);
+  background: var(--role-selChip-fill, var(--gt-secondary-container));
   border-color: transparent;
-  color: var(--gt-on-secondary-container);
+  color: var(--role-selChip-on, var(--gt-on-secondary-container));
   font-weight: var(--gt-weight-medium);
 }
 .gt-tab:focus {
@@ -5599,7 +5865,7 @@ video.native-player.subtitle-no-bg ::cue {
 }
 /* Selected (not focused) = blue container fill + accent text/check (Google list). */
 .gt-list-item--selected {
-  background: rgba(168, 199, 250, 0.16);
+  background: rgba(var(--accent-rgb), 0.16); /* chrome53-ok */
   color: var(--accent);
 }
 .gt-list-item--selected .gt-list-item__trailing { color: var(--accent); }
@@ -5692,7 +5958,7 @@ video.native-player.subtitle-no-bg ::cue {
   border-radius: 50%;
   background: var(--surface-dim);
 }
-.gt-switch--on { background: var(--accent); }
+.gt-switch--on { background: var(--role-switch-fill, var(--accent)); }
 .gt-switch--on .gt-switch__knob { left: 32px; background: var(--surface-dim); }
 /* On focus the row inverts to a light fill; keep the switch readable on it. */
 .gt-list-item:focus .gt-switch { background: rgba(11, 13, 18, 0.35); }
@@ -5727,7 +5993,7 @@ video.native-player.subtitle-no-bg ::cue {
 /* List items keep the tiny 1.025x lift (text blur imperceptible at that scale).
    Chips/tabs are text-bearing → no scale (fuzz); ring + background lift instead. */
 html.caps-motion .gt-list-item {
-  transition: transform var(--focus-motion-dur) ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 html.caps-motion .gt-list-item:focus {
   transform: scale(1.025);
@@ -5739,18 +6005,14 @@ html.caps-motion .gt-list-item:focus {
    forward navigation). The new screen fades in; opacity-only so it's compositor-
    cheap on Chromium 53 and adds ZERO latency (content builds immediately, the
    fade is non-blocking). caps-motion-gated → webOS4-without-motion hard-cuts.
-   Retained Back re-shows are not re-animated (host already exists).
-   `will-change` pre-promotes the compositor layer BEFORE the animation starts —
-   measured on a real B8 (anim:screen-enter-fade in tv.log), the layer-promotion
-   stall on first animation start was costing ~150-200ms beyond the declared
-   duration even on a screen with 0 images. router.js strips `--enter` on
-   animationend so retained hosts don't keep an unneeded layer forever. ── */
+   Retained Back re-shows are not re-animated (host already exists). ── */
+
 @keyframes screen-enter-fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 html.caps-motion .screen-host--enter {
-  will-change: opacity;
+
   animation: screen-enter-fade var(--dur-short4) var(--ease-standard-decelerate);
 }
 
@@ -5792,7 +6054,7 @@ html.caps-motion .gt-dialog,
 html.caps-motion .gt-side-panel,
 html.caps-motion .player-track-modal,
 html.caps-motion .player-media-info-modal {
-  animation: gt-overlay-in var(--dur-short3) var(--ease-standard);
+  animation: gt-overlay-in var(--dur-short4) var(--ease-emphasized-decelerate);
 }
 html.caps-motion .detail-modal-sheet,
 html.caps-motion .gt-modal-sheet,
@@ -5800,7 +6062,9 @@ html.caps-motion .gt-dialog-sheet {
   animation: gt-sheet-in var(--dur-medium1) var(--ease-emphasized-decelerate);
 }
 /* Side panel = kit Direction=Right → slides in from the right edge (compositor
-   translateX only). Matches the player track-selector / media-info drawers. */
+   translateX only). Matches the player track-selector / media-info drawers.
+   M3 enter: emphasized-decelerate, medium1 (250ms). Replaced M2-legacy 0.4,0,0.2,1.
+   Entrance-only — dismissal is instant DOM removal (removeChild), no exit anim. */
 html.caps-motion .player-track-modal-sheet,
 html.caps-motion .player-media-info-sheet,
 html.caps-motion .gt-side-panel-sheet {
@@ -5825,10 +6089,10 @@ html.caps-motion .gt-list-item:focus {
   font-weight: 500;
   line-height: 20px;
   letter-spacing: 0.1px;
-  color: #C4C7C5;              /* TV Compose/sys/dark/on-surface-variant */
+  color: var(--text-secondary); /* TV Compose/sys/dark/on-surface-variant */
 }
 .gt-text-input-wrap--active .tv-text-input-label {
-  color: #A8C7FA;              /* TV Compose/sys/dark/primary */
+  color: var(--accent);        /* TV Compose/sys/dark/primary */
 }
 .tv-text-input {
   width: 100%;
@@ -5838,12 +6102,12 @@ html.caps-motion .gt-list-item:focus {
   font-family: inherit;
   line-height: 1.4;            /* base Text field; Login/Auth variant uses lh 36 */
   padding: var(--field-pad-y) var(--field-pad-x); /* base Text field (kit 12×16 scaled); Login/Auth variant 18×24 */
-  background: #303030;         /* TV Compose/sys/dark/inverse-on-surface */
-  color: #E3E3E3;              /* TV Compose/sys/dark/on-surface */
-  border: 1px solid #8E918F;  /* TV Compose/sys/dark/outline */
+  background: var(--focus-on-fill); /* TV Compose/sys/dark/inverse-on-surface */
+  color: var(--text-primary);  /* TV Compose/sys/dark/on-surface */
+  border: 1px solid var(--text-muted); /* TV Compose/sys/dark/outline */
   border-radius: 8px;
   outline: none;
-  caret-color: #A8C7FA;       /* TV Compose/sys/dark/primary */
+  caret-color: var(--accent);  /* TV Compose/sys/dark/primary */
 }
 
 /* ── Login / Auth field — Plax variant of Text field (full-screen sign-in) ───
@@ -5854,11 +6118,11 @@ html.caps-motion .gt-list-item:focus {
 .gt-text-input-wrap--auth .tv-text-input-label { font-size: 21px; line-height: 30px; }
 .gt-text-input-wrap--auth .tv-text-input { padding: var(--field-pad-y-auth) var(--field-pad-x-auth); line-height: 36px; }
 .tv-text-input::placeholder {
-  color: #8E918F;
+  color: var(--text-muted);
   opacity: 1;
 }
 .tv-text-input:focus {
-  border: 2px solid #A8C7FA;  /* TV Compose/sys/dark/primary, 2px active */
+  border: 2px solid var(--accent); /* TV Compose/sys/dark/primary, 2px active */
   background: transparent;
   box-shadow: none;
 }
@@ -6070,7 +6334,7 @@ html.caps-motion .gt-list-item:focus {
 .server-card:focus .server-card__label { color: var(--accent); }
 .server-card--add:focus .server-card__media { color: var(--accent); }
 html.caps-motion .server-card__media {
-  transition: transform var(--focus-motion-dur) ease, border-color 0.12s ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard), border-color 0.12s ease;
 }
 html.caps-motion .server-card:focus .server-card__media {
   transform: scale(var(--gt-focus-scale-med));
@@ -6116,3 +6380,1161 @@ html.caps-motion .server-card:focus .server-card__media {
   height: auto;
   display: block;
 }
+
+/* ===================================================================
+   MTB THEME PREVIEW (reversible) — Material Theme Builder dark export.
+   Toggle with plaxTheme(true|false) in the console, or set localStorage
+   'plax_theme_mtb'='1'. The html.theme-mtb class re-points the app's
+   existing semantic tokens to the generated Material 3 dark roles, so
+   every real component recolors at once (the --gt-* and surface aliases
+   cascade automatically). Plex brand red + success/warning are
+   intentionally NOT themed. Hex / comma-rgba only (Chrome53-safe).
+   =================================================================== */
+html.theme-mtb {
+  --bg-base: #121318;          /* surface */
+  --surface-dim: #121318;      /* surface-dim */
+  --bg-elevated: #1A1B20;      /* surface-container-low */
+  --bg-surface: #1E1F24;       /* surface-container */
+  --bg-surface-hover: #292A2E; /* surface-container-high */
+  --text-primary: #E3E2E8;     /* on-surface */
+  --text-secondary: #C5C6D2;   /* on-surface-variant */
+  --text-muted: #8F909B;       /* outline */
+  --accent: #B4C5FF;           /* primary */
+  --accent-soft: rgba(180, 197, 255, 0.18);
+  --border: #444650;           /* outline-variant */
+  --border-focus: #B4C5FF;     /* primary */
+  --color-on-primary: #102C6D; /* on-primary */
+  --color-error: #FFB4AB;      /* error */
+  --color-error-light: #FFDAD6;/* on-error-container */
+  --focus-glow: rgba(180, 197, 255, 0.95);
+  --focus-fill: #E3E2E8;       /* inverse-surface */
+  --focus-on-fill: #2F3035;    /* inverse-on-surface */
+  --button-container: rgba(68, 70, 80, 0.8); /* surface-variant @80% */
+  --gt-secondary: #BEC5E6;            /* secondary */
+  --gt-secondary-container: #3E4661;  /* secondary-container */
+  --gt-on-secondary-container: #ACB4D4;
+  --gt-tertiary: #DFC482;             /* tertiary (new warm accent) */
+  --gt-focus-glow: 0 12px 32px rgba(180, 197, 255, 0.28);
+}
+
+/* ===================================================================
+   THEME: CYAN — Material Theme Builder dark export (material-theme(2),
+   seed #0EEEF2). Activated via html[data-theme="cyan"]; JS sets the
+   attribute. Mirrors the theme-mtb override set + palette ladder + full
+   role triads. Hex / comma-rgba only (Chrome53-safe). Brand red +
+   success/warning intentionally NOT themed.
+   =================================================================== */
+html[data-theme="cyan"] {
+  --bg-base: #0D1515;          /* surface */
+  --surface-dim: #0D1515;      /* surface-dim */
+  --bg-elevated: #151D1D;      /* surface-container-low */
+  --bg-surface: #192121;       /* surface-container */
+  --bg-surface-hover: #242B2B; /* surface-container-high */
+  --text-primary: #DCE4E4;     /* on-surface */
+  --text-secondary: #B9CAC9;   /* on-surface-variant */
+  --text-muted: #849494;       /* outline */
+  --accent: #C2FEFF;           /* primary */
+  --accent-rgb: 194,254,255;
+  --text-muted-rgb: 132,148,148;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #3B4A4A;           /* outline-variant */
+  --border-focus: var(--role-accent, var(--accent));
+  --color-on-primary: #003738; /* on-primary */
+  --color-error: #FFB4AB;      /* error */
+  --color-error-light: #FFDAD6;/* on-error-container */
+  --focus-glow: rgba(194, 254, 255, 0.95);
+  --focus-fill: #DCE4E4;       /* inverse-surface */
+  --focus-on-fill: #2A3232;    /* inverse-on-surface */
+  --button-container: rgba(59, 74, 74, 0.8); /* surface-variant @80% */
+  /* role triads */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #0EEEF2;
+  --gt-on-primary-container: #00686A;
+  --gt-secondary: #96D1D2;            /* secondary */
+  --gt-on-secondary: #003738;
+  --gt-secondary-container: #0E5153;  /* secondary-container */
+  --gt-on-secondary-container: #88C3C4;
+  --gt-tertiary: #F5F1FF;             /* tertiary */
+  --gt-on-tertiary: #2E2C50;
+  --gt-tertiary-container: #D6D2FF;
+  --gt-on-tertiary-container: #5B597F;
+  --gt-focus-glow: 0 12px 32px rgba(194, 254, 255, 0.28);
+  /* palette ladders */
+  --palette-primary-0: #000000;
+  --palette-primary-5: #001415;
+  --palette-primary-10: #002020;
+  --palette-primary-15: #002B2C;
+  --palette-primary-20: #003738;
+  --palette-primary-25: #004344;
+  --palette-primary-30: #004F51;
+  --palette-primary-35: #005C5E;
+  --palette-primary-40: #00696B;
+  --palette-primary-50: #008587;
+  --palette-primary-60: #00A1A4;
+  --palette-primary-70: #00BEC1;
+  --palette-primary-80: #00DCE0;
+  --palette-primary-90: #33FAFE;
+  --palette-primary-95: #B4FEFF;
+  --palette-primary-98: #E2FFFF;
+  --palette-primary-99: #F1FFFF;
+  --palette-primary-100: #FFFFFF;
+  --palette-secondary-0: #000000;
+  --palette-secondary-5: #001415;
+  --palette-secondary-10: #002020;
+  --palette-secondary-15: #072A2B;
+  --palette-secondary-20: #153536;
+  --palette-secondary-25: #214041;
+  --palette-secondary-30: #2C4C4D;
+  --palette-secondary-35: #385858;
+  --palette-secondary-40: #446464;
+  --palette-secondary-50: #5D7D7D;
+  --palette-secondary-60: #769797;
+  --palette-secondary-70: #90B1B2;
+  --palette-secondary-80: #ABCDCD;
+  --palette-secondary-90: #C7E9E9;
+  --palette-secondary-95: #D5F7F8;
+  --palette-secondary-98: #E2FFFF;
+  --palette-secondary-99: #F1FFFF;
+  --palette-secondary-100: #FFFFFF;
+  --palette-tertiary-0: #000000;
+  --palette-tertiary-5: #001127;
+  --palette-tertiary-10: #001C3A;
+  --palette-tertiary-15: #092646;
+  --palette-tertiary-20: #173152;
+  --palette-tertiary-25: #233C5D;
+  --palette-tertiary-30: #2F4869;
+  --palette-tertiary-35: #3B5376;
+  --palette-tertiary-40: #475F82;
+  --palette-tertiary-50: #60789D;
+  --palette-tertiary-60: #7A92B8;
+  --palette-tertiary-70: #94ADD3;
+  --palette-tertiary-80: #AFC8F0;
+  --palette-tertiary-90: #D4E3FF;
+  --palette-tertiary-95: #EBF1FF;
+  --palette-tertiary-98: #F9F9FF;
+  --palette-tertiary-99: #FDFCFF;
+  --palette-tertiary-100: #FFFFFF;
+  --palette-neutral-0: #000000;
+  --palette-neutral-5: #0E1212;
+  --palette-neutral-10: #191C1C;
+  --palette-neutral-15: #232626;
+  --palette-neutral-20: #2D3131;
+  --palette-neutral-25: #383C3C;
+  --palette-neutral-30: #444747;
+  --palette-neutral-35: #505353;
+  --palette-neutral-40: #5B5F5F;
+  --palette-neutral-50: #747877;
+  --palette-neutral-60: #8E9191;
+  --palette-neutral-70: #A9ACAB;
+  --palette-neutral-80: #C4C7C6;
+  --palette-neutral-90: #E0E3E2;
+  --palette-neutral-95: #EFF1F1;
+  --palette-neutral-98: #F7FAF9;
+  --palette-neutral-99: #FAFDFC;
+  --palette-neutral-100: #FFFFFF;
+  --palette-neutral-variant-0: #000000;
+  --palette-neutral-variant-5: #091313;
+  --palette-neutral-variant-10: #141D1D;
+  --palette-neutral-variant-15: #1E2728;
+  --palette-neutral-variant-20: #293232;
+  --palette-neutral-variant-25: #343D3D;
+  --palette-neutral-variant-30: #3F4949;
+  --palette-neutral-variant-35: #4A5454;
+  --palette-neutral-variant-40: #566060;
+  --palette-neutral-variant-50: #6F7979;
+  --palette-neutral-variant-60: #899392;
+  --palette-neutral-variant-70: #A3ADAD;
+  --palette-neutral-variant-80: #BEC8C8;
+  --palette-neutral-variant-90: #DAE4E4;
+  --palette-neutral-variant-95: #E9F3F2;
+  --palette-neutral-variant-98: #F1FBFB;
+  --palette-neutral-variant-99: #F4FEFE;
+  --palette-neutral-variant-100: #FFFFFF;
+}
+
+/* ===================================================================
+   THEME: TEAL — Material Theme Builder dark export (material-theme(1),
+   seed #00303E). Activated via html[data-theme="teal"].
+   =================================================================== */
+html[data-theme="teal"] {
+  --bg-base: #121415;          /* surface */
+  --surface-dim: #121415;      /* surface-dim */
+  --bg-elevated: #1A1C1D;      /* surface-container-low */
+  --bg-surface: #1E2021;       /* surface-container */
+  --bg-surface-hover: #282A2B; /* surface-container-high */
+  --text-primary: #E2E2E3;     /* on-surface */
+  --text-secondary: #C3C7CB;   /* on-surface-variant */
+  --text-muted: #8D9195;       /* outline */
+  --accent: #A5CCDE;           /* primary */
+  --accent-rgb: 165,204,222;
+  --text-muted-rgb: 141,145,149;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #42474B;           /* outline-variant */
+  --border-focus: var(--role-accent, var(--accent));
+  --color-on-primary: #073543; /* on-primary */
+  --color-error: #FFB4AB;      /* error */
+  --color-error-light: #FFDAD6;/* on-error-container */
+  --focus-glow: rgba(165, 204, 222, 0.95);
+  --focus-fill: #E2E2E3;       /* inverse-surface */
+  --focus-on-fill: #2F3132;    /* inverse-on-surface */
+  --button-container: rgba(66, 71, 75, 0.8); /* surface-variant @80% */
+  /* role triads */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #00303E;
+  --gt-on-primary-container: #7298A9;
+  --gt-secondary: #BAC9D0;            /* secondary */
+  --gt-on-secondary: #253238;
+  --gt-secondary-container: #3D4B52;  /* secondary-container */
+  --gt-on-secondary-container: #ACBBC2;
+  --gt-tertiary: #D7BDE4;             /* tertiary */
+  --gt-on-tertiary: #3B2947;
+  --gt-tertiary-container: #362442;
+  --gt-on-tertiary-container: #A28AAE;
+  --gt-focus-glow: 0 12px 32px rgba(165, 204, 222, 0.28);
+  /* palette ladders */
+  --palette-primary-0: #000000;
+  --palette-primary-5: #00131B;
+  --palette-primary-10: #001F29;
+  --palette-primary-15: #002A36;
+  --palette-primary-20: #073543;
+  --palette-primary-25: #17404F;
+  --palette-primary-30: #244C5A;
+  --palette-primary-35: #315767;
+  --palette-primary-40: #3D6473;
+  --palette-primary-50: #567C8D;
+  --palette-primary-60: #7096A7;
+  --palette-primary-70: #8AB1C2;
+  --palette-primary-80: #A5CCDE;
+  --palette-primary-90: #C1E9FB;
+  --palette-primary-95: #DEF4FF;
+  --palette-primary-98: #F3FAFF;
+  --palette-primary-99: #FAFDFF;
+  --palette-primary-100: #FFFFFF;
+  --palette-secondary-0: #000000;
+  --palette-secondary-5: #0A1215;
+  --palette-secondary-10: #151D20;
+  --palette-secondary-15: #1F272B;
+  --palette-secondary-20: #2A3235;
+  --palette-secondary-25: #353D40;
+  --palette-secondary-30: #40484C;
+  --palette-secondary-35: #4C5458;
+  --palette-secondary-40: #576064;
+  --palette-secondary-50: #70787D;
+  --palette-secondary-60: #8A9296;
+  --palette-secondary-70: #A4ACB1;
+  --palette-secondary-80: #C0C8CC;
+  --palette-secondary-90: #DCE4E8;
+  --palette-secondary-95: #EAF2F7;
+  --palette-secondary-98: #F3FAFF;
+  --palette-secondary-99: #FAFDFF;
+  --palette-secondary-100: #FFFFFF;
+  --palette-tertiary-0: #000000;
+  --palette-tertiary-5: #10101C;
+  --palette-tertiary-10: #1A1A27;
+  --palette-tertiary-15: #252532;
+  --palette-tertiary-20: #2F2F3D;
+  --palette-tertiary-25: #3B3A48;
+  --palette-tertiary-30: #464554;
+  --palette-tertiary-35: #525160;
+  --palette-tertiary-40: #5E5D6C;
+  --palette-tertiary-50: #777585;
+  --palette-tertiary-60: #918F9F;
+  --palette-tertiary-70: #ABA9BA;
+  --palette-tertiary-80: #C7C4D6;
+  --palette-tertiary-90: #E3E0F2;
+  --palette-tertiary-95: #F2EFFF;
+  --palette-tertiary-98: #FCF8FF;
+  --palette-tertiary-99: #FFFBFF;
+  --palette-tertiary-100: #FFFFFF;
+  --palette-neutral-0: #000000;
+  --palette-neutral-5: #101112;
+  --palette-neutral-10: #1B1C1C;
+  --palette-neutral-15: #252626;
+  --palette-neutral-20: #303031;
+  --palette-neutral-25: #3B3B3C;
+  --palette-neutral-30: #464747;
+  --palette-neutral-35: #525253;
+  --palette-neutral-40: #5E5E5F;
+  --palette-neutral-50: #777777;
+  --palette-neutral-60: #919091;
+  --palette-neutral-70: #ACABAB;
+  --palette-neutral-80: #C7C6C7;
+  --palette-neutral-90: #E3E2E2;
+  --palette-neutral-95: #F2F0F1;
+  --palette-neutral-98: #FBF9F9;
+  --palette-neutral-99: #FDFCFC;
+  --palette-neutral-100: #FFFFFF;
+  --palette-neutral-variant-0: #000000;
+  --palette-neutral-variant-5: #101112;
+  --palette-neutral-variant-10: #1A1C1D;
+  --palette-neutral-variant-15: #242627;
+  --palette-neutral-variant-20: #2F3032;
+  --palette-neutral-variant-25: #3A3B3D;
+  --palette-neutral-variant-30: #464748;
+  --palette-neutral-variant-35: #515254;
+  --palette-neutral-variant-40: #5D5E60;
+  --palette-neutral-variant-50: #767778;
+  --palette-neutral-variant-60: #909192;
+  --palette-neutral-variant-70: #ABABAC;
+  --palette-neutral-variant-80: #C6C6C7;
+  --palette-neutral-variant-90: #E3E2E3;
+  --palette-neutral-variant-95: #F1F0F1;
+  --palette-neutral-variant-98: #FAF9FA;
+  --palette-neutral-variant-99: #FDFCFD;
+  --palette-neutral-variant-100: #FFFFFF;
+}
+
+/* ===================================================================
+   THEME: GOLD — Material Theme Builder dark export, seed #D7BA4A.
+   Activated via html[data-theme="gold"].
+   GOLD: SchemeContent/dark from #D7BA4A seed (material-color-utilities, site-validated)
+   =================================================================== */
+html[data-theme="gold"] {
+  --bg-base: #16130C;          /* surface */
+  --surface-dim: #16130C;      /* surface-dim */
+  --bg-elevated: #1E1B14;      /* surface-container-low */
+  --bg-surface: #221F18;       /* surface-container */
+  --bg-surface-hover: #2D2A21; /* surface-container-high */
+  --text-primary: #E9E2D5;     /* on-surface */
+  --text-secondary: #CFC6B0;   /* on-surface-variant */
+  --text-muted: #98907D;       /* outline */
+  --accent: #F4D663;           /* primary */
+  --accent-rgb: 244,214,99;
+  --text-muted-rgb: 152,144,125;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #4C4636;           /* outline-variant */
+  --border-focus: var(--role-accent, var(--accent));
+  --color-on-primary: #3B2F00; /* on-primary */
+  --color-error: #FFB4AB;      /* error */
+  --color-error-light: #FFDAD6;/* on-error-container */
+  --focus-glow: rgba(244, 214, 99, 0.95);
+  --focus-fill: #E9E2D5;       /* inverse-surface */
+  --focus-on-fill: #333028;    /* inverse-on-surface */
+  --button-container: rgba(76, 70, 54, 0.8); /* surface-variant @80% */
+  /* role triads */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #D7BA4A;    /* primary-container */
+  --gt-on-primary-container: #5A4A00;
+  --gt-secondary: #D6C691;            /* secondary */
+  --gt-on-secondary: #393008;
+  --gt-secondary-container: #54481F;  /* secondary-container */
+  --gt-on-secondary-container: #C8B884;
+  --gt-tertiary: #BCE487;             /* tertiary */
+  --gt-on-tertiary: #203700;
+  --gt-tertiary-container: #A1C86E;
+  --gt-on-tertiary-container: #345404;
+  --gt-focus-glow: 0 12px 32px rgba(244, 214, 99, 0.28);
+  /* palette ladders */
+  --palette-primary-0: #000000;
+  --palette-primary-5: #161000;
+  --palette-primary-10: #221B00;
+  --palette-primary-15: #2E2500;
+  --palette-primary-20: #3B2F00;
+  --palette-primary-25: #473A00;
+  --palette-primary-30: #554500;
+  --palette-primary-35: #625100;
+  --palette-primary-40: #705D00;
+  --palette-primary-50: #8D7500;
+  --palette-primary-60: #A98F21;
+  --palette-primary-70: #C5A93B;
+  --palette-primary-80: #E2C554;
+  --palette-primary-90: #FFE173;
+  --palette-primary-95: #FFF0C4;
+  --palette-primary-98: #FFF8EF;
+  --palette-primary-99: #FFFBFF;
+  --palette-primary-100: #FFFFFF;
+  --palette-secondary-0: #000000;
+  --palette-secondary-5: #161000;
+  --palette-secondary-10: #221B00;
+  --palette-secondary-15: #2E2501;
+  --palette-secondary-20: #393008;
+  --palette-secondary-25: #453B13;
+  --palette-secondary-30: #51461D;
+  --palette-secondary-35: #5D5227;
+  --palette-secondary-40: #6A5E32;
+  --palette-secondary-50: #847648;
+  --palette-secondary-60: #9E9060;
+  --palette-secondary-70: #BAAB78;
+  --palette-secondary-80: #D6C691;
+  --palette-secondary-90: #F3E2AB;
+  --palette-secondary-95: #FFF0C4;
+  --palette-secondary-98: #FFF8EF;
+  --palette-secondary-99: #FFFBFF;
+  --palette-secondary-100: #FFFFFF;
+  --palette-tertiary-0: #000000;
+  --palette-tertiary-5: #091400;
+  --palette-tertiary-10: #102000;
+  --palette-tertiary-15: #182B00;
+  --palette-tertiary-20: #203700;
+  --palette-tertiary-25: #284300;
+  --palette-tertiary-30: #304F00;
+  --palette-tertiary-35: #3B5B0C;
+  --palette-tertiary-40: #476819;
+  --palette-tertiary-50: #5E8130;
+  --palette-tertiary-60: #779C48;
+  --palette-tertiary-70: #91B75F;
+  --palette-tertiary-80: #ACD378;
+  --palette-tertiary-90: #C7F091;
+  --palette-tertiary-95: #D5FE9E;
+  --palette-tertiary-98: #F0FFD6;
+  --palette-tertiary-99: #F9FFE8;
+  --palette-tertiary-100: #FFFFFF;
+  --palette-neutral-0: #000000;
+  --palette-neutral-5: #13110A;
+  --palette-neutral-10: #1E1B14;
+  --palette-neutral-15: #28261D;
+  --palette-neutral-20: #333028;
+  --palette-neutral-25: #3F3B32;
+  --palette-neutral-30: #4A463D;
+  --palette-neutral-35: #565248;
+  --palette-neutral-40: #625E54;
+  --palette-neutral-50: #7B776C;
+  --palette-neutral-60: #959085;
+  --palette-neutral-70: #B0AB9F;
+  --palette-neutral-80: #CCC6BA;
+  --palette-neutral-90: #E9E2D5;
+  --palette-neutral-95: #F7F0E3;
+  --palette-neutral-98: #FFF8EF;
+  --palette-neutral-99: #FFFBFF;
+  --palette-neutral-100: #FFFFFF;
+  --palette-neutral-variant-0: #000000;
+  --palette-neutral-variant-5: #141105;
+  --palette-neutral-variant-10: #1F1B0E;
+  --palette-neutral-variant-15: #2A2617;
+  --palette-neutral-variant-20: #353021;
+  --palette-neutral-variant-25: #403B2B;
+  --palette-neutral-variant-30: #4C4636;
+  --palette-neutral-variant-35: #585241;
+  --palette-neutral-variant-40: #645E4C;
+  --palette-neutral-variant-50: #7D7764;
+  --palette-neutral-variant-60: #98907D;
+  --palette-neutral-variant-70: #B3AB96;
+  --palette-neutral-variant-80: #CFC6B0;
+  --palette-neutral-variant-90: #EBE2CB;
+  --palette-neutral-variant-95: #FAF0D9;
+  --palette-neutral-variant-98: #FFF8EF;
+  --palette-neutral-variant-99: #FFFBFF;
+  --palette-neutral-variant-100: #FFFFFF;
+}
+
+/* ===================================================================
+   CONTRAST LEVELS — data-contrast on <html> ("medium" / "high").
+   Overrides ONLY the ~25 scheme tokens per theme (palette ladders are
+   contrast-invariant and inherited from the base theme block).
+   Values: MTB SchemeContent dark-medium-contrast / dark-high-contrast.
+   data-contrast="standard" needs no block (base theme = standard).
+   NOTE: the DEFAULT (blue, no data-theme) ships standard-only — no
+   medium/high contrast variants exist yet; do not invent them.
+   =================================================================== */
+
+/* --- CYAN medium --- */
+html[data-theme="cyan"][data-contrast="medium"] {
+  --bg-base: #0D1515;          /* surface */
+  --surface-dim: #0D1515;      /* surface-dim */
+  --bg-elevated: #171F1F;      /* surface-container-low */
+  --bg-surface: #212929;       /* surface-container */
+  --bg-surface-hover: #2C3434; /* surface-container-high */
+  --text-primary: #FFFFFF;     /* on-surface */
+  --text-secondary: #CFE0DF;   /* on-surface-variant */
+  --text-muted: #A5B5B5;       /* outline */
+  --accent: #C2FEFF;           /* primary */
+  --accent-rgb: 194,254,255;
+  --text-muted-rgb: 165,181,181;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #839393;           /* outline-variant */
+  --color-on-primary: #003738; /* on-primary */
+  --color-error: #FFD2CC;      /* error */
+  --color-error-light: #000000;/* on-error-container */
+  --focus-glow: rgba(194, 254, 255, 0.95);
+  --focus-fill: #DCE4E4;       /* inverse-surface */
+  --focus-on-fill: #242B2C;    /* inverse-on-surface */
+  --button-container: rgba(59, 74, 74, 0.8); /* surface-variant @80% */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #0EEEF2;
+  --gt-on-primary-container: #00494A;
+  --gt-secondary: #ACE7E8;
+  --gt-on-secondary: #002B2C;
+  --gt-secondary-container: #619A9B;
+  --gt-on-secondary-container: #000000;
+  --gt-tertiary: #F5F1FF;
+  --gt-on-tertiary: #2E2C50;
+  --gt-tertiary-container: #D6D2FF;
+  --gt-on-tertiary-container: #3F3D61;
+  --gt-focus-glow: 0 12px 32px rgba(194, 254, 255, 0.28);
+}
+
+/* --- CYAN high --- */
+html[data-theme="cyan"][data-contrast="high"] {
+  --bg-base: #0D1515;          /* surface */
+  --surface-dim: #0D1515;      /* surface-dim */
+  --bg-elevated: #192121;      /* surface-container-low */
+  --bg-surface: #2A3232;       /* surface-container */
+  --bg-surface-hover: #353D3D; /* surface-container-high */
+  --text-primary: #FFFFFF;     /* on-surface */
+  --text-secondary: #FFFFFF;   /* on-surface-variant */
+  --text-muted: #E3F3F3;       /* outline */
+  --accent: #C2FEFF;           /* primary */
+  --accent-rgb: 194,254,255;
+  --text-muted-rgb: 227,243,243;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #B5C6C6;           /* outline-variant */
+  --color-on-primary: #000000; /* on-primary */
+  --color-error: #FFECE9;      /* error */
+  --color-error-light: #220001;/* on-error-container */
+  --focus-glow: rgba(194, 254, 255, 0.95);
+  --focus-fill: #DCE4E4;       /* inverse-surface */
+  --focus-on-fill: #000000;    /* inverse-on-surface */
+  --button-container: rgba(59, 74, 74, 0.8); /* surface-variant @80% */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #0EEEF2;
+  --gt-on-primary-container: #002627;
+  --gt-secondary: #BFFBFC;
+  --gt-on-secondary: #000000;
+  --gt-secondary-container: #92CDCE;
+  --gt-on-secondary-container: #000E0E;
+  --gt-tertiary: #F5F1FF;
+  --gt-on-tertiary: #000000;
+  --gt-tertiary-container: #D6D2FF;
+  --gt-on-tertiary-container: #1F1D40;
+  --gt-focus-glow: 0 12px 32px rgba(194, 254, 255, 0.28);
+}
+
+/* --- TEAL medium --- */
+html[data-theme="teal"][data-contrast="medium"] {
+  --bg-base: #121415;          /* surface */
+  --surface-dim: #121415;      /* surface-dim */
+  --bg-elevated: #1C1E1F;      /* surface-container-low */
+  --bg-surface: #262829;       /* surface-container */
+  --bg-surface-hover: #313334; /* surface-container-high */
+  --text-primary: #FFFFFF;     /* on-surface */
+  --text-secondary: #D8DDE1;   /* on-surface-variant */
+  --text-muted: #AEB2B6;       /* outline */
+  --accent: #BAE2F5;           /* primary */
+  --accent-rgb: 186,226,245;
+  --text-muted-rgb: 174,178,182;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #8C9194;           /* outline-variant */
+  --color-on-primary: #002A36; /* on-primary */
+  --color-error: #FFD2CC;      /* error */
+  --color-error-light: #000000;/* on-error-container */
+  --focus-glow: rgba(186, 226, 245, 0.95);
+  --focus-fill: #E2E2E3;       /* inverse-surface */
+  --focus-on-fill: #282A2B;    /* inverse-on-surface */
+  --button-container: rgba(66, 71, 75, 0.8); /* surface-variant @80% */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #7096A7;
+  --gt-on-primary-container: #000000;
+  --gt-secondary: #D0DFE7;
+  --gt-on-secondary: #1A282D;
+  --gt-secondary-container: #84939A;
+  --gt-on-secondary-container: #000000;
+  --gt-tertiary: #EED3FB;
+  --gt-on-tertiary: #301E3C;
+  --gt-tertiary-container: #A088AC;
+  --gt-on-tertiary-container: #000000;
+  --gt-focus-glow: 0 12px 32px rgba(186, 226, 245, 0.28);
+}
+
+/* --- TEAL high --- */
+html[data-theme="teal"][data-contrast="high"] {
+  --bg-base: #121415;          /* surface */
+  --surface-dim: #121415;      /* surface-dim */
+  --bg-elevated: #1E2021;      /* surface-container-low */
+  --bg-surface: #2F3132;       /* surface-container */
+  --bg-surface-hover: #3A3C3D; /* surface-container-high */
+  --text-primary: #FFFFFF;     /* on-surface */
+  --text-secondary: #FFFFFF;   /* on-surface-variant */
+  --text-muted: #ECF0F4;       /* outline */
+  --accent: #DDF4FF;           /* primary */
+  --accent-rgb: 221,244,255;
+  --text-muted-rgb: 236,240,244;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #BFC3C7;           /* outline-variant */
+  --color-on-primary: #000000; /* on-primary */
+  --color-error: #FFECE9;      /* error */
+  --color-error-light: #220001;/* on-error-container */
+  --focus-glow: rgba(221, 244, 255, 0.95);
+  --focus-fill: #E2E2E3;       /* inverse-surface */
+  --focus-on-fill: #000000;    /* inverse-on-surface */
+  --button-container: rgba(66, 71, 75, 0.8); /* surface-variant @80% */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #A1C9DA;
+  --gt-on-primary-container: #000D13;
+  --gt-secondary: #E3F2FA;
+  --gt-on-secondary: #000000;
+  --gt-secondary-container: #B6C5CD;
+  --gt-on-secondary-container: #010D12;
+  --gt-tertiary: #FBEBFF;
+  --gt-on-tertiary: #000000;
+  --gt-tertiary-container: #D3BAE0;
+  --gt-on-tertiary-container: #140420;
+  --gt-focus-glow: 0 12px 32px rgba(221, 244, 255, 0.28);
+}
+
+/* --- GOLD medium --- */
+html[data-theme="gold"][data-contrast="medium"] {
+  --bg-base: #16130C;          /* surface */
+  --surface-dim: #16130C;      /* surface-dim */
+  --bg-elevated: #201D16;      /* surface-container-low */
+  --bg-surface: #2B281F;       /* surface-container */
+  --bg-surface-hover: #35322A; /* surface-container-high */
+  --text-primary: #FFFFFF;     /* on-surface */
+  --text-secondary: #E5DCC5;   /* on-surface-variant */
+  --text-muted: #BAB19C;       /* outline */
+  --accent: #FADB67;           /* primary */
+  --accent-rgb: 250,219,103;
+  --text-muted-rgb: 186,177,156;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #97907C;           /* outline-variant */
+  --color-on-primary: #2E2500; /* on-primary */
+  --color-error: #FFD2CC;      /* error */
+  --color-error-light: #000000;/* on-error-container */
+  --focus-glow: rgba(250, 219, 103, 0.95);
+  --focus-fill: #E9E2D5;       /* inverse-surface */
+  --focus-on-fill: #2D2A21;    /* inverse-on-surface */
+  --button-container: rgba(76, 70, 54, 0.8); /* surface-variant @80% */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #D7BA4A;
+  --gt-on-primary-container: #382E00;
+  --gt-secondary: #EDDCA5;
+  --gt-on-secondary: #2E2501;
+  --gt-secondary-container: #9E9060;
+  --gt-on-secondary-container: #000000;
+  --gt-tertiary: #C1E98B;
+  --gt-on-tertiary: #182B00;
+  --gt-tertiary-container: #A1C86E;
+  --gt-on-tertiary-container: #1E3400;
+  --gt-focus-glow: 0 12px 32px rgba(250, 219, 103, 0.28);
+}
+
+/* --- GOLD high --- */
+html[data-theme="gold"][data-contrast="high"] {
+  --bg-base: #16130C;          /* surface */
+  --surface-dim: #16130C;      /* surface-dim */
+  --bg-elevated: #221F18;      /* surface-container-low */
+  --bg-surface: #333028;       /* surface-container */
+  --bg-surface-hover: #3F3B32; /* surface-container-high */
+  --text-primary: #FFFFFF;     /* on-surface */
+  --text-secondary: #FFFFFF;   /* on-surface-variant */
+  --text-muted: #F9EFD8;       /* outline */
+  --accent: #FFEFC0;           /* primary */
+  --accent-rgb: 255,239,192;
+  --text-muted-rgb: 249,239,216;
+  --accent-soft: rgba(var(--accent-rgb), 0.18); /* chrome53-ok */
+  --border: #CBC2AD;           /* outline-variant */
+  --color-on-primary: #000000; /* on-primary */
+  --color-error: #FFECE9;      /* error */
+  --color-error-light: #220001;/* on-error-container */
+  --focus-glow: rgba(255, 239, 192, 0.95);
+  --focus-fill: #E9E2D5;       /* inverse-surface */
+  --focus-on-fill: #000000;    /* inverse-on-surface */
+  --button-container: rgba(76, 70, 54, 0.8); /* surface-variant @80% */
+  --gt-primary: var(--accent);
+  --gt-on-primary: var(--color-on-primary);
+  --gt-primary-container: #DEC150;
+  --gt-on-primary-container: #0F0B00;
+  --gt-secondary: #FFEFC0;
+  --gt-on-secondary: #000000;
+  --gt-secondary-container: #D2C28D;
+  --gt-on-secondary-container: #0F0B00;
+  --gt-tertiary: #D4FD9D;
+  --gt-on-tertiary: #000000;
+  --gt-tertiary-container: #A8CF74;
+  --gt-on-tertiary-container: #050E00;
+  --gt-focus-glow: 0 12px 32px rgba(255, 239, 192, 0.28);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   APPEARANCE SCREEN — two-column theme/role editor
+   LEFT: a real-component mock of the selected screen with selectable element
+   targets. RIGHT: Role + Tone editor. Chrome53-safe (no color-mix /
+   relative-color / :focus-within; rgba(var(--x-rgb),a) lines tagged).
+   ════════════════════════════════════════════════════════════════════════ */
+
+.appearance-layout {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-8) var(--space-9);
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+/* ── Header ── */
+.appearance-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-6);
+}
+
+.appearance-title {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-5) 0;
+}
+
+.appearance-controls {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.appearance-control-group {
+  display: flex;
+  flex-direction: column;
+  margin-right: var(--space-8);
+  margin-bottom: var(--space-3);
+}
+
+.appearance-control-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.appearance-control-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: var(--space-2);
+  max-width: 320px;
+}
+
+/* ── Segmented picker (Theme / Contrast) ── */
+.appearance-segmented {
+  display: flex;
+  flex-direction: row;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
+}
+
+.appearance-segmented__chip {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  outline: none;
+}
+
+.appearance-segmented__chip + .appearance-segmented__chip {
+  margin-left: var(--space-1);
+}
+
+.appearance-segmented__chip:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.appearance-segmented__chip:focus {
+  box-shadow: var(--focus-shadow);
+}
+
+.appearance-segmented__chip--active,
+.appearance-segmented__chip:disabled {
+  background: var(--accent);
+  color: var(--bg-base);
+}
+
+/* disabled-but-not-active = dimmed (locked option) */
+.appearance-segmented__chip:disabled:not(.appearance-segmented__chip--active) {
+  background: transparent;
+  color: var(--text-secondary);
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Tabs (which screen mock) ── */
+.appearance-tabs {
+  display: flex;
+  flex-direction: row;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-6);
+}
+
+.appearance-tab {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  padding: var(--space-4) var(--space-5);
+  margin-right: var(--space-2);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.appearance-tab:hover {
+  color: var(--text-primary);
+}
+
+.appearance-tab:focus {
+  box-shadow: var(--focus-shadow);
+  border-radius: var(--radius-md);
+}
+
+.appearance-tab--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Body: two columns ── */
+.appearance-body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 1 1 auto;
+}
+
+.appearance-preview {
+  flex: 1 1 60%;
+  min-width: 0;
+  margin-right: var(--space-7);
+  display: flex;
+  flex-direction: column;
+}
+
+.appearance-editor {
+  flex: 1 1 40%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Preview stage ── */
+.appearance-stage {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  min-height: 360px;
+  overflow: hidden;
+}
+
+/* decorative chrome bits inside a mock (hero, rails, rows) — muted */
+.appearance-chrome {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+}
+
+/* ── Selectable element target ── */
+.appearance-target {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin: var(--space-2);
+  cursor: pointer;
+  outline: none;
+  max-width: 240px;
+  box-sizing: border-box;
+}
+
+/* label sits BELOW the sample — never overlapping */
+.appearance-target__label {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.appearance-target:hover {
+  border-color: var(--border);
+}
+
+.appearance-target:focus {
+  box-shadow: var(--focus-shadow);
+}
+
+.appearance-target--selected {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.10); /* chrome53-ok */
+}
+
+.appearance-target--selected .appearance-target__label {
+  color: var(--text-primary);
+}
+
+/* ── Editor column ── */
+.appearance-editor__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.appearance-editor__section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: var(--space-5) 0 var(--space-3) 0;
+}
+
+.appearance-editor--empty {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Role chips ── */
+.appearance-roles {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.appearance-role {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin: 0 var(--space-2) var(--space-2) 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.appearance-role:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.appearance-role:focus {
+  box-shadow: var(--focus-shadow);
+}
+
+.appearance-role--active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg-base);
+}
+
+/* ── Tone ramp swatches ── */
+.appearance-tone-ramp {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.appearance-swatch {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  margin: 0 var(--space-2) var(--space-2) 0;
+  cursor: pointer;
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35); /* chrome53-ok */
+}
+
+.appearance-swatch:focus {
+  box-shadow: var(--focus-shadow);
+}
+
+.appearance-swatch--active {
+  border-color: var(--text-primary);
+}
+
+.appearance-swatch--active:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-shadow);
+}
+
+/* ── Contrast warning ── */
+.appearance-warning {
+  display: block;
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.appearance-warning--fail {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--text-primary);
+}
+
+/* ── Footer actions ── */
+.appearance-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: var(--space-7);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.appearance-reset {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  outline: none;
+}
+
+.appearance-reset:hover {
+  background: var(--bg-surface-hover);
+}
+
+.appearance-reset:focus {
+  box-shadow: var(--focus-shadow);
+}
+
+.appearance-save {
+  margin-left: var(--space-4);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  opacity: 0;
+}
+
+.appearance-save--visible {
+  opacity: 1;
+}
+
+/* ===================================================================
+   Appearance preview — per-screen mock scoping + wrapper layout.
+   The mocks reuse REAL TV-sized component classes; inside the ~560px
+   preview stage they must be constrained so they don't overflow. All
+   rules are scoped under .appearance-stage so the real screens are
+   untouched. Chrome53/webOS4-safe: NO flex `gap` (use margins), NO
+   `inset` shorthand (explicit edges), no color-mix/:focus-within.
+   =================================================================== */
+.appearance-stage { overflow: hidden; font-size: 12px; }
+
+.appearance-mock,
+.appearance-detail-preview,
+.appearance-settings-mock { display: flex; flex-direction: column; width: 100%; }
+.appearance-mock > *,
+.appearance-detail-preview > *,
+.appearance-settings-mock > * { margin-bottom: 12px; }
+.appearance-mock > :last-child,
+.appearance-detail-preview > :last-child,
+.appearance-settings-mock > :last-child { margin-bottom: 0; }
+
+/* --- HOME mock --- */
+.appearance-mock__layout { display: flex; flex-direction: row; }
+.appearance-mock__nav { width: 88px; flex: 0 0 auto; margin-right: 10px; }
+.appearance-mock__nav > *,
+.appearance-mock__nav-rest > * { margin-bottom: 6px; }
+.appearance-stage .browsing-hub-item { font-size: 11px; padding: 6px 8px; white-space: nowrap; }
+.appearance-mock__main { flex: 1 1 auto; min-width: 0; }
+.appearance-mock__main > * { margin-bottom: 10px; }
+.appearance-stage .il-hero { position: relative; left: auto; top: auto; right: auto; bottom: auto; height: auto; min-height: 0; width: 100%; padding: 12px; border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-elevated); }
+.appearance-stage .il-hero__scrim { display: none; }
+.appearance-stage .il-hero__content { position: relative; max-width: 100%; }
+.appearance-stage .il-hero__title { font-size: 18px; margin: 0 0 4px; }
+.appearance-stage .il-hero__label,
+.appearance-stage .il-hero__meta { font-size: 11px; margin: 0; }
+.appearance-stage .row-label { font-size: 12px; margin: 0 0 6px; }
+.appearance-mock__rail { display: flex; flex-direction: row; align-items: flex-start; }
+.appearance-mock__rail > * { margin-right: 8px; }
+.appearance-stage .media-card,
+.appearance-mock__card { width: 64px; height: 96px; }
+.appearance-stage .card-poster-wrap { width: 64px; height: 96px; border-radius: 6px; background: var(--bg-surface-hover); }
+.appearance-mock__progress { width: 64px; }
+
+/* --- DETAIL mock --- */
+.appearance-detail-hero { display: flex; flex-direction: row; }
+.appearance-detail-poster-wrap { margin-right: 12px; flex: 0 0 auto; }
+.appearance-detail-poster { width: 100px; height: 150px; border-radius: 8px; background: var(--bg-surface-hover); }
+.appearance-detail-info { display: flex; flex-direction: column; min-width: 0; }
+.appearance-detail-info > * { margin-bottom: 8px; }
+.appearance-stage .detail-movie-title { font-size: 18px; margin: 0; }
+.appearance-stage .detail-meta { font-size: 11px; margin: 0; }
+.appearance-detail-cast-heading { font-size: 12px; margin: 0 0 6px; }
+.appearance-detail-cast-row { display: flex; flex-direction: row; }
+.appearance-detail-cast-row > * { margin-right: 8px; }
+.appearance-stage .detail-cast-card { width: 56px; }
+.appearance-stage .detail-cast-avatar { width: 48px; height: 48px; }
+.appearance-stage .detail-cast-name { font-size: 10px; }
+
+/* --- PLAYER mock --- */
+.appearance-mock--player { position: relative; min-height: 200px; border-radius: var(--radius-lg); overflow: hidden; }
+.appearance-mock-player__backdrop { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: #000000; }
+.appearance-stage .player-overlay { position: relative; left: auto; top: auto; right: auto; bottom: auto; width: 100%; padding: 14px; opacity: 1; transform: none; display: flex; flex-direction: column; }
+.appearance-stage .player-overlay > * { margin-bottom: 10px; }
+.appearance-stage .player-now-playing-title { font-size: 16px; }
+.appearance-stage .player-now-playing-subtitle { font-size: 11px; }
+.appearance-stage .player-seek-row { display: flex; flex-direction: row; align-items: center; }
+.appearance-stage .player-seek-row > * { margin-right: 8px; }
+.appearance-stage .player-time { font-size: 11px; }
+.appearance-stage .player-controls-row { display: flex; justify-content: center; }
+.appearance-stage .player-transport { display: flex; flex-direction: row; }
+.appearance-stage .player-transport > * { margin-right: 8px; }
+
+/* --- SETTINGS mock --- */
+.appearance-settings-title { font-size: 16px; font-weight: 500; }
+.appearance-stage .gt-list-item { font-size: 12px; padding: 8px 12px; }
+
+/* --- selectable target sample wrappers --- */
+.appearance-target__sample { display: inline-flex; }
+.appearance-target--wide { width: 100%; }
+.appearance-target--wide .appearance-target__sample { width: 100%; }
+
+/* --- editor role row --- */
+.appearance-role-row { display: flex; flex-direction: row; flex-wrap: wrap; }
+.appearance-role-row > * { margin-right: 6px; margin-bottom: 6px; }

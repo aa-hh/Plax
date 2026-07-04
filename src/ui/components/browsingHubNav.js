@@ -15,6 +15,10 @@ function buildHubNavItems(state) {
     items.push({ id: 'watchlist', label: 'Watchlist', iconKind: 'watchlist' });
   }
 
+  // Leaving Soon — its own destination (moved out of the default home rails).
+  // Sits after Watchlist, before the per-library entries.
+  items.push({ id: 'leavingSoon', label: 'Leaving Soon', iconKind: 'leavingSoon' });
+
   var libraries = filterLibrariesForUser(state.libraries || [], user).filter(isMovieOrTvSection);
   libraries.forEach(function (lib) {
     items.push({
@@ -61,12 +65,11 @@ function refreshHubNavIcons(host, activeHubId) {
     // collapsed-rail "keep the active label legible" CSS a stable hook.
     if (isActive) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
-    // Only the watchlist glyph changes SHAPE with active state (outline ↔
-    // filled bookmark); every other icon is identical regardless of selection,
-    // so re-parsing its SVG on each navigation is pure waste. Rewrite innerHTML
-    // only for watchlist, and only when its filled-state actually flipped.
+    // Material nav pattern: every glyph is OUTLINED when idle and FILLED when
+    // the section is active. Re-parse the SVG only when the filled-state
+    // actually flips (i.e. the two buttons whose selection changed), not on
+    // every nav item — so this stays as cheap as the old watchlist-only path.
     var kind = btn.dataset.iconKind || 'home';
-    if (kind !== 'watchlist') return;
     var wantFilled = isActive ? '1' : '0';
     if (btn.dataset.iconFilled === wantFilled) return;
     var iconWrap = btn.querySelector('.browsing-hub-item__icon');
@@ -87,6 +90,10 @@ function handleHubNavSelect(item, navigate, callbacks) {
   }
   if (item.id === 'watchlist') {
     navigate('home', { hub: 'watchlist' });
+    return;
+  }
+  if (item.id === 'leavingSoon') {
+    navigate('home', { hub: 'leavingSoon' });
     return;
   }
   if (item.id === 'search') {
@@ -126,10 +133,11 @@ function appendHubButtons(navEl, items, activeId, onSelect) {
       btn.setAttribute('aria-current', 'page');
     }
 
-    var filledBookmark = item.iconKind === 'watchlist' && item.id === activeId;
-    if (item.iconKind === 'watchlist') btn.dataset.iconFilled = filledBookmark ? '1' : '0';
+    // Active section renders the FILLED glyph; idle sections render OUTLINED.
+    var filled = item.id === activeId;
+    btn.dataset.iconFilled = filled ? '1' : '0';
     btn.innerHTML =
-      '<span class="browsing-hub-item__icon">' + iconSvgForKind(item.iconKind, filledBookmark) + '</span>' +
+      '<span class="browsing-hub-item__icon">' + iconSvgForKind(item.iconKind, filled) + '</span>' +
       '<span class="browsing-hub-item__label">' + escapeLabel(item.label) + '</span>';
 
     btn.addEventListener('click', function () {
@@ -210,8 +218,8 @@ function mountBrowsingHubNav(host, options) {
   }
 
   host.innerHTML = '';
-  // --label-active: opt-in hook so DesignSystem can keep the ACTIVE section's
-  // label legible even while the rail is collapsed (the rest stay icon-only).
+  // Collapsed-rail current-section cue is the kit's selected pill behind the icon
+  // (.active → secondary-container @40%, app.css); no separate collapsed-label hook.
   host.className = 'browsing-hub-nav-host';
   host.setAttribute('role', 'navigation');
   host.setAttribute('aria-label', 'Browse');
@@ -237,10 +245,23 @@ function mountBrowsingHubNav(host, options) {
   // is Chromium 53, so the rail never expanded there — focusin/out works on 53.
   function syncExpanded() {
     var inside = document.activeElement && host.contains(document.activeElement);
+    // Cold-landing guard: the home screen parks initial focus on the rail
+    // before the feed exists (data-initial-focus="1") and displaces it to the
+    // first card once content arrives. Expanding for that transient parking
+    // spot made the rail flash open→closed on every load, so stay collapsed
+    // for the programmatic landing; the keydown below (a REAL user interaction
+    // inside the rail) clears the flag and re-syncs.
+    if (inside && host.getAttribute('data-initial-focus') === '1') return;
     host.classList.toggle('browsing-hub-nav-host--expanded', !!inside);
   }
   host.addEventListener('focusin', syncExpanded);
   host.addEventListener('focusout', function () { setTimeout(syncExpanded, 0); });
+  host.addEventListener('keydown', function () {
+    if (host.getAttribute('data-initial-focus') === '1') {
+      host.removeAttribute('data-initial-focus');
+      syncExpanded();
+    }
+  });
 
   function onItemSelect(item) {
     handleHubNavSelect(item, options.navigate, {
