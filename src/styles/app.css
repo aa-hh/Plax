@@ -740,28 +740,29 @@ html.caps-motion .detail-watchlist-btn:focus {
      single reflow, one frame, and the contents choreograph in on top of it. */
 }
 
-/* Expanded-drawer SCRIM (kit modal-drawer anatomy: drawer + Scrim over content,
-   node 8689:45284). position:fixed escapes the host's overflow:hidden clip
-   (the host has NO transform/filter — adding one would re-capture the fixed
-   pseudo and break this). Constant geometry, opacity-only toggle: invisible +
-   pointer-events:none when collapsed (no scrim in the collapsed state — the
-   rail's opaque background alone hides scrolling content), fading in over the
-   content when the drawer expands. z-index:-1 keeps it under the rail's own
-   surface inside the host's stacking context while still painting above the
-   page content. */
+/* Expanded-drawer edge FEATHER (kit modal-drawer anatomy: drawer + Scrim over
+   content, node 8689:45284 — realized as the drawer-edge falloff only).
+   position:fixed escapes the host's overflow:hidden clip (the host has NO
+   transform/filter — adding one would re-capture the fixed pseudo and break
+   this). Constant geometry, opacity-only toggle; pointer-events:none.
+
+   WHY A NARROW STRIP, not the old 50vw dim (2026-07-04): an opacity-0 layer is
+   not kept rastered — on expand the B8 had to rasterize the old ~1M-px
+   multi-stop gradient FROM SCRATCH, and that first paint queued behind
+   ambient-wash raster work, landing ~3s after the drawer had already snapped
+   open. The visual job was always the soft falloff at the drawer's edge (the
+   half-screen dim under the opaque drawer surface was imperceptible), so paint
+   ONLY the falloff: a 140px strip hanging off the expanded drawer's right edge
+   (~8× fewer pixels; rasters within the expand frame). */
 .screen-home .browsing-hub-nav-host::before,
 .library-screen .browsing-hub-nav-host::before {
   content: '';
   position: fixed;
   top: 0;
   bottom: 0;
-  left: 0;
-  width: 50vw;
-  background: linear-gradient(to right,
-    var(--bg-base) 0%,
-    var(--bg-base) 30%,
-    rgba(19, 19, 20, 0.72) 55%,
-    rgba(19, 19, 20, 0) 100%);
+  left: var(--nav-rail-w-expanded);
+  width: 140px;
+  background: linear-gradient(to right, rgba(19, 19, 20, 0.78) 0%, rgba(19, 19, 20, 0) 100%);
   opacity: 0;
   pointer-events: none;
   z-index: -1;

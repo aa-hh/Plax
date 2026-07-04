@@ -23,7 +23,7 @@ import {
 } from '../../core/idlePrefetch.js';
 import { getArtUrl, loadAmbientColors } from '../../backends/index.js';
 import { tvLog } from '../../utils/tvDebug.js';
-import { buildCornerWashCss, cornerWashLayerCount } from '../colorWash.js';
+import { buildCornerWashCss, cornerWashLayerCount, hexToRgba } from '../colorWash.js';
 
 function homeScreen(root, params, navigate) {
   var state = getState();
@@ -223,6 +223,7 @@ function homeScreen(root, params, navigate) {
         if (destroyed || swapTok !== ilHeroToken) return;
         if (colors) {
           ilApplyAmbient(colors, swapTok);
+          ilTintHeroScrim(colors);
           tvLog('perf', 'home:hero-swap', { colorsFrom: 'ambient' });
         } else {
           tvLog('perf', 'home:hero-swap', { colorsFrom: 'none' });
@@ -231,6 +232,29 @@ function homeScreen(root, params, navigate) {
     } else {
       tvLog('perf', 'home:hero-swap', { colorsFrom: colorsFrom });
     }
+  }
+
+  // Tint the hero box's edge scrim with the ITEM's OWN palette (2026-07-04
+  // seam fix, round 2). Every transparency-only melt still left a visible
+  // color-temperature boundary: the masked photo region (often dark pixels)
+  // hands off to a wash built from corner AVERAGES, so even a long alpha ramp
+  // ends in a luminance/hue cliff at the contour where content stops reading.
+  // The bridge: as the photo's mask fades it OUT, this gradient fades the
+  // wash's own top-right color IN over the same band — mid-band ghosting is
+  // hidden under the tint, and at the box's edges the tint's strength (~0.35)
+  // roughly tracks the wash's top-right radial underneath, so hue stays
+  // continuous across the boundary. One inline string per swap; zero layers
+  // added; the static CSS scrim colors are just the pre-colors default.
+  function ilTintHeroScrim(colors) {
+    var scrimEl = screen.querySelector('.il-hero__scrim');
+    if (!scrimEl || !colors || !colors.topRight) return;
+    var mid = hexToRgba(colors.topRight, 0.45);
+    var edge = hexToRgba(colors.topRight, 0.35);
+    var clear = hexToRgba(colors.topRight, 0);
+    if (!mid) return;
+    scrimEl.style.background =
+      'linear-gradient(to left, ' + clear + ' 28%, ' + mid + ' 62%, ' + edge + ' 100%), ' +
+      'linear-gradient(to top, ' + edge + ' 0%, ' + mid + ' 26%, ' + clear + ' 55%)';
   }
 
   function ilShowHero(show) {
