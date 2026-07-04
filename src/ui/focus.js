@@ -14,6 +14,7 @@
 
 import { isPerfEnabled, mark as perfMark } from '../perf/resourceMonitor.js';
 import { sampleFrames } from '../perf/frameJank.js';
+import { extendTransition } from './transitionGate.js';
 
 // Score the SMOOTHNESS of a D-pad glide, not just the latency to commit focus.
 // The existing input:keydown/input:focusCommitted marks (attachFocusNav) time
@@ -542,6 +543,12 @@ function smoothScrollCarousel(row, target, durationMs) {
   var start = row.scrollLeft;
   var delta = target - start;
   if (Math.abs(delta) < 2) { row.scrollLeft = target; return; }
+  // Gate deferred poster decode behind the glide: the freeze was never the
+  // scroll itself, it was posters decoding the instant scrolling revealed
+  // them. 150ms glide + settle headroom; a held key keeps re-extending, so
+  // posters resolve once input actually stops (intentional Netflix-style
+  // behavior, not a bug).
+  extendTransition(300);
   sampleGlide('horizontal');
   var startTime = 0;
   function step(ts) {
@@ -582,6 +589,9 @@ function smoothScrollVertical(scroller, target, durationMs) {
   var start = scroller.scrollTop;
   var delta = target - start;
   if (Math.abs(delta) < 2) { scroller.scrollTop = target; return; }
+  // See smoothScrollCarousel — same glide-gates-poster-decode reasoning,
+  // applied to vertical rail movement.
+  extendTransition(300);
   sampleGlide('vertical');
   var startTime = 0;
   function step(ts) {
