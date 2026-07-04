@@ -69,12 +69,19 @@ function drainStep() {
     return;
   }
   var cb = idleQueue.shift();
-  try { cb(); } catch (e) { /* one bad consumer must not starve the rest */ }
+  // Convention (round 3): a callback may return `false` to declare "I did no
+  // real work" (e.g. posterImages dropping a stale hidden bind). Those chain
+  // on the next tick with NO pacing — a scroll burst can leave dozens of
+  // stale entries, and taxing every drop a full DRAIN_TICK_MS made the NEXT
+  // screen's own deferred work (detail backdrop, its images) wait seconds in
+  // line behind no-ops. Real work still gets the ~3-frame spacing.
+  var did;
+  try { did = cb(); } catch (e) { /* one bad consumer must not starve the rest */ }
   if (idleQueue.length === 0) {
     draining = false;
     return;
   }
-  setTimeout(drainStep, DRAIN_TICK_MS);
+  setTimeout(drainStep, did === false ? 0 : DRAIN_TICK_MS);
 }
 
 function flushIdleQueue() {

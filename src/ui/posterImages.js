@@ -207,6 +207,13 @@ function drainPosterLoadQueue() {
   while (posterLoadQueue.length && activePosterLoads < MAX_CONCURRENT_POSTER_LOADS) {
     var job = posterLoadQueue.shift();
     if (!job || !job.img) continue;
+    // Stale-by-hide guard, queue edition (2026-07-04 round 3): jobs queued
+    // while their screen was current can pump AFTER a navigation — each one
+    // then burns a network connection (Chrome53: 6 per host) racing the NEW
+    // screen's metadata fetch, which is exactly the "detail content takes
+    // seconds to appear" contention. Hidden imgs recover via onResume's
+    // re-prime, same as the deferred-bind drop.
+    if (!job.img.isConnected || job.img.offsetParent === null) continue;
     startPosterImageLoad(job.img, job.url, job.opts);
   }
 }
@@ -295,7 +302,10 @@ function bindPosterImage(img, url, opts) {
       // images. offsetParent is null under a display:none host → drop the
       // bind; the owning screen re-primes visible posters in onResume (the
       // router calls it on every retained re-show), so the poster recovers.
-      if (!img.isConnected || img.offsetParent === null) return;
+      // Returning false tells the drain "no work done" so the drop doesn't
+      // consume a paced tick (round 3 — dozens of drops were making the next
+      // screen's own deferred work wait seconds).
+      if (!img.isConnected || img.offsetParent === null) return false;
       bindPosterImage(img, url, opts);
     });
     return;

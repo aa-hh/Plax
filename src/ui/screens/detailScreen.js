@@ -1901,9 +1901,17 @@ function detailScreen(root, params, navigate) {
     });
   }
 
+  var builtAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   getMetadata(server, ratingKey).then(function (item) {
     if (destroyed) return;
     renderDetail(item);
+    // Content-latency breadcrumb (round 3): jank:navigation measures
+    // smoothness, not emptiness — THIS is "how long did the user stare at a
+    // skeleton". Metadata fetch + renderDetail are the content path; big
+    // numbers here with a calm jank score mean network/queue contention, not
+    // main-thread jank (the round-3 failure mode).
+    var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    tvLog('perf', 'detail:content-rendered', { sinceBuildMs: Math.round(now - builtAt) });
   }).catch(function (err) {
     if (destroyed) return;
     screen.innerHTML = '<p class="status-msg">Error: ' + escapeHtml(err && err.message ? err.message : 'unknown error') + '</p>';
