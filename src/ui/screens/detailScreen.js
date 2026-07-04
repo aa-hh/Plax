@@ -40,10 +40,8 @@ import {
   wireWatchlistBookmark,
   openWatchlistPickerForItem
 } from '../components/watchlistBookmark.js';
-import {
-  buildUltraBlurColorGradient,
-  loadUltraBlurBackdrop
-} from '../../plex/ultrablur.js';
+import { loadUltraBlurBackdrop } from '../../plex/ultrablur.js';
+import { buildCornerWashCss, cornerWashLayerCount } from '../colorWash.js';
 import { buildPlayerParamsFromMetadata } from '../../playback/hubDirectPlay.js';
 import {
   shouldOfferResumeChoice,
@@ -731,58 +729,61 @@ function detailScreen(root, params, navigate) {
     return screen.querySelector('.detail-home-main');
   }
 
-  function setDetailBackgroundImage(imageUrl) {
-    if (!imageUrl) return;
-    screen.style.backgroundImage = DETAIL_BG_GRADIENT + ', url(' + imageUrl + ')';
-    screen.classList.add('screen--has-detail-bg');
+  // buildCornerWashCss's first layer is always the noise tile (must `repeat`
+  // to tile), followed by one `no-repeat` radial-gradient per valid corner.
+  // `.screen--has-detail-bg` in app.css sets a single background-repeat for
+  // the WHOLE stack, so we override it inline, per layer, using
+  // cornerWashLayerCount (never parse the generated CSS string — it has its
+  // own internal `, ` separators inside every `rgba(r, g, b, a)` term).
+  // Chrome53 supports comma-separated background-repeat/-size lists.
+  function detailBgLayerRepeat(washLayerCount) {
+    var repeats = ['no-repeat']; // DETAIL_BG_GRADIENT
+    for (var i = 0; i < washLayerCount; i++) {
+      repeats.push(i === 0 ? 'repeat' : 'no-repeat'); // noise tile, then radials
+    }
+    return repeats.join(', ');
   }
 
   function setDetailBackgroundColors(colors) {
-    var gradient = buildUltraBlurColorGradient(colors);
-    if (!gradient) return;
-    screen.style.backgroundImage = DETAIL_BG_GRADIENT + ', ' + gradient;
+    var wash = buildCornerWashCss(colors);
+    if (!wash) return;
+    screen.style.backgroundImage = DETAIL_BG_GRADIENT + ', ' + wash;
+    screen.style.backgroundRepeat = detailBgLayerRepeat(cornerWashLayerCount(colors));
+    // bottomLeft matches the JetStream-mapped gradient's own bottom-left
+    // anchor above; picking one real corner color means an uncovered center
+    // pixel (should the radials not fully meet) never shows the raw surface.
+    if (colors.bottomLeft) screen.style.backgroundColor = '#' + colors.bottomLeft;
     screen.classList.add('screen--has-detail-bg');
   }
 
   function applyDetailBackground(homeMain, server, item) {
     screen.classList.remove('screen--has-detail-bg');
     screen.style.backgroundImage = '';
+    screen.style.backgroundRepeat = '';
+    screen.style.backgroundColor = '';
 
     if (!item.artPath || !server) return;
 
     var bgTok = ++detailBgToken;
-    // Transition gate: the backdrop fetch + (synchronous on Chrome53) decode is
-    // the single heaviest competitor to the enter fade on this screen — hold it
-    // until the transition window closes (≤400ms). The bgTok check keeps the
-    // deferred run harmless if the user has already moved on to another item.
+    // Transition gate: the backdrop fetch is the heaviest competitor to the
+    // enter fade on this screen — hold it until the transition window closes
+    // (≤400ms). The bgTok check keeps the deferred run harmless if the user
+    // has already moved on to another item.
     onIdle(function () {
       if (bgTok !== detailBgToken) return;
       loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
         if (!backdrop || bgTok !== detailBgToken) return;
-        // Paint the cheap CSS color gradient the instant the colors arrive — the
-        // backdrop appears immediately instead of waiting on the full-res blur
-        // image's fetch + (synchronous, on Chrome53) decode, which was the hitch
-        // that "prevented movement" on entering detail.
-        if (backdrop.colors) setDetailBackgroundColors(backdrop.colors);
-        if (!backdrop.imageUrl) return;
-        // Upgrade to the noise-dithered ultrablur image (avoids OLED banding)
-        // only once it has loaded, so the swap never blocks the main thread.
-        // img.decode() is Chrome 64+ (absent on the B8), so feature-detect it and
-        // otherwise rely on onload, which already implies the bytes are in cache.
-        var img = new Image();
-        function swap() {
-          if (bgTok !== detailBgToken) return;
-          // Jank-attribution breadcrumb: if jank:navigation's worst gap lands
-          // just after this line in tv.log, the backdrop paint is the whale.
-          tvLog('perf', 'detail:backdrop-swap');
-          setDetailBackgroundImage(backdrop.imageUrl);
-        }
-        img.onload = function () {
-          if (img.decode) { img.decode().then(swap, swap); }
-          else swap();
-        };
-        img.onerror = function () { /* keep the gradient; never wedge */ };
-        img.src = backdrop.imageUrl;
+        if (!backdrop.colors) return;
+        // Native corner-wash: 4 radial gradients + a noise-dither tile,
+        // built entirely from the colors PMS already returned — no image
+        // fetch, no decode. This used to "upgrade" to a server-rendered
+        // 1280x720 JPEG of the same gradient once it loaded; that decode
+        // measured 1212ms on a real B8 and added nothing the CSS wash can't
+        // do itself, so the upgrade path is gone.
+        setDetailBackgroundColors(backdrop.colors);
+        // Jank-attribution breadcrumb: if jank:navigation's worst gap lands
+        // just after this line in tv.log, the backdrop paint is the whale.
+        tvLog('perf', 'detail:backdrop-swap');
       });
     });
   }
