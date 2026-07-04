@@ -1,5 +1,4 @@
 import { fetchPlexJson, serverUrl, getServerToken } from './client.js';
-import { buildQuery } from '../utils/fetch.js';
 import * as cache from '../core/cache.js';
 
 // Ultrablur is the DETAIL-screen backdrop only (season/show/film). The app-wide
@@ -8,9 +7,6 @@ import * as cache from '../core/cache.js';
 // (warmDefaultBackground / fetchDefaultBackground / loadUltraBlurBackground +
 // their _apply* helpers and the default-bg blob cache) was removed 2026-06-27
 // after it was confirmed to have no callers anywhere in the repo.
-
-var DEFAULT_WIDTH = 1280;
-var DEFAULT_HEIGHT = 720;
 
 function serverScope(server) {
   if (!server) return 'noserver';
@@ -50,58 +46,28 @@ function fetchUltraBlurColors(server, artPath) {
     });
 }
 
-function buildUltraBlurImagePath(colors, opts) {
-  opts = opts || {};
-  var width = opts.width || DEFAULT_WIDTH;
-  var height = opts.height || DEFAULT_HEIGHT;
-  return '/services/ultrablur/image?' + buildQuery({
-    topLeft: colors.topLeft,
-    topRight: colors.topRight,
-    bottomRight: colors.bottomRight,
-    bottomLeft: colors.bottomLeft,
-    width: width,
-    height: height,
-    noise: 1
-  });
-}
-
-function buildUltraBlurImageUrl(server, colors, opts) {
-  if (!server || !server.connectionUri || !colors) return null;
-  opts = opts || {};
-  var innerPath = buildUltraBlurImagePath(colors, opts);
-  return serverUrl(server.connectionUri, '/photo/:/transcode', {
-    url: innerPath,
-    width: opts.width || DEFAULT_WIDTH,
-    height: opts.height || DEFAULT_HEIGHT,
-    minSize: 1
-  }, server);
-}
-
-function buildUltraBlurColorGradient(colors) {
-  if (!colors) return '';
-  return (
-    'linear-gradient(135deg, #' + colors.topLeft + ' 0%, #' + colors.topRight +
-    ' 38%, #' + colors.bottomRight + ' 72%, #' + colors.bottomLeft + ' 100%)'
-  );
-}
-
+// buildUltraBlurImagePath/buildUltraBlurImageUrl/buildUltraBlurColorGradient
+// (the server-rendered 1280x720 noise-dithered JPEG + its plain linear-
+// gradient CSS fallback) were removed 2026-07-04: the JPEG's synchronous
+// decode measured 1212ms on a real B8 and detailScreen.js now reproduces both
+// of its ingredients (corner-color blending + noise dithering) natively via
+// src/ui/colorWash.js, so nothing ever needs to build that URL again — grep
+// confirmed no callers outside this file. loadUltraBlurBackdrop below no
+// longer computes an imageUrl; note this means the PERSISTED disk cache may
+// still contain old entries with a (now-ignored) `imageUrl` key — harmless,
+// nothing reads it.
 function loadUltraBlurBackdrop(server, artPath) {
   if (!server || !artPath) return Promise.resolve(null);
   var key = cache.buildKey(serverScope(server), artPath);
   return cache.remember('ultrablur', key, function () {
     return fetchUltraBlurColors(server, artPath).then(function (colors) {
       if (!colors) return null;
-      return {
-        colors: colors,
-        imageUrl: buildUltraBlurImageUrl(server, colors)
-      };
+      return { colors: colors };
     });
   });
 }
 
 export {
   fetchUltraBlurColors,
-  buildUltraBlurImageUrl,
-  buildUltraBlurColorGradient,
   loadUltraBlurBackdrop
 };
