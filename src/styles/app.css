@@ -906,13 +906,26 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
    geometry in every state — fixed content width (--nav-rail-inner-expanded) and
    the same `padding: 0 16px` + flex-start alignment always — so the icon's
    x-position is PIXEL-IDENTICAL collapsed vs expanded (host pad 12 + item pad 16
-   = 28px in both). The collapsed 96px host simply CLIPS the 256px-wide item via
-   overflow:hidden; the selected pill still covers the visible 72px content box
-   as a circle (item box ≥ --nav-item-h). No per-state padding/justify override
-   → nothing re-lays-out on the width snap. (Earlier takes shrank host padding or
-   re-justified the item on collapse, which shifted the icon ~2–8px and, worse,
-   re-laid-out every frame.) The fixed width + flex:0 0 auto live on the base
-   .browsing-hub-item rule below. */
+   = 28px in both). The collapsed 96px host simply CLIPS the wide rows via
+   overflow:hidden. (Earlier takes shrank host padding or re-justified the item
+   on collapse, which shifted the icon ~2–8px and, worse, re-laid-out every
+   frame.) The fixed width + flex:0 0 auto live on the base .browsing-hub-item
+   rule below.
+
+   Take 4 (merge review): take 3 alone broke the collapsed pill — the pill IS
+   the item's own background (999px stadium), so a 256px item clipped at the
+   96px rail edge painted as a rounded-LEFT bar with a hard flat cut flush to
+   the rail edge, not the registry's 72×72 circle. Collapsed items therefore
+   SNAP (no transition — same single reflow frame as the host width snap, zero
+   per-frame layout) down to the 72px content box, restoring the circle. Labels
+   are visibility:hidden collapsed, so the narrow box never shows a text sliver;
+   icon x stays 28px (only the box's right edge moves). Icon sits ~2px left of
+   the circle's center (16px pad vs 18px true-center) — recorded as
+   imperceptible at 10ft in earlier passes, and preferable to a 2px icon jump
+   on expand. */
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
+  width: var(--nav-item-h); /* 72px = collapsed content box → .active pill is a true circle */
+}
 
 /* Drawer-focused brighten (kit: contentColor = drawerHasFocus ? onSurface :
    onSurfaceVariant). Entering the rail (--expanded) lifts every resting item from

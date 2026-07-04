@@ -101,6 +101,10 @@ test('cornerWashLayerCount: 0 when buildCornerWashCss would return empty', funct
   assert.equal(cornerWashLayerCount({}), 0);
 });
 
-test('NOISE_TILE_URL: is a url(data:image/png;base64,...) repeat-ready value', function () {
-  assert.match(NOISE_TILE_URL, /^url\(data:image\/png;base64,[A-Za-z0-9+/=]+\)/);
+test('NOISE_TILE_URL: is a PURE url(data:image/png;base64,...) <image> value', function () {
+  // Anchored at BOTH ends: `url(...) repeat` is background-shorthand grammar
+  // and, inside background-image, invalidates the entire declaration (the
+  // backdrop silently vanishes). Tiling is the caller's per-layer
+  // background-repeat job, never part of this constant.
+  assert.match(NOISE_TILE_URL, /^url\(data:image\/png;base64,[A-Za-z0-9+/=]+\)$/);
 });
