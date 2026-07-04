@@ -3,6 +3,7 @@ import { filterLibrariesForUser, isMovieOrTvSection } from '../../security/libra
 import { canUseWatchlists } from '../../watchlists/access.js';
 import { iconSvgForKind, libraryIconKind } from '../icons/navIcons.js';
 import { plaxWordmarkSvg, plaxMarkSvg } from '../brand/plaxLogo.js';
+import { sampleFrames } from '../../perf/frameJank.js';
 
 var SEARCH_NAV_ITEM = { id: 'search', label: 'Search', iconKind: 'search' };
 var SETTINGS_NAV_ITEM = { id: 'settings', label: 'Settings', iconKind: 'settings' };
@@ -252,7 +253,19 @@ function mountBrowsingHubNav(host, options) {
     // for the programmatic landing; the keydown below (a REAL user interaction
     // inside the rail) clears the flag and re-syncs.
     if (inside && host.getAttribute('data-initial-focus') === '1') return;
+    // Score the width transition the same way navigation is scored. The rail
+    // animates `width` (a LAYOUT property) over 180ms and reveals 8 labels
+    // (display:none→block, forcing reflow) — the comment on the CSS rule claims
+    // this is cheap because the rail is an absolute overlay, but that's an
+    // unmeasured assumption on Chromium 53. Fire the rAF sampler ONLY on a real
+    // expanded-state change (not every focus move within the rail) so the B8
+    // scoreboard shows whether entering/leaving the rail drops frames. Short
+    // window: the interaction is ~180ms, so 700ms captures transition + settle.
+    var wasExpanded = host.classList.contains('browsing-hub-nav-host--expanded');
     host.classList.toggle('browsing-hub-nav-host--expanded', !!inside);
+    if (!!inside !== wasExpanded) {
+      sampleFrames('jank:sidebar', { dir: inside ? 'expand' : 'collapse' }, 700);
+    }
   }
   host.addEventListener('focusin', syncExpanded);
   host.addEventListener('focusout', function () { setTimeout(syncExpanded, 0); });
