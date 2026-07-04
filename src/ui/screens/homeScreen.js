@@ -265,6 +265,24 @@ function homeScreen(root, params, navigate) {
     // can't leak above later-deferred rows. See prepareFeedForRender for why.
     if (!prepareFeedForRender(el, rows, append)) return;
     var sorted = pinContinueWatchingFirst(rows);
+    // ONE ROW PER MACROTASK (2026-07-04): rendering 3 rows × 20 cards in one
+    // synchronous pass measured as a ~1.1s main-thread freeze on the B8
+    // (jank:navigation home: 3 rAF frames in 1.5s; fade startDelayMs 1166).
+    // Render the first row now and self-schedule the rest through the existing
+    // append path — each row becomes its own task, so frames (and remote
+    // input) interleave, and the row-enter reveal gets its cascade from real
+    // mount spacing instead of animation-delay. Aborts via the render token
+    // when a fresh load supersedes this pass.
+    var hasMoreRows = false;
+    if (sorted.length > 1) {
+      hasMoreRows = true;
+      var laterRows = sorted.slice(1);
+      sorted = sorted.slice(0, 1);
+      setTimeout(function () {
+        if (destroyed || token !== renderToken) return;
+        renderRowsIntoFeed(laterRows, true);
+      }, 0);
+    }
     // Only the rows added in THIS pass get the staggered entrance. A fresh
     // render cleared the feed (startIndex 0); a deferred-append batch cascades
     // from its own start so late rows still reveal in sequence.
@@ -294,13 +312,19 @@ function homeScreen(root, params, navigate) {
       // animationend (or the safety ceiling if the animation never runs), so
       // the reveal animates on a calm main thread instead of fighting six
       // concurrent JPEG decodes. Only when the animation will actually run.
+      // With one-row-per-pass chunking, every pass EXTENDS the window but only
+      // the FINAL pass (no more rows scheduled) hooks the early close — an
+      // earlier row's animationend must not drain the queue while later rows
+      // are still mounting/animating.
       if (document.documentElement.classList.contains('caps-motion')) {
-        beginTransition(550); // 240ms max delay + 250ms run + headroom
-        lastStaggeredRow.addEventListener('animationend', function onCascadeEnd(e) {
-          if (e.target !== lastStaggeredRow) return;
-          lastStaggeredRow.removeEventListener('animationend', onCascadeEnd);
-          endTransition();
-        });
+        beginTransition(550); // per-row build + 250ms run + headroom
+        if (!hasMoreRows) {
+          lastStaggeredRow.addEventListener('animationend', function onCascadeEnd(e) {
+            if (e.target !== lastStaggeredRow) return;
+            lastStaggeredRow.removeEventListener('animationend', onCascadeEnd);
+            endTransition();
+          });
+        }
       }
     }
     // The feed DOM just changed (skeletons → rows, or deferred rows appended).

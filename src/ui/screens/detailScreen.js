@@ -16,6 +16,7 @@ import { createMediaCard } from '../components/mediaCard.js';
 import { createTabs, openSidePanel } from '../components/controls.js';
 import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
 import { onIdle } from '../transitionGate.js';
+import { tvLog } from '../../utils/tvDebug.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
 import {
@@ -766,6 +767,9 @@ function detailScreen(root, params, navigate) {
         var img = new Image();
         function swap() {
           if (bgTok !== detailBgToken) return;
+          // Jank-attribution breadcrumb: if jank:navigation's worst gap lands
+          // just after this line in tv.log, the backdrop paint is the whale.
+          tvLog('perf', 'detail:backdrop-swap');
           setDetailBackgroundImage(backdrop.imageUrl);
         }
         img.onload = function () {
@@ -1317,7 +1321,22 @@ function detailScreen(root, params, navigate) {
         card.setAttribute('data-nav-up', '.detail-primary-actions .btn');
         currentGrid.appendChild(card);
       });
-      hydrateRowWindow(currentGrid, { start: 0, count: items.length });
+      tvLog('perf', 'detail:episodes-appended', { count: items.length });
+      // Hydrate episode thumbs in CHUNKS, not all at once: a 20-episode season
+      // previously kicked off twenty 340×191 fetch+decodes in one burst —
+      // image decode is synchronous-with-raster on Chrome 53, so the burst
+      // reads as a main-thread freeze right when the user starts navigating
+      // the rail. 6 per pass (matches MAX_CONCURRENT_POSTER_LOADS) spaced
+      // 250ms apart spreads the decodes across frames; everything still loads
+      // within ~1s for a full season, and the guards abort on season switch.
+      var HYDRATE_CHUNK = 6;
+      (function hydrateEpisodeChunk(start) {
+        if (destroyed || gen !== showEpisodesGen) return;
+        hydrateRowWindow(currentGrid, { start: start, count: HYDRATE_CHUNK });
+        if (start + HYDRATE_CHUNK < items.length) {
+          setTimeout(function () { hydrateEpisodeChunk(start + HYDRATE_CHUNK); }, 250);
+        }
+      })(0);
     }).catch(function () {
       if (destroyed || gen !== showEpisodesGen) return;
       var currentGrid = screen.querySelector('#detail-episode-grid');

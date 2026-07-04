@@ -34,7 +34,11 @@ function report(session, superseded) {
     frozen: session.frozen,
     worstMs: Math.round(session.worstMs),
     busyMs: Math.round(session.busyMs),
-    windowMs: Math.round(nowMs() - session.startedAt)
+    windowMs: Math.round(nowMs() - session.startedAt),
+    // Attribution: subtract from this line's tv.log timestamp to place the
+    // worst gap's END on the log timeline, then look at which breadcrumb
+    // (backdrop-swap, episodes-appended, …) sits just before it.
+    worstEndedAgoMs: session.worstEndAt ? Math.round(nowMs() - session.worstEndAt) : null
   };
   for (var k in session.data) if (session.data.hasOwnProperty(k)) payload[k] = session.data[k];
   if (superseded) payload.superseded = true;
@@ -78,7 +82,7 @@ function sampleFrames(label, data, windowMs) {
         session.dropped++;
         session.busyMs += gap;
         if (gap > 100) session.frozen++;
-        if (gap > session.worstMs) session.worstMs = gap;
+        if (gap > session.worstMs) { session.worstMs = gap; session.worstEndAt = t; }
       }
     }
     session.lastTick = t;
