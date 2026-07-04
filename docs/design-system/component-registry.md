@@ -195,13 +195,10 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 - **Outlined ↔ Filled pattern:** nav/section glyphs are **outlined when idle, filled when active/selected** (standard Material navigation). `iconSvgForKind(kind, filled)` returns the matching variant; the sidebar flips it on selection via `refreshHubNavIcons` (see Nav item). Glyphs shipped as outline+fill pairs: home, bookmark (watchlist), tv (show), movie (films), settings, video_library. Single-variant glyphs: search, tune (Quality), more_horiz (More), star-fill (rating).
 - **To add an icon:** grab the Rounded SVG (e.g. `@material-symbols/svg-400/rounded/<name>.svg`, fill variant `<name>-fill.svg`), inline the `d` as a `P_*` constant + a `*IconSvg()` wrapper. Keep the 960 viewBox and no fill-rule.
 
-### Typography  ✅ Elms Sans (2026-06-30)
+### Typography  ✅ Roboto (2026-07-04)
 
-- **Status:** ✅ · 2026-06-30 — resolved the long-standing "Roboto delivery TBD" token note.
-- **Typeface:** **Elms Sans** — utilitarian geometric sans (Gida Type Studio / Amarachi Nwauwa), OFL. Token `--gt-font` (`src/styles/app.css`), TV-scaled across the Material 3 type roles. Fallback ladder `'Roboto', 'Noto Sans', system-ui, …` retained so text still renders if a weight file fails.
-- **Delivery:** **self-hosted STATIC weights** via `@font-face` (top of `app.css`) — 400/500/600/700 woff2 in `assets/fonts/` (→ `dist/assets/fonts/` via rollup-copy; `url()` is relative to `dist/app.css`). **Chromium 53 has no variable-font support**, so we ship discrete files, NOT the `wght[ ]` variable face. woff2 is supported on Chrome 36+. `font-display: swap` is a harmless no-op on 53. License: `assets/fonts/OFL.txt`.
-- **CSP:** already covered by `font-src 'self' file: data:` in `index.html` — no change needed.
-- **Weights used:** Regular 400 (body/display/headline roles), Medium 500 (title/label roles, `--gt-weight-medium`), SemiBold 600 (card titles), Bold 700.
+- **Status:** ✅ · 2026-07-04 — reverted Elms Sans trial; Roboto is the primary typeface.
+- **Typeface:** **Roboto** — system-delivered on Android TV / webOS; no `@font-face` needed. Token `--gt-font: 'Roboto', 'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif` (`src/styles/app.css`), TV-scaled across the Material 3 type roles.
 
 ### Motion  ✅ Material 3 motion system (2026-06-30)
 

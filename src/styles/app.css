@@ -1,40 +1,5 @@
 /* Plax — Plex / Plax inspired TV UI (1920×1080, webOS TV 4.0+) */
 
-/* Elms Sans — utilitarian geometric sans (Gida Type Studio, OFL).
-   Self-hosted STATIC weights: Chromium 53 (the B8) has no variable-font
-   support, so we ship discrete files (400/500/600/700) rather than the
-   wght[ ] variable face. woff2 is fine on Chrome 36+. Files live in
-   assets/fonts/ (copied to dist/assets/fonts/ by rollup-copy); the url() is
-   relative to dist/app.css. font-display is a harmless no-op on 53. */
-@font-face {
-  font-family: 'Elms Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('assets/fonts/ElmsSans-Regular.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Elms Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('assets/fonts/ElmsSans-Medium.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Elms Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('assets/fonts/ElmsSans-SemiBold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Elms Sans';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('assets/fonts/ElmsSans-Bold.woff2') format('woff2');
-}
-
 :root {
   color-scheme: dark;
   /* Google TV Design Kit — Material 3 TV Compose/sys/dark, pulled from Figma.
@@ -344,10 +309,8 @@
   --gt-text-muted: var(--text-muted);     /* disabled/hint */
   --gt-scrim: rgba(0, 0, 0, 0.6);         /* over imagery for legibility */
 
-  /* Typography — Elms Sans (self-hosted static weights, @font-face above);
-     TV-scaled to the Material 3 type roles. Roboto/Noto/system kept as the
-     fallback ladder so text still renders if a weight file fails to load. */
-  --gt-font: 'Elms Sans', 'Roboto', 'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Typography — TV-scaled to the Material 3 type roles. */
+  --gt-font: 'Roboto', 'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --gt-weight-regular: 400;
   --gt-weight-medium: 500;
   /* Per-role weights (Material 3 TV Compose/sys typescale): display/headline/body
