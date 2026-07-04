@@ -2,6 +2,8 @@
  * Enforce minimum webOS TV 4.0 (2018 LG OLED B8 and newer).
  * Uses webOSTV.js deviceInfo (versionMajor) when available.
  */
+import { tvLog } from '../utils/tvDebug.js';
+
 var MIN_WEBOS_TV_MAJOR = 4;
 
 function isTvRuntime() {
@@ -57,6 +59,23 @@ function checkMinimumWebOS() {
     }
     webOS.deviceInfo(function (device) {
       try { console.info('[versionGate] deviceInfo:', device); } catch (_) {}
+      // console.info is near-useless on-device (ares-inspect is flaky on webOS
+      // 4 — see docs/design-system/component-registry.md → Motion instrumentation
+      // note). Mirror the RAW field values remotely so a version-major mismatch
+      // (e.g. a firmware build number being confused for the webOS platform
+      // major — the historical caps-motion-gate-bug class of failure) is
+      // diagnosable from tv.log without needing devtools on the TV at all.
+      try {
+        tvLog('boot', 'device-info-raw', {
+          versionMajor: device && device.versionMajor,
+          platformVersionMajor: device && device.platformVersionMajor,
+          sdkVersion: device && device.sdkVersion,
+          version: device && device.version,
+          firmwareVersion: device && device.firmwareVersion,
+          platformVersion: device && device.platformVersion,
+          modelName: device && device.modelName
+        });
+      } catch (_) { /* ignore */ }
       var major = parseMajor(device);
       if (major >= MIN_WEBOS_TV_MAJOR) {
         resolve({ ok: true, major: major, device: device });
