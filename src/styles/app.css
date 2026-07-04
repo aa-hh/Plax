@@ -1240,6 +1240,90 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-nav > .browsing-
   transition: opacity var(--dur-medium2) var(--ease-standard);
 }
 
+/* ── Layered immersive hero (2026-07-04) ────────────────────────────────────
+   Three layers, cheapest first, each appearing when ready ("color leads, image
+   follows"). They live behind ALL home content inside `.home-layout` (which is
+   position:relative on `.screen-home`). z-order: ambient (0) < bleed (1) <
+   sidebar nav-host (5) / feed-host (2) / hero content. The whole home content
+   still paints over these because it comes later in the DOM and carries its own
+   stacking. Total decode cost is unchanged vs today — the SAME art objectURL
+   feeds the crisp corner box, both bleed layers, AND the palette (one fetch,
+   one decode, three uses). */
+
+/* Layer 1 — ambient corner wash. Two crossfading full-screen layers carrying a
+   `buildCornerWashCss(palette)` background sampled from the focused art. Subtle
+   tint over surface-dim (never wallpaper). Opacity-only transition = pure
+   compositor work. */
+.il-ambient {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  opacity: 0;
+  /* Tiny noise tile tiles; the radial-gradient wash layers do not. The inline
+     background-image is set from JS (buildCornerWashCss); the per-layer repeat
+     list is set inline alongside it. */
+  background-color: transparent;
+  background-position: center;
+  pointer-events: none;
+}
+html.caps-motion .il-ambient {
+  transition: opacity var(--dur-medium1) var(--ease-standard);
+}
+
+/* Layer 2 — soft full-bleed art. Two crossfading full-screen `cover` layers of
+   the SAME art objectURL as the crisp corner box; the 720→1920 upscale is the
+   intended softness. A strong scrim rides on top (via ::after) to keep rail
+   text/cards readable. Gated behind html.caps-motion AND suppressible with the
+   `il--no-bleed` kill-switch on the screen root (one-line disable if the B8
+   scoreboard objects). */
+.il-hero__bleed {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  opacity: 0;
+  background-position: top right;
+  background-repeat: no-repeat;
+  background-size: cover;
+  pointer-events: none;
+}
+html.caps-motion .il-hero__bleed {
+  transition: opacity var(--dur-medium1) var(--ease-standard);
+}
+/* Full-screen scrim over the bleed: flat 0.55 base, ramping darker at the
+   bottom and toward the LEFT text column so the hero copy + first rail stay
+   legible. Two stacked linear gradients (surface-dim = rgb 19,19,19). */
+.il-hero__bleed-scrim {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, rgba(19,19,19,0.85) 0%, rgba(19,19,19,0.6) 34%, rgba(19,19,19,0.55) 100%),
+    linear-gradient(to top, rgba(19,19,19,0.85) 0%, rgba(19,19,19,0.55) 46%, rgba(19,19,19,0.55) 100%);
+  opacity: 0;
+}
+html.caps-motion .il-hero__bleed-scrim {
+  transition: opacity var(--dur-medium1) var(--ease-standard);
+}
+/* Non-caps engines and the kill-switch: no bleed art at all. The scrim only
+   shows when the bleed is active (JS raises both opacities together). */
+html:not(.caps-motion) .il-hero__bleed,
+html:not(.caps-motion) .il-hero__bleed-scrim,
+.il--no-bleed .il-hero__bleed,
+.il--no-bleed .il-hero__bleed-scrim {
+  opacity: 0;
+  background-image: none;
+}
+
 .home-feed {
   flex: 1;
   min-height: 0;

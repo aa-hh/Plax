@@ -23,6 +23,9 @@ import {
 } from '../../core/idlePrefetch.js';
 import { getArtUrl } from '../../backends/index.js';
 import { loadUltraBlurBackdrop } from '../../plex/ultrablur.js';
+import { tvLog } from '../../utils/tvDebug.js';
+import { getPalette, hasPalette, clearPaletteCache } from '../palette.js';
+import { buildCornerWashCss, cornerWashLayerCount } from '../colorWash.js';
 
 function homeScreen(root, params, navigate) {
   var state = getState();
@@ -31,6 +34,14 @@ function homeScreen(root, params, navigate) {
   screen.className = 'screen screen-home';
   screen.innerHTML =
     '<div class="home-layout">' +
+    // Layered immersive hero — full-screen ambient wash (a/b) + soft art bleed
+    // (a/b) + bleed scrim, all BEHIND the home content (see .il-ambient /
+    // .il-hero__bleed in app.css). Color leads, image follows.
+    '<div class="il-ambient il-ambient--a" id="il-ambient-a"></div>' +
+    '<div class="il-ambient il-ambient--b" id="il-ambient-b"></div>' +
+    '<div class="il-hero__bleed il-hero__bleed--a" id="il-bleed-a"></div>' +
+    '<div class="il-hero__bleed il-hero__bleed--b" id="il-bleed-b"></div>' +
+    '<div class="il-hero__bleed-scrim" id="il-bleed-scrim"></div>' +
     '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host"></nav>' +
     '<div class="home-main">' +
     '<div class="il-hero" id="il-hero" aria-hidden="true">' +
@@ -63,13 +74,21 @@ function homeScreen(root, params, navigate) {
   var ilHeroEl    = screen.querySelector('#il-hero');
   var ilBackdropA = screen.querySelector('#il-backdrop-a');
   var ilBackdropB = screen.querySelector('#il-backdrop-b');
+  var ilAmbientA  = screen.querySelector('#il-ambient-a');
+  var ilAmbientB  = screen.querySelector('#il-ambient-b');
+  var ilBleedA    = screen.querySelector('#il-bleed-a');
+  var ilBleedB    = screen.querySelector('#il-bleed-b');
+  var ilBleedScrim = screen.querySelector('#il-bleed-scrim');
   var ilTitleEl   = screen.querySelector('#il-hero-title');
   var ilLabelEl   = screen.querySelector('#il-hero-label');
   var ilMetaEl    = screen.querySelector('#il-hero-meta');
   var ilOverview  = screen.querySelector('#il-hero-overview');
-  var ilSide      = 'a'; // which backdrop is currently showing
+  var ilSide      = 'a'; // which crisp corner-box backdrop is currently showing
+  var ilAmbSide   = 'a'; // which ambient wash layer is currently showing
+  var ilBleedSide = 'a'; // which bleed layer is currently showing
   var ilHeroToken = 0;
   var ilHeroTimer = null;
+  var ilAmbientOn = false; // ambient wash currently faded in (hero visible)
 
   // Simple LRU for decoded backdrops (just track URLs; Image keeps pixels in mem)
   var ilCacheKeys = [];
@@ -106,6 +125,35 @@ function homeScreen(root, params, navigate) {
     return parts.filter(Boolean).join('  ·  ');
   }
 
+  // Max opacities: ambient is a subtle tint (never wallpaper); the bleed art is
+  // soft support under a strong scrim. Kept as constants so the crossfade both
+  // ramps to and (on ilShowHero(false)) leaves from a single source of truth.
+  var IL_AMBIENT_MAX = '0.55';
+  var IL_BLEED_MAX = '0.45';
+
+  // Fade the ambient wash into `colors` immediately — the cheap "color leads"
+  // layer, applied on a palette cache-hit before the image bytes are ready.
+  function ilApplyAmbient(colors, tok) {
+    if (!ilAmbientA || !colors) return;
+    if (destroyed || tok !== ilHeroToken) return;
+    var wash = buildCornerWashCss(colors);
+    if (!wash) return;
+    var count = cornerWashLayerCount(colors);
+    // Per-layer repeat: noise tile tiles, radial gradients don't (mirrors
+    // detailScreen's detailBgLayerRepeat — never parse the wash string).
+    var repeats = [];
+    for (var i = 0; i < count; i++) repeats.push(i === 0 ? 'repeat' : 'no-repeat');
+    var repeatStr = repeats.join(', ');
+    var next = ilAmbSide === 'a' ? ilAmbientB : ilAmbientA;
+    var curr = ilAmbSide === 'a' ? ilAmbientA : ilAmbientB;
+    next.style.backgroundImage = wash;
+    next.style.backgroundRepeat = repeatStr;
+    next.style.opacity = IL_AMBIENT_MAX;
+    curr.style.opacity = '0';
+    ilAmbSide = ilAmbSide === 'a' ? 'b' : 'a';
+    ilAmbientOn = true;
+  }
+
   function ilUpdateHero(item) {
     if (!item || !ilHeroEl) return;
     ilTitleEl.textContent = item.title || '';
@@ -117,32 +165,58 @@ function homeScreen(root, params, navigate) {
     var url = ilBuildArtUrl(item);
     if (!url) return;
 
-    var next = ilSide === 'a' ? ilBackdropB : ilBackdropA;
-    var curr = ilSide === 'a' ? ilBackdropA : ilBackdropB;
-
-    // Guard the swap with the current hero token so a slow image that resolves
-    // after the user has moved on can't flash a stale backdrop, and so onerror/
-    // timeout can't wedge the crossfade.
+    // Guard the whole swap with the current hero token so a slow read that
+    // resolves after the user has moved on can't flash a stale layer.
     var swapTok = ilHeroToken;
+    var wasCached = hasPalette(url);
     var settled = false;
-    function commit() {
+
+    // ONE fetch, ONE decode, THREE uses: getPalette blob-XHRs the art (dodging
+    // the file:// canvas-taint), samples the corner palette, and hands back a
+    // same-origin objectURL reused for BOTH the crisp corner box and the soft
+    // bleed layers. Cache-hit → its Promise resolves without a network trip, so
+    // the ambient wash lands effectively immediately (color leads).
+    getPalette(url).then(function (res) {
       if (settled || destroyed || swapTok !== ilHeroToken) return;
       settled = true;
-      ilCacheTouch(url);
-      next.style.backgroundImage = 'url(' + url + ')';
-      next.style.opacity = '1';
-      curr.style.opacity = '0';
-      ilSide = ilSide === 'a' ? 'b' : 'a';
-    }
-    var img = new Image();
-    img.onload = commit;
-    // A failed/slow art fetch must never leave the crossfade half-applied or
-    // block the next one — drop it silently (the previous backdrop stays).
-    img.onerror = function () { settled = true; };
-    // Hard ceiling: if neither load nor error fires (B8 can stall on a slow
-    // transcode), release the swap so a later focus can start fresh.
+
+      // 1) Ambient wash (color) — crossfade whenever we got usable colors.
+      if (res && res.colors) ilApplyAmbient(res.colors, swapTok);
+
+      // 2) Crisp corner box + 3) soft bleed — both off the SAME objectURL, so
+      // the image decodes once. Without an objectURL (fetch/decode failure) we
+      // simply leave the previous art up — today's silent-drop behavior.
+      if (res && res.objectUrl) {
+        var artCss = 'url(' + res.objectUrl + ')';
+
+        var boxNext = ilSide === 'a' ? ilBackdropB : ilBackdropA;
+        var boxCurr = ilSide === 'a' ? ilBackdropA : ilBackdropB;
+        ilCacheTouch(url);
+        boxNext.style.backgroundImage = artCss;
+        boxNext.style.opacity = '1';
+        boxCurr.style.opacity = '0';
+        ilSide = ilSide === 'a' ? 'b' : 'a';
+
+        // Bleed is caps-motion + kill-switch gated in CSS; setting the image/
+        // opacity here is harmless when suppressed (opacity is overridden to 0).
+        var bleedNext = ilBleedSide === 'a' ? ilBleedB : ilBleedA;
+        var bleedCurr = ilBleedSide === 'a' ? ilBleedA : ilBleedB;
+        bleedNext.style.backgroundImage = artCss;
+        bleedNext.style.opacity = IL_BLEED_MAX;
+        bleedCurr.style.opacity = '0';
+        if (ilBleedScrim) ilBleedScrim.style.opacity = '1';
+        ilBleedSide = ilBleedSide === 'a' ? 'b' : 'a';
+      }
+
+      // Hero cost attribution: `cached` distinguishes the near-free color-leads
+      // path from a full network+decode swap on the tv.log timeline.
+      tvLog('perf', 'home:hero-swap', { cached: wasCached });
+    });
+
+    // Hard ceiling mirrors the old 6s settle: if the read never resolves (B8
+    // can stall a slow transcode), release the swap so a later focus can start
+    // fresh. getPalette never rejects, so this only fires on a true stall.
     setTimeout(function () { if (!settled) settled = true; }, 6000);
-    img.src = url;
   }
 
   function ilShowHero(show) {
@@ -150,9 +224,22 @@ function homeScreen(root, params, navigate) {
     if (show) {
       ilHeroEl.style.display = '';
       ilHeroEl.removeAttribute('aria-hidden');
+      // Restore the ambient wash that was faded out when focus left the feed —
+      // the next ilUpdateHero re-crossfades it, but bring the current side back
+      // now so there's no dark flash before the 500ms settle resolves.
+      if (ilAmbientOn) {
+        (ilAmbSide === 'a' ? ilAmbientB : ilAmbientA).style.opacity = IL_AMBIENT_MAX;
+      }
     } else {
       ilHeroEl.style.display = 'none';
       ilHeroEl.setAttribute('aria-hidden', 'true');
+      // Fade BOTH ambient layers out alongside the content dim (sidebar focus /
+      // non-home hubs). Bleed follows so the art never lingers over a hub with
+      // no focused card. State (which side, whether on) is preserved so a
+      // later ilShowHero(true) restores without a re-sample.
+      if (ilAmbientA) { ilAmbientA.style.opacity = '0'; ilAmbientB.style.opacity = '0'; }
+      if (ilBleedA) { ilBleedA.style.opacity = '0'; ilBleedB.style.opacity = '0'; }
+      if (ilBleedScrim) ilBleedScrim.style.opacity = '0';
     }
   }
   // Hero hidden until first home-hub card is focused
@@ -604,6 +691,10 @@ function homeScreen(root, params, navigate) {
       ilHeroToken += 1;
       if (posterFocusTimer) { clearTimeout(posterFocusTimer); posterFocusTimer = null; }
       if (ilHeroTimer) { clearTimeout(ilHeroTimer); ilHeroTimer = null; }
+      // Release every decoded hero blob (crisp box + bleed + palette share these
+      // objectURLs). Safe here: the screen is tearing down, so no live layer can
+      // still reference a revoked URL.
+      try { clearPaletteCache(); } catch (e) { /* ignore */ }
       try { abortPrefetch(); } catch (e) { /* ignore */ }
       window.removeEventListener(USERQUEUE_CHANGED_EVENT, onUserQueueChanged);
       detachFocus();
