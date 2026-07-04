@@ -13,6 +13,28 @@
  */
 
 import { isPerfEnabled, mark as perfMark } from '../perf/resourceMonitor.js';
+import { sampleFrames } from '../perf/frameJank.js';
+
+// Score the SMOOTHNESS of a D-pad glide, not just the latency to commit focus.
+// The existing input:keydown/input:focusCommitted marks (attachFocusNav) time
+// keydown → the frame focus lands — but the glide that follows writes
+// scrollLeft/scrollTop every frame for 150ms (a per-frame layout on Chrome 53),
+// and whether THAT holds 60fps is the "does moving along the rail feel smooth"
+// question. Fire the rAF sampler over a short window covering the glide.
+// Throttled: holding an arrow fires a glide per repeat, so one window per burst
+// (ignore new starts while a window is still open) keeps it to a single
+// representative number instead of dozens of superseded fragments. Self-gates
+// (no-op unless perf/debug is on) and dual-gated, so it reaches tv.log in a
+// plain debug session — unlike the perfMark-only input:* latency marks.
+var RAIL_SAMPLE_WINDOW = 500;
+var _railSampleAt = 0;
+function sampleGlide(axis) {
+  var now = (typeof performance !== 'undefined' && performance.now)
+    ? performance.now() : Date.now();
+  if (now - _railSampleAt < RAIL_SAMPLE_WINDOW) return; // mid-burst; already sampling
+  _railSampleAt = now;
+  sampleFrames('jank:rail-scroll', { axis: axis }, RAIL_SAMPLE_WINDOW);
+}
 
 // Snappy gliding D-pad scroll — a short rAF ease-out glide on EVERY engine,
 // including webOS 4 / Chromium 53. Gliding scroll was always viable on that
@@ -520,6 +542,7 @@ function smoothScrollCarousel(row, target, durationMs) {
   var start = row.scrollLeft;
   var delta = target - start;
   if (Math.abs(delta) < 2) { row.scrollLeft = target; return; }
+  sampleGlide('horizontal');
   var startTime = 0;
   function step(ts) {
     if (!startTime) startTime = ts;
@@ -559,6 +582,7 @@ function smoothScrollVertical(scroller, target, durationMs) {
   var start = scroller.scrollTop;
   var delta = target - start;
   if (Math.abs(delta) < 2) { scroller.scrollTop = target; return; }
+  sampleGlide('vertical');
   var startTime = 0;
   function step(ts) {
     if (!startTime) startTime = ts;
