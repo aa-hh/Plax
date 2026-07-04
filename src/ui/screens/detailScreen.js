@@ -15,7 +15,7 @@ import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { createMediaCard } from '../components/mediaCard.js';
 import { createTabs, openSidePanel } from '../components/controls.js';
 import { hydrateRowWindow, bindPosterImage } from '../posterImages.js';
-import { onIdle } from '../transitionGate.js';
+import { onIdle, isTransitioning } from '../transitionGate.js';
 import { tvLog } from '../../utils/tvDebug.js';
 import { extractVersions, pickBestVersion } from '../../playback/versionSelector.js';
 import { parseAudioStreams } from '../../playback/tracks/audioTracks.js';
@@ -765,15 +765,23 @@ function detailScreen(root, params, navigate) {
     if (!item.artPath || !server) return;
 
     var bgTok = ++detailBgToken;
-    // Transition gate: the backdrop fetch is the heaviest competitor to the
-    // enter fade on this screen — hold it until the transition window closes
-    // (≤400ms). The bgTok check keeps the deferred run harmless if the user
-    // has already moved on to another item.
-    onIdle(function () {
-      if (bgTok !== detailBgToken) return;
-      loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
-        if (!backdrop || bgTok !== detailBgToken) return;
-        if (!backdrop.colors) return;
+    // Round 4: START the colors fetch IMMEDIATELY — it is network work (a
+    // tiny JSON from PMS, but its /services/ultrablur/colors endpoint
+    // analyzes the artwork on demand: measured ~1.8s), not main-thread work,
+    // so it must OVERLAP the enter fade instead of queueing behind it. The
+    // old onIdle-around-the-fetch was a leftover from the JPEG-decode era and
+    // added the whole gate window (~0.4–0.8s) to an already slow chain
+    // (backdrop measured 2.6–6s after entry). Only the PAINT respects the
+    // gate: one 1080p gradient-stack raster during the fade could still
+    // hitch it on the B8, so if the window is open the apply queues (≤400ms;
+    // cache-hit colors then paint right at fade end — visually "with" the
+    // screen). The bgTok check keeps a late resolve harmless if the user has
+    // already moved on to another item.
+    loadUltraBlurBackdrop(server, item.artPath).then(function (backdrop) {
+      if (!backdrop || bgTok !== detailBgToken) return;
+      if (!backdrop.colors) return;
+      function applyWashNow() {
+        if (bgTok !== detailBgToken) return;
         // Native corner-wash: 4 radial gradients + a noise-dither tile,
         // built entirely from the colors PMS already returned — no image
         // fetch, no decode. This used to "upgrade" to a server-rendered
@@ -784,7 +792,9 @@ function detailScreen(root, params, navigate) {
         // Jank-attribution breadcrumb: if jank:navigation's worst gap lands
         // just after this line in tv.log, the backdrop paint is the whale.
         tvLog('perf', 'detail:backdrop-swap');
-      });
+      }
+      if (isTransitioning()) onIdle(applyWashNow);
+      else applyWashNow();
     });
   }
 
