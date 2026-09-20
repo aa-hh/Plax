@@ -1386,6 +1386,24 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
 
 .pairing-actions { margin-top: 28px; }
 
+/* Pairing states (JS classes on .pairing-screen): while a code is being
+   requested, or after a failure, the QR tile + code dim so a stale/expired
+   code never reads as live; they come back to full strength when the new code
+   lands. Opacity-only (compositor) → gated fade under caps-motion, snap without. */
+.pairing--requesting .pairing-qr,
+.pairing--error .pairing-qr { opacity: 0.35; }
+.pairing--requesting .pairing-code,
+.pairing--error .pairing-code { opacity: 0.5; }
+html.caps-motion .pairing-qr,
+html.caps-motion .pairing-code {
+  transition: opacity var(--dur-short4) var(--ease-standard-decelerate);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pairing-qr, .pairing-code { transition: none; }
+}
+/* QR rendering failed (uqr threw): drop the tile; the typed code still works. */
+.pairing--no-qr .pairing-qr { display: none; }
+
 /* ── Library ── */
 .library-layout {
   position: relative;
@@ -4985,6 +5003,9 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   align-items: center;
   padding-top: 14vh;
   padding-bottom: var(--pad-screen-y);
+  /* 8+ profiles wrap past the viewport (rows of 4 × 184px); the screen scrolls
+     and focus.js scrollNearestVertical follows the focused card. */
+  overflow-y: auto;
 }
 
 .profile-picker-main {
@@ -5048,7 +5069,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   /* Margins on cards (not gap) — webOS 4 Chromium lacks flex gap; same pattern as .pin-pad-grid. */
   margin: -12px;
   padding: 0;
-  transition: opacity var(--dur-medium1) var(--ease-standard);
+}
+/* Loading → content: the freshly rendered row rises + fades in once (JS adds
+   .profile-picker-row--enter on render). Opacity + translateY only; gated. */
+html.caps-motion .profile-picker-row--enter {
+  animation: gt-sheet-in var(--dur-short4) var(--ease-standard-decelerate);
 }
 
 .profile-picker--pin-mode .profile-picker-row {
@@ -5120,7 +5145,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.18s ease;
 }
 
 /* FOCUS (hover) = BLUE: ring + scale on the image, blue title. */
@@ -5179,6 +5203,18 @@ html.caps-motion .profile-card:focus .profile-card-avatar {
   margin-top: var(--space-4);
 }
 
+/* `hidden` must beat the author display:flex above (UA [hidden] alone loses),
+   otherwise the empty PIN panel reserves ~70px under the row in browsing mode. */
+.profile-picker-pin[hidden] {
+  display: none;
+}
+
+/* Browsing → PIN entry: the PIN panel enters like a sheet (rise + fade,
+   emphasized-decelerate, 250ms). Exit (Back) is instant per the registry. */
+html.caps-motion .profile-picker--pin-mode .profile-picker-pin {
+  animation: gt-sheet-in var(--dur-medium1) var(--ease-emphasized-decelerate);
+}
+
 .pin-display {
   font-size: 36px;
   letter-spacing: 0.35em;
@@ -5208,14 +5244,23 @@ html.caps-motion .profile-card:focus .profile-card-avatar {
   visibility: visible;
 }
 
-.profile-picker--pin-error .pin-display {
-  animation: pin-shake 0.35s ease;
+/* Wrong PIN: transform-only shake, gated (the red .pin-error line is the
+   always-on cue; the shake is emphasis, not the message). */
+html.caps-motion .profile-picker--pin-error .pin-display {
+  animation: pin-shake var(--dur-medium2) var(--ease-standard);
 }
 
 @keyframes pin-shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-8px); }
   75% { transform: translateX(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the opacity feedback, drop the movement. */
+  .profile-picker-row--enter,
+  .profile-picker--pin-mode .profile-picker-pin { animation-name: screen-enter-fade; }
+  .profile-picker--pin-error .pin-display { animation: none; }
 }
 
 .pin-pad {
@@ -5381,6 +5426,11 @@ video.native-player.subtitle-no-bg ::cue {
   font-size: 20px;
   margin-top: 16px;
   line-height: 1.5;
+}
+/* .watch-status-error is declared earlier at equal specificity, so on its own
+   it lost to the muted colour above and errors rendered grey. */
+.status-msg.watch-status-error {
+  color: var(--color-error-light);
 }
 
 /* ── Static loaders (no keyframes / transitions) ── */
@@ -6209,6 +6259,15 @@ html.caps-motion .gt-list-item:focus {
   box-shadow: var(--focus-shadow);
   outline: none;
 }
+/* Validation error lives under its field (value preserved); the outline goes
+   red at rest and blue again while focused (the :focus rule above outranks it). */
+.jellyfin-login .login-field--error .login-field__btn { border-color: var(--color-error-light); }
+.jellyfin-login .login-field__error {
+  font-size: var(--font-meta);
+  line-height: 1.35;
+  color: var(--color-error-light);
+}
+.jellyfin-login .login-field__error[hidden] { display: none; }
 .jellyfin-login .login-actions {
   display: flex;
   justify-content: center;
@@ -6221,6 +6280,14 @@ html.caps-motion .gt-list-item:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+/* Step change (address → code / password): the incoming step rises + fades
+   (200ms, standard-decelerate); the outgoing one is display:none (instant). */
+html.caps-motion .jellyfin-login .login-step.is-active {
+  animation: gt-sheet-in var(--dur-short4) var(--ease-standard-decelerate);
+}
+@media (prefers-reduced-motion: reduce) {
+  .jellyfin-login .login-step.is-active { animation-name: screen-enter-fade; }
 }
 /* "Use a different service" → back to the provider picker (escape hatch). */
 .jellyfin-login .login-switch-provider { margin-top: var(--space-8); }
@@ -6236,6 +6303,16 @@ html.caps-motion .gt-list-item:focus {
    ring + scale on the MEDIA tile + blue label (NOT the light-fill control
    treatment). Reached at launch and from Settings → Switch server (Back button).
    margin-based gaps (flex `gap` no-op on Chromium 53). */
+/* Many saved links (3+ rows) overflow the viewport: the screen scrolls, and
+   auto margins on the first/last child keep the common short case centred
+   (justify-content:center would clip the top once content overflows). */
+.server-picker-screen {
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+.server-picker-screen > * { flex-shrink: 0; }
+.server-picker-screen > :first-child { margin-top: auto; }
+.server-picker-screen > :last-child { margin-bottom: auto; }
 .server-card-grid {
   display: flex;
   flex-wrap: wrap;
@@ -6293,13 +6370,18 @@ html.caps-motion .gt-list-item:focus {
 .server-card__label {
   margin-top: var(--space-3);
   font-size: var(--font-body);
+  line-height: 1.3;
   color: var(--text-secondary);
   font-weight: var(--gt-weight-label);
   letter-spacing: var(--gt-ls-label);
+  /* Two lines, then clip: a Jellyfin URL (no spaces) or a long account name
+     keeps its useful tail instead of ellipsing at ~14 characters. */
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.18s ease;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 /* FOCUS = BLUE ring + scale on the media tile + blue label (profile-card model). */
@@ -6311,7 +6393,7 @@ html.caps-motion .gt-list-item:focus {
 .server-card:focus .server-card__label { color: var(--accent); }
 .server-card--add:focus .server-card__media { color: var(--accent); }
 html.caps-motion .server-card__media {
-  transition: transform var(--focus-motion-dur) var(--ease-standard), border-color 0.12s ease;
+  transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
 html.caps-motion .server-card:focus .server-card__media {
   transform: scale(var(--gt-focus-scale-med));

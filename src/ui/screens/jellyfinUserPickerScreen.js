@@ -12,8 +12,10 @@ import { fetchPublicUsers, authenticateByName } from '../../backends/jellyfin/au
 import { primaryUrl } from '../../backends/jellyfin/images.js';
 import { getCachedAvatar, fetchAndCacheAvatar, evictAvatarsNotIn } from '../../core/avatarCache.js';
 import { openTextInputModal } from '../components/controls.js';
-import { clampProfilePickerCols } from './profilePickerScreen.js';
-import { focusFirst, attachFocusNav } from '../focus.js';
+import { createSpinner } from '../components/spinner.js';
+import { clampProfilePickerCols, initialsFromName } from './profilePickerScreen.js';
+import { describeJellyfinError } from './jellyfinLoginScreen.js';
+import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import { signalReady } from '../splashScreen.js';
 
 /**
@@ -30,10 +32,10 @@ function jellyfinUserPickerScreen(root, params, navigate) {
   var baseUrl = server && server.url;
 
   var screen = document.createElement('div');
-  screen.className = 'screen profile-picker-screen';
+  screen.className = 'screen profile-picker-screen profile-picker--loading';
   screen.innerHTML =
     '<div class="profile-picker-main">' +
-    '<div class="profile-picker-header">' +
+    '<div class="profile-picker-header" id="jf-pick-header">' +
     '<h1 class="screen-title screen-title-compact profile-picker-title">Who’s watching?</h1>' +
     '</div>' +
     '<p class="status-msg profile-picker-status" id="jf-pick-status" hidden></p>' +
@@ -45,8 +47,19 @@ function jellyfinUserPickerScreen(root, params, navigate) {
   var detachFocus = attachFocusNav(screen);
   var rowEl = screen.querySelector('#jf-pick-row');
   var statusEl = screen.querySelector('#jf-pick-status');
+  var headerEl = screen.querySelector('#jf-pick-header');
   var destroyed = false;
   var busy = false;
+
+  // Same header spinner as the Plex picker: legible "working" cue at 10 feet
+  // while users load or a sign-in/bootstrap runs.
+  var spinner = createSpinner({ size: 'em', label: 'Loading users' });
+  if (headerEl) headerEl.appendChild(spinner);
+  function setWorking(on, label) {
+    spinner.hidden = !on;
+    var ring = spinner.querySelector('.plax-spinner');
+    if (ring && label) ring.setAttribute('aria-label', label);
+  }
 
   function setStatus(msg, isError) {
     if (!statusEl) return;
@@ -55,17 +68,13 @@ function jellyfinUserPickerScreen(root, params, navigate) {
     statusEl.className = 'status-msg profile-picker-status' + (isError ? ' watch-status-error' : '');
   }
 
-  function initials(name) {
-    var n = (name || '?').trim();
-    var parts = n.split(/\s+/);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return n.slice(0, 2).toUpperCase();
-  }
+  var initials = initialsFromName;
 
   // ---- activate a resolved session: set active user, bootstrap, open Home ----
   function activate(session) {
     if (busy) return;
     busy = true;
+    setWorking(true, 'Signing in');
     setStatus('Signing in…');
     var activeServer = Object.assign({}, server, {
       type: 'jellyfin',
@@ -97,15 +106,21 @@ function jellyfinUserPickerScreen(root, params, navigate) {
       if (!destroyed) navigate('home', {});
     }).catch(function (err) {
       busy = false;
-      if (!destroyed) setStatus((err && err.message) || 'Could not load library.', true);
+      if (destroyed) return;
+      setWorking(false);
+      setStatus((err && err.message) || 'Could not load the library. Check the server, then choose a user again.', true);
     });
   }
 
   function authThen(name, password) {
+    if (busy) return;
+    busy = true;
+    setWorking(true, 'Signing in');
     setStatus('Signing in as ' + name + '…');
     authenticateByName(baseUrl, name, password).then(function (res) {
       if (destroyed) return;
-      if (!res || !res.AccessToken || !res.User) throw new Error('Sign-in failed');
+      if (!res || !res.AccessToken || !res.User) throw new Error('Jellyfin sent an unexpected sign-in response. Try again.');
+      busy = false; // activate() takes its own busy hold
       activate({
         userId: res.User.Id,
         name: res.User.Name,
@@ -115,7 +130,10 @@ function jellyfinUserPickerScreen(root, params, navigate) {
     }).catch(function (err) {
       busy = false;
       if (destroyed) return;
-      var msg = (err && err.status === 401) ? 'Incorrect password.' : ((err && err.message) || 'Sign-in failed.');
+      setWorking(false);
+      var msg = (err && err.status === 401)
+        ? 'Incorrect password for ' + name + '. Choose the user again to retry.'
+        : describeJellyfinError(err, 'signin');
       setStatus(msg, true);
     });
   }
@@ -204,6 +222,8 @@ function jellyfinUserPickerScreen(root, params, navigate) {
 
   function render(entries) {
     rowEl.innerHTML = '';
+    // One-shot enter reveal (opacity + rise) under html.caps-motion; see app.css.
+    rowEl.classList.add('profile-picker-row--enter');
     entries.forEach(function (e) { rowEl.appendChild(makeCard(e)); });
     // "Other user" (hidden accounts / type a username)
     var other = document.createElement('button');
@@ -222,6 +242,9 @@ function jellyfinUserPickerScreen(root, params, navigate) {
     var cols = clampProfilePickerCols(entries.length + 1);
     screen.style.setProperty('--profile-picker-cols', String(cols));
     rowEl.setAttribute('data-cols', String(cols));
+    screen.classList.remove('profile-picker--loading');
+    setWorking(false);
+    invalidateFocusableCache();
 
     var first = rowEl.querySelector('.profile-card');
     if (first) first.focus(); else focusFirst(screen);
@@ -269,20 +292,36 @@ function jellyfinUserPickerScreen(root, params, navigate) {
 
   function load() {
     if (!baseUrl) {
-      setStatus('No Jellyfin server configured. Sign in again.', true);
+      // No server to talk to: the only way forward is the login screen, so give
+      // the D-pad a target rather than a dead end.
+      screen.classList.remove('profile-picker--loading');
+      setWorking(false);
+      setStatus('No Jellyfin server is set up on this TV.', true);
+      rowEl.innerHTML =
+        '<button type="button" class="btn" id="jf-pick-connect" tabindex="0">Connect to a server</button>';
+      invalidateFocusableCache();
+      var go = rowEl.querySelector('#jf-pick-connect');
+      go.addEventListener('click', function () { navigate('pairing', { provider: 'jellyfin' }); });
+      go.focus();
+      signalReady();
       return;
     }
+    setWorking(true, 'Loading users');
     setStatus('Loading users…');
     var sessions = getJellyfinSessions();
+    // fetchPublicUsers swallows network errors (resolves []), so an unreachable
+    // server and an empty public list look the same here; the copy covers both.
     fetchPublicUsers(baseUrl).then(function (publicUsers) {
       if (destroyed) return;
       setStatus('');
       var entries = buildEntries(publicUsers, sessions);
       evictAvatarsNotIn(entries.map(function (e) { return e.userId; }));
       if (!entries.length) {
-        // No public users and no cached sessions — go straight to manual sign-in.
-        onOtherUser();
+        // No public users and no cached sessions — go straight to manual sign-in,
+        // and leave a hint behind the modal for anyone who cancels it.
         render([]);
+        setStatus('No users are listed on this server (or it isn\u2019t reachable). Choose Other user to sign in by name.');
+        onOtherUser();
         signalReady(); // no images to wait for
         return;
       }

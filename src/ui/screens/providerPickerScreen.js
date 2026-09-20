@@ -37,8 +37,11 @@ function providerPickerScreen(root, params, navigate) {
 
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
+  var chosen = false; // double-press guard: the reset below must run once
 
   function choose(provider) {
+    if (chosen) return;
+    chosen = true;
     // Choosing a backend is a deliberate reset. Clear any stale session from a
     // prior provider so we never carry e.g. a Plex token into a Jellyfin context
     // (which would route a server-less session to an empty "who's watching").

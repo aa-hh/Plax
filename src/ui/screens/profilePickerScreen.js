@@ -44,11 +44,25 @@ function profilePickerCols(homeSize, userCount) {
   return fromHome;
 }
 
+// First visible character of a string, keeping surrogate pairs (emoji, rare CJK)
+// whole so an initial never renders as a broken half-glyph.
+function firstChar(s) {
+  var m = String(s || '').match(/^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S])/);
+  return m ? m[0] : '';
+}
+
+// Two-character initials fallback for an avatar tile. Shared with the Jellyfin
+// user picker so both tiles degrade identically.
+function initialsFromName(name) {
+  var n = String(name || '').trim() || '?';
+  var parts = n.split(/\s+/);
+  if (parts.length >= 2) return (firstChar(parts[0]) + firstChar(parts[1])).toUpperCase();
+  var a = firstChar(n);
+  return (a + firstChar(n.slice(a.length))).toUpperCase();
+}
+
 function profileInitials(user) {
-  var name = user.title || user.username || '?';
-  var parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  return initialsFromName(user.title || user.username);
 }
 
 function appendProfileAvatar(parent, user) {
@@ -134,6 +148,8 @@ function profilePickerScreen(root, params, navigate) {
   var switching = false;
   var profilesLoading = true;
   var sizeReady = false;
+  var destroyed = false;
+  var loadTimeout = null;
   var resolvedHomeSize = readSessionHomeSize();
 
   function applyProfilePickerCols(cols) {
@@ -377,6 +393,14 @@ function profilePickerScreen(root, params, navigate) {
 
   function exitPinMode() {
     mode = 'browsing';
+    if (switching) {
+      // Back during "Verifying PIN": abandon that attempt so a late answer
+      // can't drop the user into Home after they backed out.
+      switchGeneration += 1;
+      clearPinFlowTimers();
+      switching = false;
+      showPinFlowMessage('', false);
+    }
     syncHeaderTitle();
     syncHeaderSpinner();
     pinEntry.clear();
@@ -539,6 +563,8 @@ function profilePickerScreen(root, params, navigate) {
     users = homeUsers;
     applyProfilePickerCols(profilePickerCols(resolvedHomeSize, homeUsers.length));
     rowEl.innerHTML = '';
+    // One-shot enter reveal (opacity + rise) under html.caps-motion; see app.css.
+    rowEl.classList.add('profile-picker-row--enter');
     if (isPerfEnabled()) {
       perfMark('userSelect:avatars-requested', {
         count: homeUsers.length,
@@ -563,7 +589,7 @@ function profilePickerScreen(root, params, navigate) {
       appendProfileAvatar(card, u);
       var name = document.createElement('span');
       name.className = 'profile-card-name';
-      name.textContent = u.title || u.username;
+      name.textContent = u.title || u.username || 'Profile';
       card.appendChild(name);
       if (u.hasPin) {
         var lock = document.createElement('span');
@@ -612,7 +638,10 @@ function profilePickerScreen(root, params, navigate) {
 
   document.addEventListener('keydown', onKeyDown, true);
 
+  // Every load/bootstrap failure lands here so there is always a focusable
+  // "Try again" (focus never collapses to <body> on an error screen).
   function showLoadError(msg) {
+    revealPickerChrome();
     setStatus(msg || 'Could not load profiles.', true);
     rowEl.innerHTML =
       '<button type="button" class="btn" id="profile-retry" tabindex="0">Try again</button>';
@@ -621,6 +650,7 @@ function profilePickerScreen(root, params, navigate) {
       retryBtn.addEventListener('click', loadProfiles);
       retryBtn.focus();
     }
+    signalReady();
   }
 
   function bootstrapWithoutProfiles() {
@@ -636,12 +666,7 @@ function profilePickerScreen(root, params, navigate) {
       switching = false;
       syncHeaderSpinner();
       pinFlowLog('bootstrap without profiles failed', err);
-      var msg = err.message || 'Could not connect.';
-      if (params._from) {
-        showLoadError(msg);
-      } else {
-        showPinFlowMessage(msg, true);
-      }
+      showLoadError((err && err.message) || 'Could not connect to Plex. Check the network, then try again.');
     });
   }
 
@@ -669,22 +694,29 @@ function profilePickerScreen(root, params, navigate) {
     setStatus('', false);
     var ownerToken = getOwnerToken();
     var clientId = getState().clientId;
-    var loadTimeout = setTimeout(function () {
+    var loadGen = ++switchGeneration; // stale-load guard: a slow fetch from before leave/retry is ignored
+    if (loadTimeout) clearTimeout(loadTimeout);
+    loadTimeout = setTimeout(function () {
+      loadTimeout = null;
+      if (destroyed || !isActiveSwitch(loadGen)) return;
       if (profilesLoading && rowEl.innerHTML === '') {
         setProfileLoading(false);
-        if (params._from) showLoadError('Loading profiles timed out. Check your connection.');
+        if (params._from) showLoadError('Loading profiles timed out. Check the TV’s network, then try again.');
         else bootstrapWithoutProfiles();
       }
     }, 20000);
 
     fetchHomeSize(ownerToken, clientId)
       .then(function (homeSize) {
+        if (destroyed || !isActiveSwitch(loadGen)) return [];
         commitPickerSize(homeSize);
         revealPickerChrome();
         return fetchHomeUsers(ownerToken, clientId);
       })
       .then(function (homeUsers) {
+        if (destroyed || !isActiveSwitch(loadGen)) return;
         clearTimeout(loadTimeout);
+        loadTimeout = null;
         setProfileLoading(false);
         if (!homeUsers.length) {
           if (params._from) {
@@ -697,11 +729,12 @@ function profilePickerScreen(root, params, navigate) {
         renderProfiles(homeUsers);
         signalAfterImages(rowEl);
       }).catch(function (err) {
+        if (destroyed || !isActiveSwitch(loadGen)) return;
         clearTimeout(loadTimeout);
+        loadTimeout = null;
         setProfileLoading(false);
         if (params._from) {
-          showLoadError(err.message || 'Could not load profiles.');
-          signalReady();
+          showLoadError((err && err.message) || 'Could not load profiles. Check the TV’s network, then try again.');
           return;
         }
         bootstrapWithoutProfiles();
@@ -712,8 +745,10 @@ function profilePickerScreen(root, params, navigate) {
 
   return {
     destroy: function () {
+      destroyed = true;
       switchGeneration += 1;
       clearPinFlowTimers();
+      if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
       document.removeEventListener('keydown', onKeyDown, true);
       detachFocus();
     }
@@ -724,5 +759,6 @@ export {
   profilePickerScreen,
   shouldRejectManagedSwitchToken,
   profilePickerCols,
-  clampProfilePickerCols
+  clampProfilePickerCols,
+  initialsFromName
 };
