@@ -1991,7 +1991,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .watch-status-msg {
-  font-size: 14px;
+  font-size: var(--font-small);
   color: var(--text-muted);
   margin: 0 0 12px;
   min-height: 1.2em;
@@ -2203,6 +2203,18 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background-repeat: no-repeat;
 }
 
+/* Metadata failed to load: message + "Try again" (focused) in the content gutter. */
+.detail-load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--detail-top-gap) var(--detail-margin-x);
+}
+
+.detail-load-error .btn {
+  margin-top: var(--space-4);
+}
+
 .detail-poster {
   width: var(--poster-detail-w);
   height: var(--poster-detail-h);
@@ -2211,6 +2223,12 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: var(--bg-surface);
   flex-shrink: 0;
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.5);
+}
+
+/* No art on the server: the shared poster fade keeps an unbound <img> at
+   opacity 0, so show the surface placeholder instead of an invisible box. */
+.detail-poster.poster--missing {
+  opacity: 1;
 }
 
 .detail-info {
@@ -2222,6 +2240,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .detail-info .screen-title {
   margin-bottom: 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-meta {
@@ -2236,8 +2259,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   line-height: 1.55;
   color: var(--text-secondary);
   margin: 0 0 24px;
-  max-height: 220px;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-actions {
@@ -2346,15 +2372,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   font-weight: 600;
 }
 
-.detail-setting-value {
-  flex-shrink: 0;
-  min-width: 88px;
-  text-align: center;
-  font-size: var(--font-meta);
-  color: var(--text-secondary);
-  padding: 0 var(--space-2);
-}
-
 .detail-rails {
   margin-top: var(--space-9);
   padding-top: var(--space-7);
@@ -2362,25 +2379,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .detail-rails .row-label { margin-top: 8px; }
-
-.season-chip, .episode-chip {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--target-min);
-  padding: var(--space-3) 22px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-md);
-  font-size: var(--font-meta);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.season-chip:focus, .episode-chip:focus {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-}
 
 /* Detail + browsing sidebar */
 .detail-screen-layout {
@@ -2397,8 +2395,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   position: relative;
 }
 
-.detail-screen-layout .detail-layout,
-.detail-screen-layout .detail-layout--episode {
+.detail-screen-layout .detail-layout {
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -2406,10 +2403,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   padding: var(--detail-top-gap) var(--detail-margin-x) var(--detail-margin-y);
   position: relative;
   z-index: 1;
-}
-
-.detail-screen-layout .detail-layout--episode {
-  overflow: hidden;
 }
 
 .detail-screen-layout .detail-layout--episode-v2 {
@@ -2464,6 +2457,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   letter-spacing: var(--gt-ls-display);
   line-height: 1.1;
   color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-show-meta {
@@ -2511,10 +2509,22 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   letter-spacing: var(--gt-ls-body);
   line-height: 1.5;
   color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-season-tabs {
   flex-shrink: 0;
+  /* Composes .row-scroll (class set in detailScreen.js) so focus.js centres
+     the focused tab when a show has more seasons than fit the width. The host
+     is positioned so that maths is relative to the strip, and the rail's
+     poster padding is overridden here. */
+  position: relative;
+  overflow-y: hidden;
+  padding: 4px 0;
   margin-bottom: var(--space-5);
 }
 
@@ -2536,12 +2546,52 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   color: var(--text-secondary);
 }
 
+/* Empty / error message inside a grid or rails host (renderHostStatus). */
+.detail-episode-grid-status {
+  width: 100%;
+}
+
+.detail-episode-grid-retry {
+  margin: 0 0 var(--space-5);
+}
+
+/* Season switch (loadShowEpisodes → swapEpisodeGrid): the outgoing cards dim
+   in place while the next season loads, then the incoming grid rises in.
+   Opacity + transform only; caps-motion-gated so bare Chrome 53 hard-cuts. */
+.detail-episode-grid.is-loading {
+  opacity: 0.5;
+}
+
+html.caps-motion .detail-episode-grid {
+  transition: opacity var(--dur-short3) var(--ease-standard-accelerate);
+}
+
+@keyframes detail-episode-grid-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+html.caps-motion .detail-episode-grid--enter {
+  animation: detail-episode-grid-enter var(--dur-short4) var(--ease-standard-decelerate);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.caps-motion .detail-episode-grid--enter {
+    animation-name: gt-overlay-in; /* opacity only — no rise */
+  }
+}
+
 .detail-screen-layout .detail-layout--movie .detail-rails--movie,
 .detail-screen-layout .detail-layout--movie-v2 .detail-rails--movie {
   flex-shrink: 0;
   margin-top: var(--space-5);
   border-top: 1px solid var(--border);
   padding-top: var(--space-5);
+}
+
+/* No related hubs (or they failed): drop the empty ruled band. */
+.detail-rails--movie:empty {
+  display: none;
 }
 
 /* Movie detail v2: portrait poster + info side by side, rails below */
@@ -2592,6 +2642,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin: 0;
   line-height: 1.15;
   letter-spacing: -0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-movie-info .detail-meta {
@@ -2603,9 +2658,12 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .detail-movie-summary {
-  max-height: 180px;
-  overflow: hidden;
   margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 /* ── JetStream-inspired detail blocks (genre pills · credits · cast rail) ──── */
@@ -2655,6 +2713,10 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   font-size: var(--font-meta);
   color: var(--text-primary, #fff);
   font-weight: 600;
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Subtitles / Quality icon buttons (icon + current-value label) */
@@ -2914,66 +2976,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
    `.btn .btn-outline .btn--sm` (set in detailScreen.js), so the look + focus
    inversion come from the canonical classes; no contextual override needed. */
 
-/* Episode detail (TV) */
-.detail-layout--episode {
-  flex-direction: column;
-}
-
-.detail-episode-panel {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.detail-episode-panel > * + * {
-  margin-top: var(--space-5);
-}
-
-.detail-playback-columns {
-  display: flex;
-  width: 100%;
-  margin-top: auto;
-  flex-shrink: 0;
-  align-items: flex-start;
-}
-
-.detail-playback-columns > * + * {
-  margin-left: var(--space-5);
-}
-
-.detail-playback-columns .detail-file-section,
-.detail-playback-columns .detail-network-section {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  max-width: none;
-}
-
-.detail-playback-columns .detail-file-row {
-  max-width: none;
-  padding: 10px 14px;
-  font-size: 22px;
-}
-
-.detail-playback-columns .detail-file-heading,
-.detail-playback-columns .detail-network-section .detail-file-heading {
-  font-size: 24px;
-  margin-bottom: var(--space-3);
-}
-
-.detail-playback-columns .detail-quality-current {
-  font-size: 20px;
-  line-height: 1.4;
-}
-
-.detail-playback-columns .detail-network-status {
-  font-size: 20px;
-  line-height: 1.4;
-}
-
 .detail-breadcrumb-trail {
   display: flex;
   flex-wrap: wrap;
@@ -3007,6 +3009,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   font-size: var(--font-meta);
   font-weight: 500;
   text-decoration: none;
+  max-width: 100%;
 }
 
 .detail-breadcrumb-trail__btn:focus {
@@ -3019,8 +3022,14 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   box-shadow: none;
 }
 
-.detail-episode-actions .detail-play-btn {
-  min-width: 148px;
+/* A 120-char series/episode title stays one line and ellipsises (the button is
+   inline-flex, so the ellipsis has to live on an inner block). */
+.detail-breadcrumb-trail__label {
+  display: block;
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Up Next button (D): a .btn that stacks a small muted "Up Next" label over the
@@ -3033,6 +3042,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   text-align: left;
   margin-top: var(--space-3);
   color: var(--text-secondary);
+  max-width: 100%;
 }
 
 .detail-up-next-btn__label {
@@ -3040,6 +3050,14 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin-bottom: 4px;
   font-size: 0.75em;
   color: var(--text-muted);
+}
+
+.detail-up-next-btn__title {
+  display: block;
+  max-width: 720px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail-episode-summary {
@@ -3051,6 +3069,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-standard-panel {
@@ -3084,7 +3103,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .detail-layout--season .detail-summary {
-  max-height: 140px;
   -webkit-line-clamp: 4;
 }
 
@@ -3099,23 +3117,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 .detail-top-bar > * {
   margin: 6px;
-}
-
-.detail-top-bar--with-bookmark {
-  justify-content: flex-start;
-}
-
-.detail-top-bar--with-bookmark .detail-episode-picker {
-  margin-left: auto;
-}
-
-.detail-top-bar--with-bookmark .detail-watchlist-btn {
-  margin-left: var(--space-3);
-  flex-shrink: 0;
-}
-
-.detail-top-bar--solo {
-  margin-bottom: var(--space-4);
 }
 
 /* Circular icon toggle — composes the canonical `.btn .btn-icon` (circular
@@ -3169,7 +3170,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   font-size: var(--font-meta);
 }
 
-.detail-breadcrumb,
 .detail-episode-picker {
   min-height: var(--target-min);
   font-size: var(--font-meta);
@@ -3190,79 +3190,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   white-space: nowrap;
 }
 
-.detail-episode-season-text {
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.detail-episode-nav {
-  display: flex;
-  flex-wrap: wrap;
-  margin: var(--space-3) -6px 0;
-}
-
-.detail-episode-nav > * {
-  margin: 6px;
-}
-
-.detail-episode-nav .detail-series-title,
-.detail-episode-nav .detail-season-link {
-  min-height: var(--target-min);
-  padding: 10px 16px;
-  background: var(--bg-surface);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
-}
-
-.detail-episode-main {
-  display: flex;
-  align-items: flex-start;
-}
-
-.detail-episode-main > * + * {
-  margin-left: var(--space-7);
-}
-
-.detail-episode-art-wrap {
-  position: relative;
-  flex-shrink: 0;
-  width: 420px;
-  max-width: 42vw;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--bg-surface);
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.5);
-}
-
-.detail-episode-art {
-  display: block;
-  width: 100%;
-  height: 236px;
-  object-fit: cover;
-  background: var(--bg-surface);
-}
-
 .detail-episode-progress {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-}
-
-.detail-episode-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.detail-series-title {
-  font-size: var(--font-meta);
-  font-weight: 600;
-  color: var(--accent);
-  text-align: left;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .detail-episode-title {
@@ -3271,6 +3203,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   font-weight: 600;
   line-height: 1.25;
   color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-episode-line {
@@ -3291,21 +3228,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin: 3px 5px;
 }
 
-.detail-season-link {
-  padding: 0;
-  background: transparent;
-  border: none;
-  font-size: inherit;
-  color: var(--accent);
-  font-weight: 600;
-  outline: none;
-}
-
-.detail-season-link:focus {
-  outline: none;
-  box-shadow: var(--focus-shadow);
-}
-
 .detail-episode-code,
 .detail-episode-remaining {
   color: var(--text-secondary);
@@ -3314,173 +3236,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 .detail-episode-rating {
   color: var(--text-primary);
   font-weight: 600;
-}
-
-.detail-link:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.detail-episode-actions {
-  margin: 0;
-}
-
-.detail-file-section {
-  margin: 0;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-
-.detail-file-heading {
-  margin: 0 0 var(--space-4);
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.detail-file-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  max-width: var(--settings-content-max-w);
-  margin: 0 0 var(--space-3);
-  padding: 16px 20px;
-  background: var(--bg-surface);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
-  text-align: left;
-  font-size: var(--font-meta);
-  color: var(--text-primary);
-}
-
-.detail-file-label + .detail-file-value {
-  margin-left: var(--space-5);
-}
-
-.detail-file-row:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.detail-file-label {
-  flex-shrink: 0;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.detail-file-value {
-  flex: 1;
-  min-width: 0;
-  text-align: right;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.detail-file-row--static {
-  cursor: default;
-  pointer-events: none;
-}
-
-.detail-network-block,
-.detail-network-section {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  max-width: var(--settings-content-max-w);
-}
-
-.detail-quality-current {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-meta);
-  line-height: 1.45;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.detail-network-status {
-  margin: 0 0 var(--space-3);
-  font-size: var(--font-meta);
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-
-#btn-test-connection {
-  margin: 0;
-}
-
-.detail-network-status--testing {
-  color: var(--accent, #6eb5ff);
-}
-
-.detail-network-status--error {
-  color: var(--color-error-light);
-}
-
-.detail-network-recommend {
-  margin: 0 0 var(--space-4);
-  padding: 0 4px;
-  font-size: var(--font-meta);
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-
-.detail-network-recommend strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.detail-network-reason {
-  display: block;
-  margin-top: 6px;
-  font-size: 22px;
-  color: var(--text-muted, rgba(255, 255, 255, 0.55));
-}
-
-.detail-network-retest {
-  margin: 0;
-}
-
-.detail-network-recommend-row {
-  display: flex;
-  align-items: flex-start;
-  margin: 0 0 var(--space-4);
-  padding: 0 4px;
-}
-
-.detail-network-recommend-row > * + * {
-  margin-left: var(--space-3);
-}
-
-.detail-network-recommend-row .detail-network-recommend {
-  margin: 0;
-  flex: 1;
-}
-
-.detail-network-info-btn {
-  flex-shrink: 0;
-  min-width: var(--target-min);
-  min-height: var(--target-min);
-  padding: 0;
-  font-size: 28px;
-  line-height: 1;
-}
-
-.detail-modal-list--info > * + * {
-  margin-top: var(--space-3);
-}
-
-.detail-network-info-line {
-  margin: 0;
-  font-size: var(--font-meta);
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-
-.detail-network-info-line::before {
-  content: '• ';
-  color: var(--accent, #6eb5ff);
 }
 
 .detail-modal {
@@ -3549,6 +3304,11 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   font-size: var(--font-row-label);   /* kit headline/medium 28 → 10-ft */
   font-weight: var(--gt-weight-headline);
   color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .gt-dialog-desc {
@@ -3573,6 +3333,13 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   margin-top: var(--space-3);
 }
 
+/* Reduced motion: the sheet still fades in (state feedback) but no longer rises. */
+@media (prefers-reduced-motion: reduce) {
+  html.caps-motion .gt-dialog-sheet {
+    animation-name: gt-overlay-in;
+  }
+}
+
 .detail-modal-sheet {
   display: flex;
   flex-direction: column;
@@ -3585,77 +3352,6 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
   background: rgba(13, 17, 26, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-}
-
-.detail-modal-title {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 14px 24px 12px;
-  background: rgba(6, 8, 13, 0.98);
-  font-size: var(--font-small);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.detail-modal-list {
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1;
-  padding: 6px 0;
-}
-
-.detail-modal-list--episodes {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* Room for the focus grow (scale + 7px ring) so episode chips aren't
-     clipped top/bottom by overflow-y: hidden under html.caps-motion. */
-  padding: var(--space-5) var(--space-4);
-}
-
-.detail-modal-list--episodes > * + * {
-  margin-left: var(--space-3);
-}
-
-.detail-modal-option {
-  justify-content: flex-start;
-  text-align: left;
-  min-height: 50px;
-  border-radius: 0;
-  border: none;
-  border-left: 3px solid transparent;
-  padding-left: 21px;
-  padding-right: 24px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: var(--font-body);
-}
-
-/* Selected = blue container fill + accent (checkmark added in markup). */
-.detail-modal-option--active {
-  border-left-color: var(--accent);
-  color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.16); /* chrome53-ok */
-}
-
-/* Focused = Google light-fill inversion (overrides selected when both). */
-.detail-modal-option:focus {
-  outline: none;
-  border-left-color: transparent;
-  background: var(--focus-fill);
-  color: var(--focus-on-fill);
-}
-
-.detail-modal-empty {
-  margin: 0;
-  padding: var(--space-4) 24px;
-  font-size: var(--font-meta);
-  color: var(--text-secondary);
 }
 
 .detail-modal-footer {

@@ -31,7 +31,7 @@ import {
 import { setPlaybackPrefs } from '../../settings/playbackSettings.js';
 import { loadDeviceDisplay } from '../../platform/deviceDisplay.js';
 import { formatDuration } from '../format.js';
-import { focusFirst, attachFocusNav } from '../focus.js';
+import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
   watchlistBookmarkButtonHtml,
   supportsWatchlistBookmark,
@@ -66,14 +66,50 @@ import {
 var DETAIL_BG_GRADIENT =
   'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0.35) 100%)';
 
+// Plain-voice copy for a failed server call: names the problem and the
+// recovery. `action` reads as "could not <action>" ("load this title").
+function friendlyLoadError(err, action) {
+  action = action || 'load';
+  if (err && err.status === 403) {
+    return 'Not allowed to ' + action + '. Your account may not have permission.';
+  }
+  if (err && err.status === 401) {
+    return 'Sign-in expired. Sign in again to ' + action + '.';
+  }
+  if (err && err.status === 404) {
+    return 'This title is no longer on the server.';
+  }
+  if (err && err.status >= 500) {
+    return 'Server unreachable. Try again in a moment.';
+  }
+  if (err && err.message && err.message.toLowerCase().indexOf('timeout') >= 0) {
+    return 'The server took too long to respond. Try again.';
+  }
+  return 'Could not ' + action + '. Check the server connection and try again.';
+}
+
+// Plex/Jellyfin put specials at index 0 with their own title ("Specials");
+// only a positive index reads as "Season N".
+function seasonTabLabel(s) {
+  if (s && Number(s.index) > 0) return 'Season ' + s.index;
+  if (s && s.title) return s.title;
+  return 'Season';
+}
+
+function episodeCountLabel(n) {
+  n = Number(n) || 0;
+  return n === 1 ? '1 episode' : n + ' episodes';
+}
+
 function detailScreen(root, params, navigate) {
   var server = getState().activeServer;
   var ratingKey = params.ratingKey;
   var screen = document.createElement('div');
   screen.className = 'screen';
-  screen.innerHTML = '<p class="status-msg">Loading…</p>';
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
+  // Document-level listeners that must die with the screen (see destroy()).
+  var cleanups = [];
 
   var selectedVersion = null;
   var selectedAudio = null;
@@ -90,6 +126,11 @@ function detailScreen(root, params, navigate) {
   var episodesLoadGen = 0;
   var relatedHubsLoadGen = 0;
   var detailBgToken = 0;
+  // One generation for every call that ends in renderDetail() (initial load,
+  // retry, refresh, watch toggle): a slow older response can't overwrite the
+  // newer render. Bumped by each starter; checked before each render.
+  var renderGen = 0;
+  var watchActionPending = false;
 
   loadDeviceDisplay(function (info) {
     if (destroyed) return;
@@ -150,11 +191,7 @@ function detailScreen(root, params, navigate) {
   }
 
   function seasonLabel(item) {
-    if (item.parentIndex != null && item.parentIndex !== '') {
-      return 'Season ' + item.parentIndex;
-    }
-    if (item.parentTitle) return item.parentTitle;
-    return 'Season';
+    return seasonTabLabel({ index: item.parentIndex, title: item.parentTitle });
   }
 
   function isVirtualAllEpisodesSeason(season) {
@@ -252,6 +289,17 @@ function detailScreen(root, params, navigate) {
       '<div class="detail-cast-row row-scroll" data-focus-zone="detail-cast">' + cards + '</div></section>';
   }
 
+  // A cast photo that 404s/times out swaps to the initials disc instead of a
+  // broken-image glyph.
+  function castAvatarFallback(img, person) {
+    return function () {
+      var span = document.createElement('span');
+      span.className = 'detail-cast-avatar-fallback';
+      span.textContent = castInitials(person && person.tag);
+      if (img.parentNode) img.parentNode.replaceChild(span, img);
+    };
+  }
+
   function bindCastImages(item) {
     var roles = (item.roles || []).slice(0, 12);
     var imgs = screen.querySelectorAll('.detail-cast-avatar-img');
@@ -262,8 +310,18 @@ function detailScreen(root, params, navigate) {
       // below-the-fold avatars acquires a poster-load slot but never fires
       // load/error while off-screen, leaking the slot until activePosterLoads
       // saturates and every later image app-wide stops loading.
-      if (url) bindPosterImage(imgs[i], url, { priority: true });
+      if (url) {
+        bindPosterImage(imgs[i], url, { priority: true, onError: castAvatarFallback(imgs[i], roles[idx]) });
+      }
     }
+  }
+
+  // Detail poster / episode still: no art → show the surface placeholder
+  // (the shared poster fade keeps an unbound <img> at opacity 0).
+  function bindDetailArt(img, url) {
+    if (!img) return;
+    if (url) bindPosterImage(img, url, { priority: true });
+    else img.classList.add('poster--missing');
   }
 
   function watchlistBookmarkMarkup(item) {
@@ -391,7 +449,8 @@ function detailScreen(root, params, navigate) {
       var idAttr = c.id ? ' id="' + c.id + '"' : '';
       parts.push(
         '<button type="button" class="detail-breadcrumb-trail__btn' + extra + '"' + idAttr +
-        ' tabindex="0">' + escapeHtml(c.label) + '</button>'
+        ' tabindex="0"><span class="detail-breadcrumb-trail__label">' + escapeHtml(c.label) +
+        '</span></button>'
       );
     });
     return '<nav class="detail-breadcrumb-trail" aria-label="' + escapeHtml(ariaLabel) + '">' +
@@ -512,7 +571,7 @@ function detailScreen(root, params, navigate) {
   }
 
   var seasonEpisodes = null;
-  var seasonEpisodesLoading = false;
+  var seasonEpisodesPromise = null;
 
   function buildNoticeHtml(probe) {
     if (!probe || !probe.warnings.length) return '';
@@ -601,25 +660,10 @@ function detailScreen(root, params, navigate) {
     el.className = 'watch-status-msg' + (isError ? ' watch-status-error' : '');
   }
 
-  function friendlyRefreshError(err) {
-    if (err && err.status === 403) {
-      return 'Refresh not allowed. Your account may not have permission (admin only).';
-    }
-    if (err && err.status === 401) {
-      return 'Sign-in expired. Sign in again to refresh.';
-    }
-    if (err && err.status >= 500) {
-      return 'Server unreachable. Try again in a moment.';
-    }
-    if (err && err.message && err.message.toLowerCase().indexOf('timeout') >= 0) {
-      return 'Refresh request timed out.';
-    }
-    return (err && err.message) || 'Refresh failed.';
-  }
-
   function startItemRefresh() {
     if (isRefreshing) return;
     isRefreshing = true;
+    var gen = ++renderGen;
     var btn = screen.querySelector('#btn-refresh');
     if (btn) btn.disabled = true;
     setRefreshMessage('Refresh requested. Scanning…', false);
@@ -629,27 +673,49 @@ function detailScreen(root, params, navigate) {
     }).then(function () {
       return getMetadata(server, ratingKey, { fresh: true });
     }).then(function (fresh) {
+      isRefreshing = false;
+      if (destroyed || gen !== renderGen) return;
       pendingRefreshMessage = { text: 'Metadata refreshed.', isError: false };
       renderDetail(fresh);
-      isRefreshing = false;
     }).catch(function (err) {
       isRefreshing = false;
+      if (destroyed || gen !== renderGen) return;
       var b = screen.querySelector('#btn-refresh');
       if (b) b.disabled = false;
-      setRefreshMessage(friendlyRefreshError(err), true);
+      setRefreshMessage(friendlyLoadError(err, 'refresh'), true);
     });
   }
 
-  function applyWatchAction(promise, successMsg) {
+  // `start` is a thunk so a second press while one is in flight sends nothing.
+  // Nothing is changed optimistically: on failure the screen stays as it was
+  // and the message names the failed action.
+  function applyWatchAction(start, successMsg, actionLabel) {
+    if (watchActionPending || destroyed) return;
+    watchActionPending = true;
+    var gen = ++renderGen;
     setWatchMessage('Updating…', false);
-    promise.then(function () {
+    start().then(function () {
       return getMetadata(server, ratingKey);
     }).then(function (fresh) {
+      watchActionPending = false;
+      if (destroyed || gen !== renderGen) return;
       renderDetail(fresh);
       setWatchMessage(successMsg, false);
     }).catch(function (err) {
-      setWatchMessage(err.message || 'Could not update watch status.', true);
+      watchActionPending = false;
+      if (destroyed || gen !== renderGen) return;
+      setWatchMessage(friendlyLoadError(err, actionLabel), true);
     });
+  }
+
+  function markWatchedAction(item) {
+    applyWatchAction(function () { return markWatched(server, item.ratingKey); },
+      'Marked as watched.', 'mark as watched');
+  }
+
+  function markUnwatchedAction(item) {
+    applyWatchAction(function () { return markUnwatched(server, item.ratingKey); },
+      'Marked as unwatched.', 'mark as unwatched');
   }
 
   function playParams(offset) {
@@ -831,19 +897,22 @@ function detailScreen(root, params, navigate) {
     return match ? subtitleOptionLabel(match) : 'Off';
   }
 
+  // Shares one in-flight request: a second caller (Play on a season while the
+  // Up Next lookup is still loading) waits for the same promise instead of
+  // getting an empty list.
   function ensureSeasonEpisodesLoaded(seasonKey) {
-    if (seasonEpisodes || seasonEpisodesLoading || !seasonKey) {
-      return Promise.resolve(seasonEpisodes || []);
+    if (seasonEpisodes) return Promise.resolve(seasonEpisodes);
+    if (!seasonKey) return Promise.resolve([]);
+    if (!seasonEpisodesPromise) {
+      seasonEpisodesPromise = getChildren(server, seasonKey).then(function (items) {
+        seasonEpisodes = items || [];
+        return seasonEpisodes;
+      }).catch(function (err) {
+        seasonEpisodesPromise = null;
+        throw err;
+      });
     }
-    seasonEpisodesLoading = true;
-    return getChildren(server, seasonKey).then(function (items) {
-      seasonEpisodes = items;
-      seasonEpisodesLoading = false;
-      return items;
-    }).catch(function (err) {
-      seasonEpisodesLoading = false;
-      throw err;
-    });
+    return seasonEpisodesPromise;
   }
 
   function openEpisodePickerModal(item) {
@@ -867,8 +936,9 @@ function detailScreen(root, params, navigate) {
           navigate('detail', buildEpisodeNavRoute(opt.data, seasonKey));
         }
       });
-    }).catch(function () {
-      setWatchMessage('Could not load episodes for this season.', true);
+    }).catch(function (err) {
+      if (destroyed) return;
+      setWatchMessage(friendlyLoadError(err, 'load the episodes for this season'), true);
     });
   }
 
@@ -942,11 +1012,8 @@ function detailScreen(root, params, navigate) {
       title: item.title,
       options: options,
       onPick: function (id) {
-        if (id === 'mark-watched') {
-          applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
-        } else if (id === 'mark-unwatched') {
-          applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
-        }
+        if (id === 'mark-watched') markWatchedAction(item);
+        else if (id === 'mark-unwatched') markUnwatchedAction(item);
       },
       onToggle: function (id, o, nowActive) {
         if (id !== 'watchlist') return;
@@ -1070,11 +1137,8 @@ function detailScreen(root, params, navigate) {
 
   function runMoreMenuAction(action, item, btn) {
     if (action === 'watched-toggle') {
-      if (getWatchStatus(item) === 'watched') {
-        applyWatchAction(markUnwatched(server, item.ratingKey), 'Marked as unwatched.');
-      } else {
-        applyWatchAction(markWatched(server, item.ratingKey), 'Marked as watched.');
-      }
+      if (getWatchStatus(item) === 'watched') markUnwatchedAction(item);
+      else markWatchedAction(item);
     } else if (action === 'watchlist-toggle') {
       toggleWatchlistMembership(item, btn);
     } else if (action === 'upnext-toggle') {
@@ -1107,6 +1171,7 @@ function detailScreen(root, params, navigate) {
       };
       document.addEventListener('keydown', backHandler, true);
     }
+    cleanups.push(function () { detachBack(); });
     function detachBack() {
       if (!backHandler) return;
       document.removeEventListener('keydown', backHandler, true);
@@ -1141,7 +1206,9 @@ function detailScreen(root, params, navigate) {
     items.forEach(function (btn) {
       btn.addEventListener('click', function () {
         var action = btn.getAttribute('data-action');
-        closeMenu(false);
+        // Return focus to the trigger BEFORE hiding the item, otherwise focus
+        // collapses to <body> for a beat and the watchdog re-homes it elsewhere.
+        closeMenu(true);
         runMoreMenuAction(action, item, btn);
       });
     });
@@ -1165,6 +1232,7 @@ function detailScreen(root, params, navigate) {
     metadata = item;
     activeDetailRoute = buildActiveDetailRoute(item);
     seasonEpisodes = null;
+    seasonEpisodesPromise = null;
     var versions = extractVersions(item);
     selectedVersion = pickBestVersion(versions, getState().playbackPrefs);
     currentProbe = probePlayback(item, selectedVersion, null, deviceInfo);
@@ -1229,10 +1297,8 @@ function detailScreen(root, params, navigate) {
 
     mountDetailHubNav();
 
-    var art = screen.querySelector('#detail-episode-art');
-    if (art) {
-      bindPosterImage(art, item.thumb || item.art || item.grandparentThumbUrl || '', { priority: true });
-    }
+    bindDetailArt(screen.querySelector('#detail-episode-art'),
+      item.thumb || item.art || item.grandparentThumbUrl || '');
     bindCastImages(item);
     applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
@@ -1285,14 +1351,16 @@ function detailScreen(root, params, navigate) {
         // Spacing/colour live in CSS (DesignSystem owns .detail-up-next-btn /
         // its __label) — no inline layout styles here (Workstream D).
         btn.innerHTML = '<span class="detail-up-next-btn__label">Up Next</span>' +
-          escapeHtml(nextLabel);
+          '<span class="detail-up-next-btn__title">' + escapeHtml(nextLabel) + '</span>';
         btn.addEventListener('click', function () {
           navigate('detail', buildEpisodeNavRoute(nextEp, seasonKey));
         });
         upNextEl.appendChild(btn);
-      }).catch(function () {});
+        invalidateFocusableCache();
+      }).catch(function () { /* Up Next is optional — the picker crumb still lists the season */ });
     }
 
+    invalidateFocusableCache();
     var playBtn = screen.querySelector('#btn-start');
     if (playBtn) playBtn.focus();
     else focusFirst(screen);
@@ -1356,8 +1424,7 @@ function detailScreen(root, params, navigate) {
 
     mountDetailHubNav();
 
-    var poster = screen.querySelector('#detail-poster');
-    if (poster) bindPosterImage(poster, item.thumb || '', { priority: true });
+    bindDetailArt(screen.querySelector('#detail-poster'), item.thumb || '');
     bindCastImages(item);
     applyDetailBackground(detailHomeMainEl(), server, item);
     wirePlaybackDetailCommon(item);
@@ -1368,6 +1435,7 @@ function detailScreen(root, params, navigate) {
     if (libCrumb) libCrumb.addEventListener('click', navigateToMovieLibrary);
     loadRelatedHubs(item.ratingKey);
 
+    invalidateFocusableCache();
     var playBtn = screen.querySelector('#btn-start');
     if (playBtn) playBtn.focus();
     else focusFirst(screen);
@@ -1384,7 +1452,7 @@ function detailScreen(root, params, navigate) {
 
   function showMetaLine(item) {
     var parts = [item.year, item.contentRating].filter(Boolean);
-    if (item.leafCount) parts.push(item.leafCount + ' episodes');
+    if (item.leafCount) parts.push(episodeCountLabel(item.leafCount));
     if (item.genres && item.genres.length) {
       parts.push(item.genres.slice(0, 3).map(function (g) { return g.tag; }).join(', '));
     }
@@ -1411,7 +1479,7 @@ function detailScreen(root, params, navigate) {
         ? '<p class="detail-show-overview">' + escapeHtml(item.summary) + '</p>'
         : '') +
       '</div>' +
-      '<div class="detail-season-tabs" id="detail-season-tabs"></div>' +
+      '<div class="detail-season-tabs row-scroll" id="detail-season-tabs"></div>' +
       '<div class="detail-episode-grid row-scroll--episodes" id="detail-episode-grid" ' +
       'data-focus-zone="detail-episode-grid" data-cols="4">' +
       '<p class="status-msg detail-episode-grid-empty">Loading seasons…</p>' +
@@ -1422,11 +1490,38 @@ function detailScreen(root, params, navigate) {
     mountDetailHubNav();
     applyDetailBackground(detailHomeMainEl(), server, item);
     if (supportsWatchlistBookmark(item)) wireWatchlistBookmark(screen, item);
+    invalidateFocusableCache();
     loadShowSeasons(item.ratingKey);
+  }
+
+  // Message (+ optional "Try again") inside a rails/grid host. Focus is left
+  // where it is unless `focusRetry`: the button sits below the tab row / Play,
+  // one D-pad Down away.
+  function renderHostStatus(host, text, onRetry, focusRetry) {
+    if (!host) return;
+    host.innerHTML = '<div class="detail-episode-grid-status">' +
+      '<p class="status-msg detail-episode-grid-empty">' + escapeHtml(text) + '</p>' +
+      (onRetry ? '<button class="btn detail-episode-grid-retry" tabindex="0">Try again</button>' : '') +
+      '</div>';
+    invalidateFocusableCache();
+    var retry = host.querySelector('.detail-episode-grid-retry');
+    if (!retry) return;
+    retry.addEventListener('click', function () {
+      // The retry replaces this button with "Loading…"; park focus on the
+      // active season tab (or Play) first so it never collapses to <body>.
+      var park = screen.querySelector('.gt-tab--active') || screen.querySelector('#btn-start');
+      if (park) park.focus();
+      onRetry();
+    });
+    if (focusRetry) retry.focus();
   }
 
   function loadShowSeasons(showKey) {
     var gen = ++seasonsLoadGen;
+    var loadingGrid = screen.querySelector('#detail-episode-grid');
+    if (loadingGrid) {
+      loadingGrid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Loading seasons…</p>';
+    }
     getChildren(server, showKey).then(function (items) {
       if (destroyed || gen !== seasonsLoadGen) return;
       var seasons = (items || []).filter(function (s) {
@@ -1437,7 +1532,7 @@ function detailScreen(root, params, navigate) {
       var grid = screen.querySelector('#detail-episode-grid');
       if (!tabsHost) return;
       if (!seasons.length) {
-        if (grid) grid.innerHTML = '<p class="status-msg detail-episode-grid-empty">No seasons available.</p>';
+        renderHostStatus(grid, 'No seasons on the server for this show yet.', null);
         return;
       }
       activeSeasonKey = String(seasons[0].ratingKey);
@@ -1454,53 +1549,71 @@ function detailScreen(root, params, navigate) {
       });
       tabsHost.innerHTML = '';
       tabsHost.appendChild(tabs);
+      invalidateFocusableCache();
       var firstTab = tabs.querySelector('.gt-tab');
       if (firstTab) firstTab.focus();
       loadShowEpisodes(activeSeasonKey, showKey);
-    }).catch(function () {
-      if (destroyed) return;
-      var grid = screen.querySelector('#detail-episode-grid');
-      if (grid) grid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Could not load seasons.</p>';
+    }).catch(function (err) {
+      if (destroyed || gen !== seasonsLoadGen) return;
+      // Nothing else on the screen is focusable yet, so the retry takes focus.
+      renderHostStatus(screen.querySelector('#detail-episode-grid'),
+        friendlyLoadError(err, 'load the seasons'),
+        function () { loadShowSeasons(showKey); }, true);
     });
   }
 
-  function seasonTabLabel(s) {
-    if (s.index != null && s.index !== '') return 'Season ' + s.index;
-    if (s.title) return s.title;
-    return 'Season';
+  // Season switch: the old cards stay in place, dimmed, while the new season
+  // loads (no "Loading…" flash when the response is cached); the new grid
+  // then plays a short rise-in. Class toggles only — motion lives in CSS,
+  // gated on html.caps-motion, so without it the swap is a clean cut.
+  function swapEpisodeGrid(grid, fill) {
+    grid.classList.remove('is-loading');
+    grid.classList.remove('detail-episode-grid--enter');
+    grid.innerHTML = '';
+    fill();
+    invalidateFocusableCache();
+    // Reading offsetWidth commits the class removal so a swap that lands
+    // mid-animation restarts the rise-in instead of being skipped.
+    if (grid.offsetWidth >= 0) grid.classList.add('detail-episode-grid--enter');
   }
 
   function loadShowEpisodes(seasonKey, showKey) {
     var grid = screen.querySelector('#detail-episode-grid');
     if (!grid) return;
     var gen = ++showEpisodesGen;
-    grid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Loading episodes…</p>';
+    grid.classList.add('is-loading');
+    if (!grid.querySelector('.media-card')) {
+      grid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Loading episodes…</p>';
+    }
     getChildren(server, seasonKey).then(function (items) {
       if (destroyed || gen !== showEpisodesGen) return;
       var currentGrid = screen.querySelector('#detail-episode-grid');
       if (!currentGrid) return;
-      currentGrid.innerHTML = '';
       if (!items || !items.length) {
-        currentGrid.innerHTML = '<p class="status-msg detail-episode-grid-empty">No episodes in this season.</p>';
+        currentGrid.classList.remove('is-loading');
+        renderHostStatus(currentGrid, 'No episodes in this season yet.', null);
         return;
       }
-      items.forEach(function (ep) {
-        var card = createMediaCard(ep, function (selected, routeParams) {
-          var route = routeParams || { ratingKey: selected.ratingKey };
-          route.seasonKey = seasonKey;
-          route.showKey = showKey || '';
-          route.parentDetail = activeDetailRoute;
-          navigate('detail', route);
-        }, { layout: 'episode' });
-        currentGrid.appendChild(card);
+      swapEpisodeGrid(currentGrid, function () {
+        items.forEach(function (ep) {
+          var card = createMediaCard(ep, function (selected, routeParams) {
+            var route = routeParams || { ratingKey: selected.ratingKey };
+            route.seasonKey = seasonKey;
+            route.showKey = showKey || '';
+            route.parentDetail = activeDetailRoute;
+            navigate('detail', route);
+          }, { layout: 'episode' });
+          currentGrid.appendChild(card);
+        });
+        hydrateRowWindow(currentGrid, { start: 0, count: items.length });
       });
-      hydrateRowWindow(currentGrid, { start: 0, count: items.length });
-    }).catch(function () {
+    }).catch(function (err) {
       if (destroyed || gen !== showEpisodesGen) return;
       var currentGrid = screen.querySelector('#detail-episode-grid');
-      if (currentGrid) {
-        currentGrid.innerHTML = '<p class="status-msg detail-episode-grid-empty">Could not load episodes.</p>';
-      }
+      if (!currentGrid) return;
+      currentGrid.classList.remove('is-loading');
+      renderHostStatus(currentGrid, friendlyLoadError(err, 'load the episodes'),
+        function () { loadShowEpisodes(seasonKey, showKey); });
     });
   }
 
@@ -1563,8 +1676,7 @@ function detailScreen(root, params, navigate) {
 
     mountDetailHubNav();
 
-    var poster = screen.querySelector('#detail-poster');
-    if (poster) bindPosterImage(poster, item.thumb || item.art || '', { priority: true });
+    bindDetailArt(screen.querySelector('#detail-poster'), item.thumb || item.art || '');
     applyDetailBackground(detailHomeMainEl(), server, item);
     var meta = screen.querySelector('#detail-meta');
     if (meta) {
@@ -1643,6 +1755,7 @@ function detailScreen(root, params, navigate) {
       setRefreshMessage('Refresh requested. Scanning…', false);
     }
 
+    invalidateFocusableCache();
     var playBtn = screen.querySelector('#btn-start');
     if (playBtn) playBtn.focus();
     else focusFirst(screen);
@@ -1804,6 +1917,11 @@ function detailScreen(root, params, navigate) {
         }, { layout: 'row', cardText: 'titleOnly' }));
       });
       hydrateRowWindow(row, { start: 0, count: items.length });
+      invalidateFocusableCache();
+    }).catch(function (err) {
+      if (destroyed || gen !== seasonsLoadGen) return;
+      renderHostStatus(screen.querySelector('#detail-rails'),
+        friendlyLoadError(err, 'load the seasons'), function () { loadSeasons(showKey); });
     });
   }
 
@@ -1829,12 +1947,13 @@ function detailScreen(root, params, navigate) {
           if (items[i] && items[i].ratingKey) relatedItems.push(items[i]);
         }
       });
+      invalidateFocusableCache();
       // Drilling into a related title should be instant: warm their metadata.
       if (server && relatedItems.length) {
         try { prefetchDetailItems(server, relatedItems, { max: 8 }); }
         catch (e) { /* ignore */ }
       }
-    }).catch(function () {});
+    }).catch(function () { /* related rails are optional — nothing to show */ });
   }
 
   function loadEpisodes(seasonKey, showKey) {
@@ -1855,6 +1974,10 @@ function detailScreen(root, params, navigate) {
         rails.appendChild(existing);
       }
       existing.innerHTML = '';
+      if (!items || !items.length) {
+        renderHostStatus(existing, 'No episodes in this season yet.', null);
+        return;
+      }
       items.forEach(function (ep) {
         existing.appendChild(createMediaCard(ep, function (selected, routeParams) {
           var route = routeParams || { ratingKey: selected.ratingKey };
@@ -1865,28 +1988,52 @@ function detailScreen(root, params, navigate) {
         }, { layout: 'episode' }));
       });
       hydrateRowWindow(existing, { start: 0, count: items.length });
+      invalidateFocusableCache();
+    }).catch(function (err) {
+      if (destroyed || gen !== episodesLoadGen) return;
+      renderHostStatus(screen.querySelector('#detail-rails'),
+        friendlyLoadError(err, 'load the episodes'),
+        function () { loadEpisodes(seasonKey, showKey); });
     });
   }
 
-  getMetadata(server, ratingKey).then(function (item) {
-    if (destroyed) return;
-    renderDetail(item);
-  }).catch(function (err) {
-    if (destroyed) return;
-    screen.innerHTML = '<p class="status-msg">Error: ' + escapeHtml(err && err.message ? err.message : 'unknown error') + '</p>';
-  });
+  function renderLoadError(err) {
+    screen.innerHTML = '<div class="detail-load-error">' +
+      '<p class="status-msg">' + escapeHtml(friendlyLoadError(err, 'load this title')) + '</p>' +
+      '<button class="btn" id="btn-detail-retry" tabindex="0">Try again</button></div>';
+    invalidateFocusableCache();
+    var retry = screen.querySelector('#btn-detail-retry');
+    retry.addEventListener('click', loadMetadata);
+    retry.focus();
+  }
+
+  function loadMetadata() {
+    var gen = ++renderGen;
+    screen.innerHTML = '<p class="status-msg">Loading…</p>';
+    getMetadata(server, ratingKey).then(function (item) {
+      if (destroyed || gen !== renderGen) return;
+      renderDetail(item);
+    }).catch(function (err) {
+      if (destroyed || gen !== renderGen) return;
+      renderLoadError(err);
+    });
+  }
+
+  loadMetadata();
 
   return {
     destroy: function () {
       destroyed = true;
+      renderGen += 1;
       seasonsLoadGen += 1;
       episodesLoadGen += 1;
       relatedHubsLoadGen += 1;
       showEpisodesGen += 1;
       try { abortPrefetch(); } catch (e) { /* ignore */ }
+      cleanups.forEach(function (fn) { try { fn(); } catch (e) { /* ignore */ } });
       detachFocus();
     }
   };
 }
 
-export { detailScreen };
+export { detailScreen, friendlyLoadError, seasonTabLabel, episodeCountLabel };
