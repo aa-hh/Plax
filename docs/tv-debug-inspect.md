@@ -17,7 +17,7 @@ You should see a **black log strip at the bottom** (`Debug overlay active`, then
 
 ### Cause
 
-This is **almost always a Chrome ↔ TV Inspector mismatch**, not XPlay code.
+This is **almost always a Chrome ↔ TV Inspector mismatch**, not Plax code.
 
 - **Alec-TV (webOS 4.4 / 2018 B8)** runs an **old Chromium** (roughly low‑50s; see [compatibility matrix](../compatibility-matrix.md)).
 - **`ares-inspect`** opens a URL like  
@@ -33,7 +33,7 @@ This is **almost always a Chrome ↔ TV Inspector mismatch**, not XPlay code.
 | `VM##` errors **plus** app `console.error` lines | **Harmless DevTools noise** — ignore VM lines, read app logs. |
 | Empty console, no app logs | Wrong target, app not foreground, or broken tunnel — not fixed by app code. |
 
-XPlay does **not** use `eval()` for logging. Tilde (`~`) in the bundle is normal string content (e.g. “~5 Mbps”); it does **not** produce `VM##` errors by itself.
+Plax does **not** use `eval()` for logging. Tilde (`~`) in the bundle is normal string content (e.g. “~5 Mbps”); it does **not** produce `VM##` errors by itself.
 
 ### Recommended Chrome for webOS **4.x** TVs
 

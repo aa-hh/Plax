@@ -341,7 +341,7 @@ TV App Quality requirement TV-DB + the Navigation-on-TV doc both state (verbatim
 > "Ensure that the back button isn't gated by confirmation screens or part of an infinite loop."
 > "Users should be able to exit out of the app without any confirmation."
 
-XPlay currently has an exit-confirm modal (`modal-exit`, styled in commit `60bf870`). This
+Plax currently has an exit-confirm modal (`modal-exit`, styled in commit `60bf870`). This
 violates the published spec. Options:
 1. Remove the exit modal entirely (compliant; simplest).
 2. Replace with a double-back pattern (press Back twice within ~2 s to exit) — no modal needed.

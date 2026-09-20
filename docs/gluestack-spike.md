@@ -9,7 +9,7 @@
 ## Question
 
 Can React + gluestack-ui (react-native-web / NativeWind / Tailwind stack) run inside
-XPlay on the B8 TV (webOS 4, Chromium 53) while staying inside the <200 KB gzip
+Plax on the B8 TV (webOS 4, Chromium 53) while staying inside the <200 KB gzip
 budget for the full app bundle?
 
 ---
@@ -41,7 +41,7 @@ The resulting `.ipk` was sideloaded to the B8 via `ares-install`.
 | Polyfills needed | `Array.flat/flatMap`, `Object.entries/values/fromEntries`, `String.padStart/padEnd` |
 | Spike bundle (gzip) | ~66 KB (React-DOM + react-native-web, no gluestack, no NativeWind, no Tailwind) |
 | App budget headroom remaining | ~0 KB (app already at ~255 KB gzip; budget is <200 KB) |
-| Focus engine bridging | Every component would need a per-component JS focus bridge to XPlay's `focus.js` — no free spatial navigation from RN-Web on a TV |
+| Focus engine bridging | Every component would need a per-component JS focus bridge to Plax's `focus.js` — no free spatial navigation from RN-Web on a TV |
 | Gluestack / NativeWind included | **No** — 66 KB is the floor with just React-DOM + RN-Web; full stack would be larger |
 
 ---
