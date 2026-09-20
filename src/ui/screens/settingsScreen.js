@@ -3,7 +3,7 @@ import { getOwnerAuthToken, getSavedLinks, removeSavedLink, clearActiveSession }
 import { renderNetworkSettings } from '../../settings/networkSettings.js';
 import { renderPlaybackSettings } from '../../settings/playbackSettings.js';
 import { fetchHomeUsers } from '../../plex/users/homeUsers.js';
-import { focusFirst, getFocusables, attachFocusNav } from '../focus.js';
+import { focusFirst, getFocusables, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import {
   createSettingsCard,
@@ -199,25 +199,74 @@ function openTextInputModal(opts) {
  *                13/38/40 → close keyboard + focus Save · 27 → cancel
  *              On the buttons focus is contained: LEFT/RIGHT cycle Save/Cancel/
  *              Test, UP re-opens the keyboard, Back/Esc cancels, Enter activates.
- *              Test pings the value currently in the editor.
+ *              Save and Test validate first (validateLogSinkUrl); errors and
+ *              Test results show inline under the field, input preserved.
+ * Returns a cleanup function for the screen's destroy().
  */
+var LOG_SINK_URL_MAX = 2048;
+var LOG_SINK_EXAMPLE = 'http://192.168.4.1:8765/log';
+
+/**
+ * Validate a log-sink URL before it is saved or tested. Returns '' when the
+ * value is acceptable (empty clears the setting), else a message that names
+ * the problem and how to fix it.
+ */
+function validateLogSinkUrl(value) {
+  var v = value == null ? '' : String(value).trim();
+  if (!v) return '';
+  if (v.length > LOG_SINK_URL_MAX) return 'That address is too long (over ' + LOG_SINK_URL_MAX + ' characters).';
+  if (/\s/.test(v)) return 'The address can\'t contain spaces.';
+  if (!/^https?:\/\//i.test(v)) return 'The address must start with http:// or https://, like ' + LOG_SINK_EXAMPLE;
+  if (!/^https?:\/\/[^/?#\s]+/i.test(v)) return 'Add a host after http://, like ' + LOG_SINK_EXAMPLE;
+  return '';
+}
+
 function wireLogSinkField(setStatus) {
   var readRow = document.getElementById('log-sink-row');
   var editor = document.getElementById('log-sink-editor');
   var input = document.getElementById('log-sink-url');
+  var msgEl = document.getElementById('log-sink-msg');
   var saveBtn = document.getElementById('log-sink-save');
   var cancelBtn = document.getElementById('log-sink-cancel');
   var testBtn = document.getElementById('log-sink-test');
-  if (!readRow || !editor || !input || !saveBtn || !cancelBtn) return;
+  if (!readRow || !editor || !input || !saveBtn || !cancelBtn) return function () {};
   var valueSpan = readRow.querySelector('.gt-settings-value');
   var buttons = [saveBtn, cancelBtn, testBtn].filter(Boolean);
 
   var editing = false;
+  var testXhr = null;      // in-flight Test ping (aborted on cancel / leave)
+  var testGen = 0;         // stale-response guard for Test
 
   function savedValue() { return getLogSinkUrl() || ''; }
   function refreshRead() { if (valueSpan) valueSpan.textContent = savedValue() || 'Not set'; }
   function setStatusSafe(msg, isError) { if (typeof setStatus === 'function') setStatus(msg, isError); }
   refreshRead();
+
+  // Inline message under the field (validation errors + Test results). The
+  // field sits at the bottom of a long list, so the top-of-page status line is
+  // off-screen while editing — feedback has to live next to the input.
+  function showMsg(text, kind) {
+    if (!msgEl) return;
+    msgEl.textContent = text || '';
+    msgEl.className = 'gt-settings-editor__msg' + (kind ? ' gt-settings-editor__msg--' + kind : '');
+    msgEl.hidden = !text;
+  }
+
+  function markInvalid(err) {
+    if (err) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  }
+
+  // Validate the editor value; on error show it inline, keep the text, and
+  // put the cursor back so the user can fix it. Returns true when OK.
+  function validateOrShow() {
+    var err = validateLogSinkUrl(input.value);
+    markInvalid(err);
+    if (!err) return true;
+    showMsg(err, 'error');
+    input.focus();
+    return false;
+  }
 
   function deleteChar() {
     var s = input.selectionStart, end = input.selectionEnd, v = input.value;
@@ -243,42 +292,60 @@ function wireLogSinkField(setStatus) {
     if (editing) return;
     editing = true;
     input.value = savedValue();
+    showMsg('', null);
+    markInvalid('');
     editor.hidden = false;
+    invalidateFocusableCache();
     document.addEventListener('keydown', onEditKey, true);
     // Focus the input first, THEN hide the read row, so focus never collapses to
     // <body> (which would trip the screen's focus watchdog).
     setTimeout(function () {
+      if (!editing) return;
       input.focus();
       try { input.select(); } catch (e) { /* older Chromium */ }
       readRow.hidden = true;
     }, 0);
   }
 
+  function abortTest() {
+    testGen += 1;
+    if (testXhr) { try { testXhr.abort(); } catch (e) { /* ignore */ } }
+    testXhr = null;
+    if (testBtn) { testBtn.removeAttribute('aria-busy'); testBtn.textContent = 'Test'; }
+  }
+
   function exitEdit() {
+    if (!editing) return;
     editing = false;
+    abortTest();
     document.removeEventListener('keydown', onEditKey, true);
     readRow.hidden = false;
     editor.hidden = true;
+    invalidateFocusableCache();
     readRow.focus();
   }
 
   function commit() {
+    if (!validateOrShow()) return;
     var next = input.value.trim();
     setLogSinkUrl(next || null);
     if (window.__plaxDebug && window.__plaxDebug.setLogSinkUrl) {
       window.__plaxDebug.setLogSinkUrl(next);
     }
     refreshRead();
-    setStatusSafe(next ? 'Log sink saved — debug overlay must be on.' : 'Log sink cleared.', false);
+    setStatusSafe(next ? 'Log sink saved. Logs are sent while the debug overlay is on.' : 'Log sink cleared.', false);
     exitEdit();
   }
 
   function cancel() { exitEdit(); }
 
   // Test pings the value currently in the editor (what you're about to save).
+  // One ping at a time; a stale reply (after Cancel or a newer Test) is ignored.
   function testSink() {
+    if (testXhr) return;
     var url = input.value.trim();
-    if (!url) { setStatusSafe('Enter a Log sink URL first, then Test.', true); return; }
+    if (!url) { showMsg('Enter an address first, then press Test.', 'error'); input.focus(); return; }
+    if (!validateOrShow()) return;
     var payload;
     try {
       payload = JSON.stringify({
@@ -288,24 +355,41 @@ function wireLogSinkField(setStatus) {
         ts: new Date().toISOString()
       });
     } catch (e) {
-      setStatusSafe('Test ping failed ✗ — could not build payload.', true);
+      showMsg('Couldn\'t build the test message. Press Test again.', 'error');
       return;
     }
-    setStatusSafe('Sending test ping…', false);
+    var gen = ++testGen;
+    var retry = ' Then press Test again.';
+    function finish(text, kind) {
+      if (gen !== testGen) return;
+      testXhr = null;
+      if (testBtn) { testBtn.removeAttribute('aria-busy'); testBtn.textContent = 'Test'; }
+      showMsg(text, kind);
+    }
+    showMsg('Sending a test line to ' + url + '…', 'pending');
+    if (testBtn) { testBtn.setAttribute('aria-busy', 'true'); testBtn.textContent = 'Testing…'; }
     try {
       var xhr = new XMLHttpRequest();
+      testXhr = xhr;
       xhr.open('POST', url, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.timeout = 5000;
       xhr.onload = function () {
-        if (xhr.status >= 200 && xhr.status < 300) setStatusSafe('Test ping sent ✓ → ' + url, false);
-        else setStatusSafe('Test ping failed ✗ (HTTP ' + xhr.status + ')', true);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          finish('Receiver replied OK. Lines will appear in logs/tv.log on your Mac.', 'ok');
+        } else {
+          finish(url + ' answered HTTP ' + xhr.status + '. Check the path ends in /log and that npm run log:receive is running.' + retry, 'error');
+        }
       };
-      xhr.onerror = function () { setStatusSafe('Test ping failed ✗ — could not reach sink.', true); };
-      xhr.ontimeout = function () { setStatusSafe('Test ping timed out ✗', true); };
+      xhr.onerror = function () {
+        finish('Couldn\'t reach ' + url + '. Check the address and that your Mac is on the same network.' + retry, 'error');
+      };
+      xhr.ontimeout = function () {
+        finish('No reply from ' + url + ' after 5 seconds. Check that npm run log:receive is running.' + retry, 'error');
+      };
       xhr.send(payload);
     } catch (e) {
-      setStatusSafe('Test ping failed ✗', true);
+      finish('Couldn\'t send to ' + url + '.' + retry, 'error');
     }
   }
 
@@ -343,6 +427,15 @@ function wireLogSinkField(setStatus) {
     if (code === 40) { e.preventDefault(); e.stopPropagation(); return; }                       // down swallowed (contained)
     // Enter (13) falls through → native button click (Save / Cancel / Test).
   }
+
+  // Leave-screen cleanup: drop the capture-phase key trap and any in-flight ping.
+  return function () {
+    abortTest();
+    if (editing) {
+      editing = false;
+      document.removeEventListener('keydown', onEditKey, true);
+    }
+  };
 }
 
 /* Build identifier from the generated build-info global (window.__PLAX_BUILD__).
@@ -447,11 +540,19 @@ function settingsScreen(root, params, navigate) {
   content.appendChild(homeCard);
 
   // The Plex Home profiles list is Plex-only (Jellyfin has no owner-proxy roster).
-  if (!isJellyfin) {
+  // `alive` + a request counter drop replies that land after leave or after a
+  // newer Retry; the list re-renders, so the focusable cache is invalidated.
+  var alive = true;
+  var homeUsersReq = 0;
+  function loadHomeUsers() {
+    var req = ++homeUsersReq;
+    homeUsersList.innerHTML = '<p class="settings-muted">Loading Plex Home profiles…</p>';
     var ownerToken = getOwnerAuthToken() || state.ownerAuthToken || state.authToken;
     fetchHomeUsers(ownerToken, state.clientId).then(function (users) {
+      if (!alive || req !== homeUsersReq) return;
       if (!users.length) {
         homeUsersList.innerHTML = '<p class="settings-muted">Plex Home not available on this account.</p>';
+        invalidateFocusableCache();
         return;
       }
       homeUsersList.innerHTML = '<p class="settings-muted">Home profiles</p>';
@@ -459,17 +560,27 @@ function settingsScreen(root, params, navigate) {
         var row = document.createElement('div');
         row.className = 'settings-home-user-row';
         var active = activeUser && activeUser.id === u.id;
-        row.textContent = (u.title || u.username) +
+        row.textContent = (u.title || u.username || 'Unnamed profile') +
           (u.admin ? ' (Admin)' : '') +
           (u.restricted ? ' · Restricted' : '') +
           (u.hasPin ? ' · PIN' : '') +
           (active ? ' · Active' : '');
         homeUsersList.appendChild(row);
       });
+      invalidateFocusableCache();
     }).catch(function () {
-      homeUsersList.innerHTML = '<p class="settings-muted">Could not load Plex Home profiles.</p>';
+      if (!alive || req !== homeUsersReq) return;
+      homeUsersList.innerHTML = '<p class="settings-muted">Couldn\'t load Plex Home profiles from plex.tv.</p>';
+      var retryRow = createSettingsActionRow({
+        label: 'Retry',
+        sublabel: 'Check the TV is online, then try again.',
+        onSelect: function () { loadHomeUsers(); invalidateFocusableCache(); focusFirst(homeCard.body); }
+      });
+      homeUsersList.appendChild(retryRow);
+      invalidateFocusableCache();
     });
   }
+  if (!isJellyfin) loadHomeUsers();
 
   // ── Watchlists (conditional) ──
   if (canUseWatchlists(activeUser)) {
@@ -554,14 +665,19 @@ function settingsScreen(root, params, navigate) {
         return;
       }
       perfExporting = true;
+      perfTraceRow.setAttribute('aria-busy', 'true');
       setStatus('Sending perf trace…', false);
       sendPerfTraceToSink(sinkUrl, data).then(function () {
+        if (!alive) return;
         setStatus('Perf trace sent (' + data.marks.length + ' marks, ' +
           data.samples.length + ' samples) → ' + sinkUrl, false);
       })['catch'](function (err) {
-        setStatus('Could not reach log sink: ' + (err && err.message || err), true);
+        if (!alive) return;
+        setStatus('Couldn\'t reach the log sink at ' + sinkUrl + ' (' + (err && err.message || err) +
+          '). Check it with Test below, then send again.', true);
       })['finally'](function () {
         perfExporting = false;
+        perfTraceRow.removeAttribute('aria-busy');
       });
     }
   });
@@ -596,9 +712,10 @@ function settingsScreen(root, params, navigate) {
   logSinkEditor.hidden = true;
   logSinkEditor.innerHTML =
     '<label for="log-sink-url">Log sink URL</label>' +
-    '<input id="log-sink-url" class="tv-text-input" type="text" ' +
-    'placeholder="http://192.168.4.1:8765/log" autocomplete="off" autocorrect="off" ' +
-    'autocapitalize="off" spellcheck="false" />' +
+    '<input id="log-sink-url" class="tv-text-input" type="text" maxlength="' + LOG_SINK_URL_MAX + '" ' +
+    'placeholder="' + LOG_SINK_EXAMPLE + '" autocomplete="off" autocorrect="off" ' +
+    'autocapitalize="off" spellcheck="false" aria-describedby="log-sink-msg" />' +
+    '<p class="gt-settings-editor__msg" id="log-sink-msg" role="status" aria-live="polite" hidden></p>' +
     '<div class="gt-settings-editor__actions">' +
     '<button type="button" class="btn" id="log-sink-save" tabindex="0">Save</button>' +
     '<button type="button" class="btn" id="log-sink-cancel" tabindex="0">Cancel</button>' +
@@ -610,7 +727,7 @@ function settingsScreen(root, params, navigate) {
   devCard.body.appendChild(logSinkBlock);
   content.appendChild(devCard);
 
-  wireLogSinkField(setStatus);
+  var unwireLogSink = wireLogSinkField(setStatus);
 
   // ── Footer: Forget server (destructive) ──
   // Removes ONLY the current saved link (others are never deleted), clears the
@@ -618,11 +735,14 @@ function settingsScreen(root, params, navigate) {
   // else the provider picker to link a new one.
   var footerCard = createSettingsCard({});
   footerCard.classList.add('gt-settings-footer');
+  var forgetting = false;
   footerCard.body.appendChild(createSettingsActionRow({
     label: 'Forget server',
     sublabel: 'Removes this server from this device. Other saved servers are kept.',
     destructive: true,
     onSelect: function () {
+      if (forgetting) return; // Enter auto-repeat: the first press already cleared the session
+      forgetting = true;
       var cur = getState();
       var currentLinkId = cur.provider === 'jellyfin'
         ? 'jf:' + ((cur.activeServer && (cur.activeServer.id || cur.activeServer.url)) ||
@@ -718,7 +838,9 @@ function settingsScreen(root, params, navigate) {
   }
   return {
     destroy: function () {
+      alive = false;
       if (activeModalClose) activeModalClose();
+      unwireLogSink();
       detachFocus();
     }
   };
@@ -747,13 +869,16 @@ function renderWatchlistsSettings(container, user, navigate) {
   });
   container.insertBefore(createRow, container.querySelector('#watchlists-settings-list'));
 
+  // Re-renders the rows, so the focusable cache must be invalidated. Callers
+  // that removed the focused button (rename/delete) re-home focus afterwards.
   function refreshList() {
     var listEl = document.getElementById('watchlists-settings-list');
     if (!listEl) return;
     var lists = listWatchlists(user);
     listEl.innerHTML = '';
+    invalidateFocusableCache();
     if (!lists.length) {
-      listEl.innerHTML = '<p class="settings-muted">No watchlists yet.</p>';
+      listEl.innerHTML = '<p class="settings-muted">No watchlists yet. Press Create watchlist to add one.</p>';
       return;
     }
     lists.forEach(function (wl) {
@@ -783,17 +908,25 @@ function renderWatchlistsSettings(container, user, navigate) {
             if (!next || !next.trim()) return;
             renameWatchlist(user, id, next.trim());
             refreshList();
+            // The modal re-focused the old Rename button, which refreshList just
+            // replaced — land on the new one for the same list.
+            var again = listEl.querySelector('.settings-watchlist-rename[data-id="' + id + '"]');
+            if (again) again.focus();
           }
         });
       });
     });
-    Array.prototype.slice.call(listEl.querySelectorAll('.settings-watchlist-delete')).forEach(function (btn) {
+    Array.prototype.slice.call(listEl.querySelectorAll('.settings-watchlist-delete')).forEach(function (btn, idx) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-id');
         var current = listWatchlists(user).filter(function (w) { return w.id === id; })[0];
         if (!current) return;
         deleteWatchlist(user, id);
         refreshList();
+        // The pressed button is gone: focus the Delete at the same position,
+        // else the last one, else the Create row.
+        var rest = listEl.querySelectorAll('.settings-watchlist-delete');
+        (rest[Math.min(idx, rest.length - 1)] || createRow).focus();
       });
     });
   }
@@ -801,4 +934,4 @@ function renderWatchlistsSettings(container, user, navigate) {
   refreshList();
 }
 
-export { settingsScreen };
+export { settingsScreen, validateLogSinkUrl };

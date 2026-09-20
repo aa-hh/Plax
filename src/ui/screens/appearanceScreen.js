@@ -21,7 +21,7 @@
  * `.appearance-*` classes in app.css (authored separately) — no inline-style strip.
  */
 
-import { attachFocusNav, focusFirst } from '../focus.js';
+import { attachFocusNav, focusFirst, invalidateFocusableCache } from '../focus.js';
 import {
   getAppearancePrefs,
   setTheme,
@@ -120,6 +120,7 @@ function appearanceScreen(root, params, navigate) {
         chip.setAttribute('aria-current', 'true');
       } else {
         chip.addEventListener('click', function () {
+          if (getAppearancePrefs().theme === t.key) return; // Enter auto-repeat
           setTheme(t.key);
           flashSaved();
           // Theme switch repaints everything: the disabled chip moves, the
@@ -128,11 +129,12 @@ function appearanceScreen(root, params, navigate) {
           renderContrast();
           rebuildPreview();
           refreshEditor();
-          focusFirstThemeChip();
+          focusChipNear(themeEl, t.key, 'data-theme-key');
         });
       }
       themeEl.appendChild(chip);
     });
+    invalidateFocusableCache();
   }
 
   function focusFirstThemeChip() {
@@ -140,6 +142,24 @@ function appearanceScreen(root, params, navigate) {
     for (var i = 0; i < chips.length; i++) {
       if (!chips[i].disabled) { chips[i].focus(); return; }
     }
+  }
+
+  // After a segmented chip is pressed it re-renders disabled (it is now the
+  // active choice), so focus can't stay on it. Land on the nearest enabled
+  // neighbour (next, else previous) instead of jumping to the first chip.
+  function focusChipNear(container, key, attr) {
+    var chips = container.querySelectorAll('.appearance-segmented__chip');
+    var idx = -1;
+    for (var i = 0; i < chips.length; i++) {
+      if (chips[i].getAttribute(attr) === key) { idx = i; break; }
+    }
+    for (var j = idx + 1; j < chips.length; j++) {
+      if (!chips[j].disabled) { chips[j].focus(); return; }
+    }
+    for (var k = idx - 1; k >= 0; k--) {
+      if (!chips[k].disabled) { chips[k].focus(); return; }
+    }
+    focusFirst(screen);
   }
 
   // ── Header: Contrast segmented ──────────────────────────────────────────
@@ -164,11 +184,13 @@ function appearanceScreen(root, params, navigate) {
         chip.disabled = true;
       } else {
         chip.addEventListener('click', function () {
+          if (getAppearancePrefs().contrast === lvl.key) return; // Enter auto-repeat
           setContrast(lvl.key);
           flashSaved();
           renderContrast();
           rebuildPreview();
           refreshEditor();
+          focusChipNear(contrastEl, lvl.key, 'data-contrast-key');
         });
       }
       contrastEl.appendChild(chip);
@@ -179,6 +201,7 @@ function appearanceScreen(root, params, navigate) {
       hint.textContent = 'Standard only on the default theme';
       contrastEl.appendChild(hint);
     }
+    invalidateFocusableCache();
   }
 
   // ── Tabs ────────────────────────────────────────────────────────────────
@@ -198,9 +221,13 @@ function appearanceScreen(root, params, navigate) {
         activeTab = tab.id;
         renderTabs();
         rebuildPreview();
+        // renderTabs replaced the pressed button: keep focus on the same tab.
+        var again = tabsEl.querySelector('[data-tab="' + tab.id + '"]');
+        if (again) again.focus();
       });
       tabsEl.appendChild(btn);
     });
+    invalidateFocusableCache();
   }
 
   // ── Preview stage ───────────────────────────────────────────────────────
@@ -216,6 +243,7 @@ function appearanceScreen(root, params, navigate) {
     }
     stageEl.appendChild(mock);
     applySelectionRing();
+    invalidateFocusableCache();
   }
 
   function applySelectionRing() {
@@ -294,7 +322,8 @@ function appearanceScreen(root, params, navigate) {
       renderContrast();
       rebuildPreview();
       flashSaved();
-      focusFirstThemeChip();
+      // Reset is idempotent; keep focus on the button the user pressed.
+      reset.focus();
     });
     actionsEl.appendChild(reset);
 

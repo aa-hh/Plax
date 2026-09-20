@@ -18,6 +18,7 @@ import {
   setOverride,
   getOverrideContrast
 } from '../../../settings/appearancePrefs.js';
+import { invalidateFocusableCache } from '../../focus.js';
 
 // Human labels for the 5 customizable slots.
 var SLOT_LABELS = {
@@ -152,10 +153,13 @@ function renderEditor(container, slotKey, opts) {
   // ── Contrast note ──────────────────────────────────────────────────────────
   var note = buildContrastNote(slotKey);
   if (note) container.appendChild(note);
+  invalidateFocusableCache();
 }
 
 /** Persist the change, fire onChange, then re-render to reflect new state. */
 function apply(slotKey, role, tone, container, options) {
+  var cur = currentSelection(slotKey);
+  if (cur.role === role && cur.tone === tone) return; // Enter auto-repeat: nothing to change
   try {
     setOverride(slotKey, { role: role, tone: tone });
   } catch (e) {
@@ -165,7 +169,16 @@ function apply(slotKey, role, tone, container, options) {
     try { options.onChange(); } catch (e) { /* shell-side */ }
   }
   // Re-render so role/tone active marks + swatch colors + contrast note refresh.
+  // The pressed button is replaced by the rebuild, so re-focus its successor
+  // (same data-role / data-tone) — otherwise focus collapses to <body>.
+  var active = document.activeElement;
+  var sel = active && container.contains(active)
+    ? (active.hasAttribute('data-tone') ? '[data-tone="' + active.getAttribute('data-tone') + '"]'
+      : active.hasAttribute('data-role') ? '[data-role="' + active.getAttribute('data-role') + '"]' : null)
+    : null;
   renderEditor(container, slotKey, options);
+  var next = sel ? container.querySelector(sel) : null;
+  if (next) next.focus();
 }
 
 /** Build the contrast warning element, or null when contrast passes / is unknown. */
@@ -202,6 +215,7 @@ function renderEditorEmpty(container) {
   hint.className = 'appearance-editor__hint';
   hint.textContent = 'Select an element in the preview to edit its colour and tone';
   container.appendChild(hint);
+  invalidateFocusableCache();
 }
 
 export { renderEditor, renderEditorEmpty };

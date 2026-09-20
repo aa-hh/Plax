@@ -16,10 +16,12 @@
 var STORAGE_KEY = 'plax_debug_enabled';
 var LOG_SINK_STORAGE_KEY = 'plax_log_sink_url';
 var MAX_LINES = 14;
+var MAX_LINE_CHARS = 400;   // one runaway JSON detail must not fill the strip
 var enabled = false;
 var lines = [];
 var overlayEl = null;
 var relaunchHookInstalled = false;
+var renderQueued = false;
 
 function getRuntimeRoot() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -145,8 +147,22 @@ function formatDetail(detail) {
 }
 
 function renderOverlay() {
+  renderQueued = false;
   if (!enabled || !overlayEl) return;
   overlayEl.textContent = lines.join('\n');
+}
+
+// A burst of thousands of lines (a tight loop logging) must cost one DOM write
+// per frame, not one per line. Without rAF (tests, bootstrap) render at once.
+function scheduleRender() {
+  if (renderQueued) return;
+  var root = getRuntimeRoot();
+  if (root && typeof root.requestAnimationFrame === 'function') {
+    renderQueued = true;
+    root.requestAnimationFrame(renderOverlay);
+  } else {
+    renderOverlay();
+  }
 }
 
 function ensureOverlay() {
@@ -174,7 +190,8 @@ function ensureOverlay() {
 function ensureDebugOverlayOnTop() {
   if (!enabled) return;
   ensureOverlay();
-  if (overlayEl && typeof document !== 'undefined' && document.body) {
+  if (overlayEl && typeof document !== 'undefined' && document.body &&
+      document.body.lastChild !== overlayEl) {
     document.body.appendChild(overlayEl);
   }
 }
@@ -191,12 +208,12 @@ function pushLine(tag, message, detail) {
     ' [' + tag + '] ' + message;
   var extra = formatDetail(detail);
   if (extra) line += ' ' + extra;
+  if (line.length > MAX_LINE_CHARS) line = line.slice(0, MAX_LINE_CHARS - 1) + '…';
   lines.push(line);
   if (lines.length > MAX_LINES) lines.shift();
   if (enabled) {
-    ensureOverlay();
     ensureDebugOverlayOnTop();
-    renderOverlay();
+    scheduleRender();
   }
 }
 

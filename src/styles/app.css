@@ -3168,6 +3168,9 @@ html.caps-motion .detail-episode-grid--enter {
   flex: 1;
   min-width: 140px;
   font-size: var(--font-meta);
+  overflow: hidden;            /* a 120-char name truncates; the Open/Rename/Delete buttons stay on the row */
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail-episode-picker {
@@ -4668,6 +4671,7 @@ html.caps-motion .player-autoplay-panel {
   min-height: 1.4em;
   margin-top: 0;
   margin-bottom: var(--space-3);
+  overflow-wrap: break-word;   /* messages quote long sink URLs */
 }
 
 .settings-row {
@@ -5154,6 +5158,7 @@ html.caps-motion .profile-card:focus .profile-card-avatar {
   color: var(--text-secondary);
   padding: 8px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-wrap: break-word;   /* long / CJK profile names wrap, never overflow the card */
 }
 
 /* ── Player subtitle appearance ── */
@@ -5823,6 +5828,11 @@ html.caps-motion .loading-overlay {
 .gt-list-item:focus .gt-settings-chevron { opacity: 1; }
 .gt-settings-item--destructive .gt-list-item__label { color: var(--danger, #F2B8B5); }
 .gt-settings-item--destructive:focus .gt-list-item__label { color: var(--focus-on-fill); }
+/* Disabled row: dimmed, skipped by the D-pad (isNavFocusable drops `disabled`). */
+.gt-settings-item:disabled { opacity: 0.4; }
+/* In-flight row (aria-busy, e.g. "Send perf trace" while POSTing): stays
+   focusable so focus doesn't jump; only the trailing action hint dims. */
+.gt-settings-item[aria-busy="true"] .gt-list-item__trailing { opacity: 0.5; }
 
 /* Binary switch (Material 3 TV). Off = outline track; on = primary track. */
 .gt-switch {
@@ -5844,7 +5854,10 @@ html.caps-motion .loading-overlay {
   background: var(--surface-dim);
 }
 .gt-switch--on { background: var(--role-switch-fill, var(--accent)); }
-.gt-switch--on .gt-switch__knob { left: 32px; background: var(--surface-dim); }
+/* Knob travel is a transform (not `left`) so it can animate compositor-only
+   under html.caps-motion; without the class it snaps. Track colour snaps always. */
+.gt-switch--on .gt-switch__knob { transform: translateX(28px); background: var(--surface-dim); }
+html.caps-motion .gt-switch__knob { transition: transform var(--dur-short2) var(--ease-standard); }
 /* On focus the row inverts to a light fill; keep the switch readable on it. */
 .gt-list-item:focus .gt-switch { background: rgba(11, 13, 18, 0.35); }
 .gt-list-item:focus .gt-switch--on { background: var(--accent); }
@@ -5861,6 +5874,39 @@ html.caps-motion .loading-overlay {
 .gt-settings-editor__actions { display: flex; }
 .gt-settings-editor__actions > * + * { margin-left: var(--space-4); }   /* gap→margin */
 .gt-settings-editor__actions .btn { flex: 0 0 auto; }
+/* Test in flight: dimmed but still focusable (a disabled button would throw focus). */
+.gt-settings-editor__actions .btn[aria-busy="true"] { opacity: 0.6; }
+/* Inline message under the field — validation errors + Test results. Lives
+   next to the input because the top-of-page status line is scrolled away. */
+.gt-settings-editor__msg {
+  margin: 0;
+  font-size: var(--font-meta);
+  line-height: 1.45;
+  color: var(--text-secondary);
+  overflow-wrap: break-word;   /* quotes the typed URL */
+}
+.gt-settings-editor__msg--error { color: var(--color-error-light); }
+.gt-settings-editor__msg--ok { color: var(--success); }
+.gt-settings-editor .tv-text-input[aria-invalid="true"],
+.gt-settings-editor .tv-text-input[aria-invalid="true"]:focus { border-color: var(--color-error-light); }
+/* Editor reveal (read row → inline editor): a short fade + rise, transform/opacity
+   only, decelerating. Closing snaps back to the read row (exit shorter than enter).
+   `hidden` toggles display, so the animation restarts on every open. */
+@keyframes gt-settings-editor-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+html.caps-motion .gt-settings-editor:not([hidden]) {
+  animation: gt-settings-editor-in var(--dur-short4) var(--ease-standard-decelerate) both;
+}
+@keyframes gt-settings-editor-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.caps-motion .gt-settings-editor:not([hidden]) { animation-name: gt-settings-editor-fade; }
+  html.caps-motion .gt-switch__knob { transition: none; }
+}
 
 /* Footer card (Forget server — destructive action). */
 .gt-settings-footer { margin: var(--space-6) 0 var(--space-8); max-width: 1000px; }
@@ -6970,44 +7016,24 @@ html[data-theme="gold"][data-contrast="high"] {
   margin: 0 0 var(--space-5) 0;
 }
 
-.appearance-controls {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.appearance-control-group {
-  display: flex;
-  flex-direction: column;
-  margin-right: var(--space-8);
-  margin-bottom: var(--space-3);
-}
-
-.appearance-control-label {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-bottom: var(--space-2);
-}
-
-.appearance-control-hint {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: var(--space-2);
-  max-width: 320px;
-}
-
 /* ── Segmented picker (Theme / Contrast) ── */
 .appearance-segmented {
   display: flex;
   flex-direction: row;
+  align-items: center;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-1);
+}
+
+.appearance-segmented + .appearance-segmented { margin-top: var(--space-3); }
+
+/* "Standard only on the default theme" — sits after the locked chips */
+.appearance-segmented__hint {
+  margin-left: var(--space-3);
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 
 .appearance-segmented__chip {
@@ -7185,7 +7211,7 @@ html[data-theme="gold"][data-contrast="high"] {
   margin: 0 0 var(--space-4) 0;
 }
 
-.appearance-editor__section-label {
+.appearance-editor__heading {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -7207,13 +7233,7 @@ html[data-theme="gold"][data-contrast="high"] {
   line-height: 1.5;
 }
 
-/* ── Role chips ── */
-.appearance-roles {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-
+/* ── Role chips (row layout: .appearance-role-row, below) ── */
 .appearance-role {
   -webkit-appearance: none;
   appearance: none;
@@ -7339,8 +7359,13 @@ html[data-theme="gold"][data-contrast="high"] {
   opacity: 0;
 }
 
-.appearance-save--visible {
+/* Class toggled by appearanceScreen.flashSaved() (1.6s). Fade in/out is
+   opacity-only under caps-motion; snaps without it. */
+.appearance-save--show {
   opacity: 1;
+}
+html.caps-motion .appearance-save {
+  transition: opacity var(--dur-short3) var(--ease-standard);
 }
 
 /* ===================================================================
@@ -7426,6 +7451,29 @@ html[data-theme="gold"][data-contrast="high"] {
 /* --- editor role row --- */
 .appearance-role-row { display: flex; flex-direction: row; flex-wrap: wrap; }
 .appearance-role-row > * { margin-right: 6px; margin-bottom: 6px; }
+
+/* --- text hardening: mock titles/subtitles truncate on one line inside the
+   ~560px stage instead of pushing the rail/buttons out of the card --- */
+.appearance-stage .il-hero__title,
+.appearance-stage .detail-movie-title,
+.appearance-stage .player-now-playing-title,
+.appearance-stage .player-now-playing-subtitle,
+.appearance-stage .gt-list-item__label,
+.appearance-stage .gt-list-item__sublabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appearance-stage .player-meta-header__info,
+.appearance-stage .appearance-detail-info,
+.appearance-stage .gt-list-item__main { min-width: 0; }
+
+/* --- theme / contrast switch: the mock is rebuilt so the new palette
+   cascades; it fades in (opacity only) under caps-motion and snaps without.
+   No colour/layout properties animate (Chrome 53 compositor budget). --- */
+@keyframes appearance-mock-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+html.caps-motion .appearance-stage > * {
+  animation: appearance-mock-in var(--dur-short3) var(--ease-standard-decelerate) both;
+}
 
 /* ── Reduced motion — one policy for the whole app ─────────────────────────
    Removes spatial movement and keeps opacity/state feedback:
