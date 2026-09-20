@@ -28,7 +28,7 @@ behaviour changes.
 | Screen | Role |
 |---|---|
 | `playerScreen.js` | Playback overlay: transport, seek + storyboard preview, quality/audio/subtitle menus, skip markers |
-| `detailScreen.js` | Metadata: seasons/episodes, related, file details, connection probe, watch status, refresh/scan |
+| `detailScreen.js` | Metadata: seasons/episodes, related, cast, watch status, overflow menu (no connection probe — its CSS was dead and removed 2026-09-20) |
 | `homeScreen.js` | Promoted-hub rows + pivots (Home/TV/Films/Search) |
 | `libraryScreen.js` | Browse a library section with sidebar; "Scan for new media" |
 | `settingsScreen.js` | Network (LAN/remote), playback quality, user/server management |

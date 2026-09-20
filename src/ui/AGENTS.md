@@ -35,9 +35,10 @@ strategy changes, or a new shared component/modal is added.
   NOT webOS5+. It stays smooth only because animations are transform/opacity-only
   (never layout/paint). `motionCursor.js` in [../platform](../platform/AGENTS.md)
   is a *separate* thing — the Magic Remote pointer, not focus scale.
-- **Poster images fall back to ultrablur.** `posterImages.js` decodes/caches art;
-  on error it uses the blurred background fallback ([../plex](../plex/AGENTS.md)
-  `ultrablur.js`).
+- **Missing or failed poster art shows a blank surface tile.** `posterImages.js`
+  decodes/caches art; on error the wrap gets `card-poster-wrap--no-art` (the
+  `<img>` stays hidden). It never falls back to ultrablur — that is the hero
+  backdrop's blur, not a poster fallback.
 
 ## Rail / carousel movement (`focus.js` `scrollFocusedIntoView`)
 
@@ -68,7 +69,7 @@ Rail**. The code seams:
 | File | Role |
 |---|---|
 | `focus.js` | Spatial D-pad nav engine, focusable `WeakMap` cache, rail/feed scroll + anchoring |
-| `posterImages.js` | Art/thumb decode + cache, ultrablur fallback on error |
+| `posterImages.js` | Art/thumb decode + cache; on error the wrap gets `card-poster-wrap--no-art` (blank surface tile) |
 | `resumeChoice.js` | Resume-vs-restart modal for in-progress media |
 | `pinEntry.js` | PIN entry input |
 | `loadingOverlay.js` | Full-screen loading spinner |

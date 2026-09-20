@@ -212,7 +212,7 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 - **Source:** [Material 3 Motion](https://m3.material.io/styles/motion) easing + duration specs, reconciled to the Chrome 53 / webOS 4 floor. M3's true "emphasized" curve is a two-part spline delivered via CSS `linear()` (Chrome 113+); on our floor it is approximated with the closest single `cubic-bezier`. cubic-bezier + custom props predate Chrome 53 → no `/* chrome53-ok */` marker needed.
 - **THE RULE (non-negotiable):** animate **`transform` + `opacity` only** — the compositor-only properties. Never animate layout (width/height/margin/top/left) or paint (box-shadow/background/filter-blur) per frame. This is what holds 60fps on the B8. (History: [[caps-motion-gate-bug]] — a firmware misread once over-animated with big-blur shadows.)
 - **Timing discipline:** enter **decelerates**, exit **accelerates**, and **exit is shorter than enter**. Cap at `--dur-medium2` (300ms) — at 10-foot distance M3's 450–600ms "long" durations feel sluggish.
-- **No JS/rAF spring integrators on the baseline tier** — per-frame style writes contend with the `focus.js` scroll glide → dropped frames. "Spring feel" = the `--ease-spring` overshoot bezier + `transition-delay` stagger, transform/opacity only.
+- **No JS/rAF spring integrators on the baseline tier** — per-frame style writes contend with the `focus.js` scroll glide → dropped frames. "Spring feel" (if ever needed) = a baked overshoot bezier + `transition-delay` stagger, transform/opacity only; no such token exists today (the unused `--ease-spring` was removed 2026-09-20).
 - **Reduced motion (one policy, 2026-09-20):** a single `@media (prefers-reduced-motion: reduce)` block at the end of `app.css` removes spatial movement and keeps opacity/state feedback — animated transforms (focus scale/lift, seek thumb, radio dot) get `transition: none` (the state still shows, it just snaps); slide-in keyframes (`row-section-enter`, `gt-sheet-in`, `gt-drawer-right-in`, `navLabelIn`) swap to the opacity-only `gt-overlay-in` at their own duration; the PIN shake is dropped; the nav rail width snaps; `focus.js` makes the scroll glide instant. Fades (screen enter, scrim, overlays, splash, poster load) and the spinner stay. Add new motion to that block, never a second per-component `prefers-reduced-motion` rule. Chrome 53 predates the query (Chrome 74+), so the B8 never matches it.
 - **Ratified paint-property exceptions:** focus pill inversion (`.btn`, player pills, `.browsing-hub-item` — `background`/`color` at `--focus-motion-dur`) and the overlay-screen nav rail `width` slide. Everything else is transform/opacity.
 
@@ -226,7 +226,6 @@ Coincidentally-equal values that are **deliberately not coupled** (distinct comp
 | `--ease-emphasized` | `cubic-bezier(0.2,0,0,1)` | hero/expressive (single-bezier stand-in for the M3 spline) |
 | `--ease-emphasized-decelerate` | `cubic-bezier(0.05,0.7,0.1,1)` | emphasized enter (sheets/drawers) |
 | `--ease-emphasized-accelerate` | `cubic-bezier(0.3,0,0.8,0.15)` | emphasized exit |
-| `--ease-spring` | `cubic-bezier(0.2,0,0,1.2)` | baked overshoot for discrete pops (detail `•••` menu) — NEVER a JS spring on B8 |
 
 **Duration tokens** (`:root`):
 

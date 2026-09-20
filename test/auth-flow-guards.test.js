@@ -78,7 +78,7 @@ test('jellyfin login: field-level errors, busy guards, stale-address guard', fun
   assert.match(loginSrc, /if \(connecting\) return/);
   assert.match(loginSrc, /if \(signingIn\) return/);
   assert.match(loginSrc, /gen !== addressGen/);
-  assert.match(css, /\.jellyfin-login \.login-field--error \.login-field__btn \{ border-color: var\(--color-error-light\); \}/);
+  assert.match(css, /\.jellyfin-login \.login-field--error \.login-field__btn \{ border-color: var\(--color-error\); \}/);
   assert.match(css, /html\.caps-motion \.jellyfin-login \.login-step\.is-active \{\s*animation: gt-sheet-in var\(--dur-short4\) var\(--ease-standard-decelerate\)/);
 });
 

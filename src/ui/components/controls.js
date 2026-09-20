@@ -468,7 +468,7 @@ function openTextInputModal(opts) {
     inputWrap.appendChild(label);
   }
   var input = document.createElement('input');
-  input.type = 'text';
+  input.type = opts.secret ? 'password' : 'text';
   input.className = 'tv-text-input';
   input.autocomplete = 'off';
   input.setAttribute('autocorrect', 'off');

@@ -9,6 +9,7 @@ import { profileKey } from '../../watchlists/store.js';
 import { renderHubRow } from '../components/hubRow.js';
 import { prepareFeedForRender, homeFeedErrorMessage } from './homeFeedRender.js';
 import { formatDuration } from '../format.js';
+import { renderRowSkeletons } from './screenStates.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
@@ -228,20 +229,6 @@ function homeScreen(root, params, navigate) {
     focusFirstFeedCardIfNeeded();
   }
 
-  function renderRowSkeletons(el, count) {
-    var i;
-    el.innerHTML = '';
-    for (i = 0; i < count; i++) {
-      var section = document.createElement('div');
-      section.className = 'row-section row-skeleton';
-      section.innerHTML =
-        '<p class="row-label row-skeleton-label"></p>' +
-        '<div class="row-scroll row-skeleton-scroll">' +
-        '<div class="row-skeleton-card"></div>'.repeat(8) +
-        '</div>';
-      el.appendChild(section);
-    }
-  }
 
   screen.addEventListener('focusin', function (e) {
     var card = e.target && e.target.closest ? e.target.closest('.media-card') : null;

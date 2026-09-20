@@ -316,7 +316,7 @@ function jellyfinLoginScreen(root, params, navigate) {
 
   $('jf-password').addEventListener('click', function () {
     openTextInputModal({
-      variant: 'auth', title: 'Password', defaultValue: password, confirmLabel: 'Set',
+      variant: 'auth', title: 'Password', defaultValue: password, confirmLabel: 'Set', secret: true,
       onConfirm: function (val) {
         password = val;
         setFieldValue($('jf-password'), val ? '••••••••' : '', 'Enter password');

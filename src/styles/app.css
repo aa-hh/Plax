@@ -137,7 +137,6 @@
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1); /* single-bezier stand-in for M3 emphasized spline */
   --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
   --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
-  --ease-spring: cubic-bezier(0.2, 0, 0, 1.2); /* baked overshoot — NOT a JS spring (B8 budget) */
   --dur-short2: 100ms;
   --dur-short3: 150ms;
   --dur-short4: 200ms;
@@ -1735,19 +1734,19 @@ html.caps-motion .media-grid--enter {
    caps-motion-gated — without the class the poster simply appears). */
 .card-poster-wrap img.poster,
 .detail-poster,
-.detail-episode-art {
+.detail-episode-v2-art {
   opacity: 0;
 }
 
 html.caps-motion .card-poster-wrap img.poster,
 html.caps-motion .detail-poster,
-html.caps-motion .detail-episode-art {
+html.caps-motion .detail-episode-v2-art {
   transition: opacity var(--dur-short4) var(--ease-standard-decelerate);
 }
 
 .card-poster-wrap img.poster.poster--loaded,
 .detail-poster.poster--loaded,
-.detail-episode-art.poster--loaded {
+.detail-episode-v2-art.poster--loaded {
   opacity: 1;
 }
 
@@ -2016,7 +2015,7 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 }
 
 .watch-status-error {
-  color: var(--color-error-light);
+  color: var(--color-error);
 }
 
 /* ── Horizontal rows (home, detail) ── */
@@ -2245,7 +2244,8 @@ html.caps-motion .screen-home .home-feed .row-scroll .media-card:first-child .ca
 
 /* No art on the server: the shared poster fade keeps an unbound <img> at
    opacity 0, so show the surface placeholder instead of an invisible box. */
-.detail-poster.poster--missing {
+.detail-poster.poster--missing,
+.detail-episode-v2-art.poster--missing {
   opacity: 1;
 }
 
@@ -3736,7 +3736,7 @@ html.caps-motion .player-skip-intro-prompt {
 .player-status--error {
   font-size: 24px;
   font-weight: 600;
-  color: var(--color-error-light);
+  color: var(--color-error);
 }
 
 .player-overlay--playback-error .player-meta-header,
@@ -3925,7 +3925,10 @@ html.caps-motion .player-skip-intro-prompt {
   border: none;
   pointer-events: none;
   transform: scale(0.643);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+html.caps-motion .player-seek-thumb {
+  transition: transform var(--dur-short2) var(--ease-standard); /* shadow snaps: paint prop */
 }
 
 .player-seek-bar:focus .player-seek-thumb,
@@ -5293,7 +5296,7 @@ video.native-player.subtitle-no-bg ::cue {
 /* .watch-status-error is declared earlier at equal specificity, so on its own
    it lost to the muted colour above and errors rendered grey. */
 .status-msg.watch-status-error {
-  color: var(--color-error-light);
+  color: var(--color-error);
 }
 
 /* Error variant + the D-pad-reachable retry that follows it
@@ -5467,7 +5470,7 @@ html.caps-motion .loading-overlay {
   margin: 0 0 24px;
   padding: 18px 22px;
   border-radius: var(--radius-md);
-  border-left: 4px solid var(--warning);
+  border: 1px solid var(--warning);
   background: var(--warning-bg);
   font-size: var(--font-meta);
   line-height: 1.5;
@@ -5487,7 +5490,7 @@ html.caps-motion .loading-overlay {
   background: var(--danger-bg);
 }
 
-.direct-play-notice.direct-play-blocked strong { color: var(--color-error-light); }
+.direct-play-notice.direct-play-blocked strong { color: var(--color-error); }
 
 .direct-play-auto-hint {
   margin: 0 0 14px;
@@ -5935,10 +5938,10 @@ html.caps-motion .gt-switch__knob { transition: transform var(--dur-short2) var(
   color: var(--text-secondary);
   overflow-wrap: break-word;   /* quotes the typed URL */
 }
-.gt-settings-editor__msg--error { color: var(--color-error-light); }
+.gt-settings-editor__msg--error { color: var(--color-error); }
 .gt-settings-editor__msg--ok { color: var(--success); }
 .gt-settings-editor .tv-text-input[aria-invalid="true"],
-.gt-settings-editor .tv-text-input[aria-invalid="true"]:focus { border-color: var(--color-error-light); }
+.gt-settings-editor .tv-text-input[aria-invalid="true"]:focus { border-color: var(--color-error); }
 /* Editor reveal (read row → inline editor): a short fade + rise, transform/opacity
    only, decelerating. Closing snaps back to the read row (exit shorter than enter).
    `hidden` toggles display, so the animation restarts on every open. */
@@ -6214,11 +6217,11 @@ html.caps-motion .gt-list-item:focus {
 }
 /* Validation error lives under its field (value preserved); the outline goes
    red at rest and blue again while focused (the :focus rule above outranks it). */
-.jellyfin-login .login-field--error .login-field__btn { border-color: var(--color-error-light); }
+.jellyfin-login .login-field--error .login-field__btn { border-color: var(--color-error); }
 .jellyfin-login .login-field__error {
   font-size: var(--font-meta);
   line-height: 1.35;
-  color: var(--color-error-light);
+  color: var(--color-error);
 }
 .jellyfin-login .login-field__error[hidden] { display: none; }
 .jellyfin-login .login-actions {
