@@ -841,6 +841,15 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
   padding-top: 28px;
   padding-bottom: 26px;
 }
+/* Feed empty / error state: message + the "Try again" button (a plain .btn so it
+   gets the shared focus inversion). Fades in under caps-motion, snaps without. */
+.home-feed-retry {
+  margin-top: var(--space-5);
+}
+html.caps-motion .home-feed > .status-msg,
+html.caps-motion .home-feed > .home-feed-retry {
+  animation: screen-enter-fade var(--dur-short4) var(--ease-standard-decelerate);
+}
 
 .browsing-hub-nav-host {
   flex-shrink: 0;
@@ -1122,7 +1131,11 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(n
   height: 23.32vw; /* 16:9 of (gt-col-5 + safe-x) */
   background-size: cover;
   background-position: top right;
-  transition: opacity 0.35s ease;
+}
+/* Crossfade between the two backdrop layers (opacity only). Gated: without
+   caps-motion the swap is a hard cut. */
+html.caps-motion .il-hero__backdrop {
+  transition: opacity var(--dur-medium2) var(--ease-standard);
 }
 .il-hero__backdrop--a { opacity: 1; }
 .il-hero__backdrop--b { opacity: 0; }
@@ -1152,6 +1165,11 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(n
   left: var(--pad-screen-x);
   width: 42%;
 }
+/* Missing type/year/rating: an empty line must not leave its margin behind. */
+.il-hero__label:empty,
+.il-hero__meta:empty {
+  display: none;
+}
 .il-hero__label {
   font-size: var(--gt-label);
   font-weight: var(--gt-weight-label);
@@ -1168,8 +1186,13 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(n
   color: var(--text-primary);
   margin: 0 0 12px;
   overflow: hidden;
-  /* 2-line cap without line-clamp (Chrome 53) */
-  max-height: 122px;
+  /* 2-line cap via -webkit-line-clamp (same pattern as .detail-cast-name); break-word so
+     an unspaced CJK or 120-char title wraps instead of clipping sideways. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 .il-hero__meta {
   font-size: var(--gt-body);
@@ -1186,7 +1209,11 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(n
   color: var(--text-secondary);
   margin: 0;
   overflow: hidden;
-  max-height: 110px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
   opacity: 1;
   transition: opacity var(--dur-short4) var(--ease-standard);
 }
@@ -1631,18 +1658,33 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(n
   transform-origin: center;
 }
 
-/* Poster artwork: skeleton/placeholder visible until load, then 200ms fade-in */
+/* Poster artwork: transparent until decoded, then a 200ms fade-in (opacity only,
+   caps-motion-gated — without the class the poster simply appears). */
 .card-poster-wrap img.poster,
 .detail-poster,
 .detail-episode-art {
   opacity: 0;
-  transition: opacity 200ms ease;
+}
+
+html.caps-motion .card-poster-wrap img.poster,
+html.caps-motion .detail-poster,
+html.caps-motion .detail-episode-art {
+  transition: opacity var(--dur-short4) var(--ease-standard-decelerate);
 }
 
 .card-poster-wrap img.poster.poster--loaded,
 .detail-poster.poster--loaded,
 .detail-episode-art.poster--loaded {
   opacity: 1;
+}
+
+/* No artwork (item has no thumb, or the fetch failed): the <img> stays hidden and
+   the wrap paints a blank surface tile — never a see-through hole or the browser's
+   broken-image glyph. Class set by mediaCard.js / posterImages.js. */
+.card-poster-wrap--no-art {
+  background: var(--bg-surface);
+  background-clip: padding-box; /* stay inside the transparent focus-ring border */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .card-text {
@@ -1734,7 +1776,7 @@ html.caps-motion .media-card .card-poster-wrap {
      focus ring (box-shadow) applies instantly — cheap, and not animated. */
   transition: transform var(--focus-motion-dur) var(--ease-standard);
 }
-
+/* Reduced motion: the ring still snaps on; only the scale tween is dropped. */
 html.caps-motion .media-card:focus .card-poster-wrap {
   transform: scale(var(--focus-scale));
 }
@@ -6026,6 +6068,7 @@ html.caps-motion .screen-host--enter {
 html.caps-motion .row-section--enter {
   animation: row-section-enter var(--dur-medium1) var(--ease-standard-decelerate) backwards;
 }
+/* Reduced motion: keep the fade (state feedback), drop the 16px rise. */
 /* Rich tier graduates the same reveal — a touch longer for a more luxurious
    cascade on engines with the headroom (the B8 keeps the snappier 250ms). */
 html.caps-motion-rich .row-section--enter {
