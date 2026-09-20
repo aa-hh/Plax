@@ -113,3 +113,17 @@ prompts and UI-file edits. The registry is the single source of truth.
 - [docs/caching-and-buffering.md](docs/caching-and-buffering.md) — cache TTLs + rebuffer policy
 - [docs/screen-review-playbook.md](docs/screen-review-playbook.md) — route-by-route QA checklist
 - [docs/perf-budgets.md](docs/perf-budgets.md) — bundle/frame/memory budgets
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as markdown files under `.scratch/<feature>/` in this repo — not GitHub Issues. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+The five default roles, each label string equal to its name, recorded as a `Status:` line in each issue file. See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context. [CONTEXT.md](CONTEXT.md) at the repo root is the term glossary — read it before naming anything in an issue, test, or proposal. [docs/adr/](docs/adr/) holds the decision records. See [docs/agents/domain.md](docs/agents/domain.md).
