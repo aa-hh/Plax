@@ -110,6 +110,9 @@ var OVERLAY_HIDE_MS = 3000;
 var SEEK_COMMIT_DEBOUNCE_MS = 300;
 var SCRUB_STEP_MS = 10000;
 var SCRUB_PREVIEW_APPLY_MS = 80;
+/* A stall shorter than this never shows the buffering scrim — HLS segment
+   boundaries fire waiting→playing within ~100ms and the full-screen dim flickers. */
+var BUFFERING_SHOW_DELAY_MS = 250;
 
 function formatTime(ms) {
   var s = Math.floor(ms / 1000);
@@ -397,6 +400,8 @@ function playerScreen(root, params, navigate) {
   // each new play attempt (playUrl).
   var firstFrameSeen = false;
   var clientSubtitleDeferTimer = null;
+  var bufferingShowTimer = null;
+  var bufferingShown = false;
   var seekCommitTimer = null;
   var seekCommitPendingMs = null;
   var autoplayCountdown = createAutoplayCountdown({
@@ -472,7 +477,7 @@ function playerScreen(root, params, navigate) {
     showPlaybackRetry(true);
     awaitingPrepareOverlay = false;
     hideLoadingOverlay();
-    hideBuffering();
+    setBufferingIndicator(false);
 
     var retryBtn = document.getElementById('btn-playback-retry');
     if (retryBtn && document.activeElement !== retryBtn) {
@@ -673,6 +678,9 @@ function playerScreen(root, params, navigate) {
     if (isMotionCursorVisible()) return;
     if (!overlayVisible || menuOpen || infoPanelVisible || mediaInfoOpen) return;
     if (autoplayPanel && !autoplayPanel.hidden) return;
+    // Playback failed: the message + Retry live in the overlay, so it must stay
+    // up until the user retries or backs out — never auto-hide the recovery.
+    if (playbackRetryVisible) return;
     overlayHideTimer = setTimeout(function () {
       setOverlayVisible(false);
       focusSkipIntroPromptIfActive();
@@ -981,8 +989,13 @@ function playerScreen(root, params, navigate) {
   function clearAutoplayCountdown() {
     autoplayCountdown.clear();
     clearCreditsButtonFill();
+    var focusWasInPanel = !!(autoplayPanel && !autoplayPanel.hidden &&
+      autoplayPanel.contains(document.activeElement));
     if (autoplayPanel) autoplayPanel.hidden = true;
     syncPlayerChromeFocusable();
+    // The panel's buttons just went display:none; don't leave focus on a dead
+    // node (it collapses to <body>) — re-home to play/pause.
+    if (focusWasInPanel && !destroyed && overlayVisible) focusOverlayDefault();
   }
 
   function resetCreditsAutoplayState() {
@@ -1024,6 +1037,13 @@ function playerScreen(root, params, navigate) {
     syncPlayerChromeFocusable();
     setOverlayVisible(true);
     clearOverlayHideTimer();
+    invalidateFocusableCache();
+    // The transport is focus-trapped (tabindex -1) while the prompt is up, so
+    // land the D-pad on "Play now": OK advances, DOWN/RIGHT reaches Cancel.
+    var playNowBtn = document.getElementById('btn-autoplay-play');
+    if (playNowBtn) {
+      try { playNowBtn.focus(); } catch (err) { /* ignore */ }
+    }
     function renderCountdown(remaining) {
       if (!textEl) return;
       var label = queue.formatNextUpLabel(nextItem);
@@ -1308,6 +1328,9 @@ function playerScreen(root, params, navigate) {
       listEl.appendChild(btn);
     });
     updateMenuChevrons();
+    // The option list was just rebuilt — drop the focusable cache so the focus
+    // engine's fallbacks (focusFirst, watchdog) don't hold removed rows.
+    invalidateFocusableCache();
     var cancelBtn = document.getElementById('btn-menu-cancel');
     var selectedBtn = listEl.querySelector('.player-menu-option--active');
     if (selectedBtn) {
@@ -1496,13 +1519,36 @@ function playerScreen(root, params, navigate) {
     if (overlayVisible) scheduleOverlayHide();
   }
 
-  player.onBuffering(function (show) {
-    if (show) {
-      tvLog('playback', 'buffering');
-      showBuffering('Buffering…');
-    } else {
-      hideBuffering();
+  function clearBufferingShowTimer() {
+    if (bufferingShowTimer) {
+      clearTimeout(bufferingShowTimer);
+      bufferingShowTimer = null;
     }
+  }
+
+  // Debounced buffering scrim: show only after BUFFERING_SHOW_DELAY_MS of
+  // continuous stall (sub-250ms stalls never flash it); hide immediately.
+  function setBufferingIndicator(show) {
+    if (show) {
+      if (bufferingShown || bufferingShowTimer) return;
+      bufferingShowTimer = setTimeout(function () {
+        bufferingShowTimer = null;
+        if (destroyed) return;
+        bufferingShown = true;
+        showBuffering('Buffering…');
+      }, BUFFERING_SHOW_DELAY_MS);
+      return;
+    }
+    clearBufferingShowTimer();
+    if (!bufferingShown) return;
+    bufferingShown = false;
+    hideBuffering();
+  }
+
+  player.onBuffering(function (show) {
+    if (destroyed) return;
+    if (show) tvLog('playback', 'buffering');
+    setBufferingIndicator(show);
   });
 
   player.onRebufferTimeout(function () {
@@ -1511,6 +1557,7 @@ function playerScreen(root, params, navigate) {
     if (!canAutoFallback()) {
       setPlayerMessage(formatDirectPlayOnlyError(currentProbe) +
         ' Buffering with no transcode fallback.');
+      setOverlayVisible(true);
       return;
     }
     var rebufferStep = decideRebufferFallback(fallbackState, playbackFallbackContext({
@@ -1529,6 +1576,8 @@ function playerScreen(root, params, navigate) {
       return;
     }
     setPlayerMessage('Slow buffering — check network or lower quality in Settings.');
+    // The status line lives in the overlay; surface it (auto-hide re-arms as usual).
+    setOverlayVisible(true);
   });
 
   function updateNextUpUi() {
@@ -1694,6 +1743,11 @@ function playerScreen(root, params, navigate) {
         var img = document.createElement('img');
         img.alt = '';
         img.decoding = 'async';
+        // A broken frame (missing/expired index image) collapses to time-only
+        // rather than an empty dark box under the timestamp.
+        img.onerror = function () {
+          if (img.parentNode === scrubPreviewThumbEl) scrubPreviewThumbEl.hidden = true;
+        };
         img.src = preview.imageUrl;
         scrubPreviewThumbEl.appendChild(img);
       }
@@ -1751,7 +1805,11 @@ function playerScreen(root, params, navigate) {
   function updateSeekUi(scrubbing) {
     var dur = getDurationMs();
     var cur = getScrubMs();
-    var pct = dur > 0 ? Math.min(100, Math.max(0, (cur / dur) * 100)) : 0;
+    // getDurationMs() returns 1 when neither the element nor the metadata knows
+    // the length yet — don't render that as a 100% full bar / "0:00" total.
+    var durationKnown = dur > 1;
+    var pct = durationKnown ? Math.min(100, Math.max(0, (cur / dur) * 100)) : 0;
+    var totalText = durationKnown ? formatTime(dur) : '--:--';
     var fill = document.getElementById('progress-fill');
     var thumb = document.getElementById('seek-thumb');
     if (fill) fill.style.width = pct + '%';
@@ -1763,9 +1821,9 @@ function playerScreen(root, params, navigate) {
     var elapsedEl = document.getElementById('player-time-elapsed');
     var totalEl = document.getElementById('player-time-total');
     if (elapsedEl) elapsedEl.textContent = formatTime(cur);
-    if (totalEl) totalEl.textContent = formatTime(dur);
+    if (totalEl) totalEl.textContent = totalText;
     if (seekBar) {
-      seekBar.setAttribute('aria-valuetext', formatTime(cur) + ' of ' + formatTime(dur));
+      seekBar.setAttribute('aria-valuetext', formatTime(cur) + ' of ' + totalText);
     }
     updateScrubPreviewUi(scrubbing, cur, dur);
     updateMarkerSkipUi();
@@ -2696,6 +2754,23 @@ function playerScreen(root, params, navigate) {
 
   document.addEventListener('keydown', handlePlayerEnter, true);
 
+  // Hidden overlay + D-pad arrow = wake the controls (JetStream: any activity
+  // re-shows and re-arms). The press is consumed so it only wakes; it never
+  // also moves focus among the still-invisible controls. Modals/prompts own
+  // their keys, so skip when one is up.
+  function handlePlayerArrowWake(e) {
+    if (overlayVisible || destroyed) return;
+    var key = e.keyCode;
+    if (key !== 37 && key !== 38 && key !== 39 && key !== 40) return;
+    if (menuOpen || mediaInfoOpen || infoPanelVisible) return;
+    setOverlayVisible(true);
+    focusOverlayDefault();
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+
+  document.addEventListener('keydown', handlePlayerArrowWake, true);
+
   function onMotionCursorShow() {
     setOverlayVisible(true);
     clearOverlayHideTimer();
@@ -2850,28 +2925,34 @@ function playerScreen(root, params, navigate) {
         clearTimeout(seekCommitTimer);
         seekCommitTimer = null;
       }
+      clearBufferingShowTimer();
+      bufferingShown = false;
       hideScrubPreview();
       resetScrubPreviewSource();
       firstFrameWaiters = [];
       awaitingPrepareOverlay = false;
       resetBufferingOverlay();
       if (detachAppBackground) detachAppBackground();
+      // Input listeners go NOW, not after the async progress flush below —
+      // otherwise a Back/OK/arrow pressed during the flush still reaches this
+      // dead screen (double navigate, focus into a removed overlay).
+      detachRemote();
+      detachFocus();
+      document.removeEventListener('keydown', onTrackModalKeyDown, true);
+      document.removeEventListener('keydown', onMediaInfoModalKeyDown, true);
+      document.removeEventListener('keydown', handlePlayerBack, true);
+      document.removeEventListener('keydown', handlePlayerEnter, true);
+      document.removeEventListener('keydown', handlePlayerArrowWake, true);
+      document.removeEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);
+      document.removeEventListener(MOTION_CURSOR_HIDE_EVENT, onMotionCursorHide);
+      document.removeEventListener('mousemove', onPointerWake);
+      document.removeEventListener('mousedown', onPointerWake);
 
       function teardown() {
         player.clearListeners();
         player.stop({ skipTimeline: true });
         session = null;
         queue.reset();
-        detachRemote();
-        detachFocus();
-        document.removeEventListener('keydown', onTrackModalKeyDown, true);
-        document.removeEventListener('keydown', onMediaInfoModalKeyDown, true);
-        document.removeEventListener('keydown', handlePlayerBack, true);
-        document.removeEventListener('keydown', handlePlayerEnter, true);
-        document.removeEventListener(MOTION_CURSOR_SHOW_EVENT, onMotionCursorShow);
-        document.removeEventListener(MOTION_CURSOR_HIDE_EVENT, onMotionCursorHide);
-        document.removeEventListener('mousemove', onPointerWake);
-        document.removeEventListener('mousedown', onPointerWake);
         overlay.remove();
       }
 
