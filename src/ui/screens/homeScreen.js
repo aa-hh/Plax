@@ -7,7 +7,8 @@ import { resolveWatchlistItems, watchlistToHubRow, queueToHubRow } from '../../w
 import { getQueueItems, CHANGED_EVENT as USERQUEUE_CHANGED_EVENT } from '../../playback/userQueue.js';
 import { profileKey } from '../../watchlists/store.js';
 import { renderHubRow } from '../components/hubRow.js';
-import { prepareFeedForRender } from './homeFeedRender.js';
+import { prepareFeedForRender, homeFeedErrorMessage } from './homeFeedRender.js';
+import { formatDuration } from '../format.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
 import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
@@ -55,7 +56,6 @@ function homeScreen(root, params, navigate) {
   var renderToken = 0;
   var activeHubId = (params && params.hub) || 'home';
   var hubNavHost = screen.querySelector('#browsing-hub-nav-host');
-  var hubTitleEl = screen.querySelector('#home-hub-title');
 
   // ── Immersive List hero state ──────────────────────────────────────────────
   var ilHeroEl    = screen.querySelector('#il-hero');
@@ -94,12 +94,7 @@ function homeScreen(root, params, navigate) {
     var parts = [];
     if (item.year) parts.push(String(item.year));
     if (item.contentRating) parts.push(item.contentRating);
-    if (item.duration) {
-      var mins = Math.round(item.duration / 60000);
-      var h = Math.floor(mins / 60);
-      var m = mins % 60;
-      parts.push(h > 0 ? h + 'h ' + m + 'm' : m + 'm');
-    }
+    if (item.duration) parts.push(formatDuration(item.duration));
     if (item.genre) parts.push(typeof item.genre === 'string' ? item.genre : (item.Genre && item.Genre[0] && item.Genre[0].tag) || '');
     return parts.filter(Boolean).join('  ·  ');
   }
@@ -113,10 +108,14 @@ function homeScreen(root, params, navigate) {
     ilOverview.textContent = item.summary || '';
 
     var url = ilBuildArtUrl(item);
-    if (!url) return;
-
     var next = ilSide === 'a' ? ilBackdropB : ilBackdropA;
     var curr = ilSide === 'a' ? ilBackdropA : ilBackdropB;
+    if (!url) {
+      // No art for this title: fade the previous card's backdrop out instead of
+      // leaving it under the new title (the hero's surface-dim shows through).
+      curr.style.opacity = '0';
+      return;
+    }
 
     // Guard the swap with the current hero token so a slow image that resolves
     // after the user has moved on can't flash a stale backdrop, and so onerror/
@@ -134,9 +133,14 @@ function homeScreen(root, params, navigate) {
     }
     var img = new Image();
     img.onload = commit;
-    // A failed/slow art fetch must never leave the crossfade half-applied or
-    // block the next one — drop it silently (the previous backdrop stays).
-    img.onerror = function () { settled = true; };
+    // A failed art fetch must never leave the crossfade half-applied or block
+    // the next one — settle it and drop the previous card's backdrop so the
+    // new title never wears the old art.
+    img.onerror = function () {
+      if (settled || destroyed || swapTok !== ilHeroToken) return;
+      settled = true;
+      curr.style.opacity = '0';
+    };
     // Hard ceiling: if neither load nor error fires (B8 can stall on a slow
     // transcode), release the swap so a later focus can start fresh.
     setTimeout(function () { if (!settled) settled = true; }, 6000);
@@ -166,10 +170,6 @@ function homeScreen(root, params, navigate) {
   });
   activeHubId = hubNav.activeId;
 
-  function setHubTitle(label) {
-    if (hubTitleEl) hubTitleEl.textContent = label || 'Home';
-  }
-
   function selectHub(item) {
     if (!item) return;
     if (item.id.indexOf('library:') === 0 && item.library) {
@@ -178,7 +178,6 @@ function homeScreen(root, params, navigate) {
     }
     activeHubId = item.id;
     hubNav.setActiveId(activeHubId);
-    setHubTitle(item.label);
     if (item.id === 'home') {
       ilShowHero(false);
       loadHomeHub();
@@ -193,6 +192,40 @@ function homeScreen(root, params, navigate) {
       ilShowHero(false);
       loadLeavingSoonHub();
     }
+  }
+
+  // Empty state. If the re-render dropped focus (it was on a card that is now
+  // gone), land it on the sidebar so the D-pad never sits on <body>.
+  function renderFeedEmpty(el, text) {
+    if (!el) return;
+    el.innerHTML = '';
+    var msg = document.createElement('p');
+    msg.className = 'status-msg';
+    msg.textContent = text;
+    el.appendChild(msg);
+    invalidateFocusableCache();
+    if (!screen.contains(document.activeElement)) hubNav.focusSidebar();
+  }
+
+  // Error state: the problem in plain words + a D-pad-reachable retry. The hero
+  // is hidden so a stale backdrop/title can't sit above the message.
+  function renderFeedError(el, what, err, retry) {
+    if (!el) return;
+    ilShowHero(false);
+    el.innerHTML = '';
+    var msg = document.createElement('p');
+    msg.className = 'status-msg';
+    msg.textContent = 'Could not load ' + what + '. ' + homeFeedErrorMessage(err);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn home-feed-retry';
+    btn.tabIndex = 0;
+    btn.textContent = 'Try again';
+    btn.addEventListener('click', retry);
+    el.appendChild(msg);
+    el.appendChild(btn);
+    invalidateFocusableCache();
+    focusFirstFeedCardIfNeeded();
   }
 
   function renderRowSkeletons(el, count) {
@@ -371,7 +404,7 @@ function homeScreen(root, params, navigate) {
       if (!initialAuto) return;
       sidebar.removeAttribute('data-initial-focus');
     }
-    var card = el.querySelector('.media-card, .row-item, [data-item-index="0"]');
+    var card = el.querySelector('.media-card, .row-item, [data-item-index="0"], .home-feed-retry');
     if (card && card.focus) card.focus();
   }
 
@@ -402,26 +435,18 @@ function homeScreen(root, params, navigate) {
         // empty-state copy: the queue rail can be the only content on Home.
         var hasRenderedRow = !!el.querySelector('.row-section');
         if (!hasInitial && (!rows || !rows.length) && !hasRenderedRow) {
-          el.innerHTML = '<p class="status-msg">No recommendations yet. Browse a library from the sidebar.</p>';
+          renderFeedEmpty(el, 'No recommendations yet. Browse a library from the sidebar.');
         }
       }).catch(function () {});
     }).catch(function (err) {
       if (destroyed || token !== renderToken) return;
-      var el = document.getElementById('home-feed');
-      if (el) {
-        el.innerHTML = '';
-        var msg = document.createElement('p');
-        msg.className = 'status-msg';
-        msg.textContent = 'Could not load home: ' + (err && err.message ? err.message : 'unknown error');
-        el.appendChild(msg);
-      }
+      renderFeedError(document.getElementById('home-feed'), 'Home', err, loadHomeHub);
     });
   }
 
   function loadWatchlistHub() {
     if (!canUseWatchlists(user)) {
-      var denied = document.getElementById('home-feed');
-      if (denied) denied.innerHTML = '<p class="status-msg">Watchlists are not available for this profile.</p>';
+      renderFeedEmpty(document.getElementById('home-feed'), 'Watchlists are not available for this profile.');
       return;
     }
     var token = ++renderToken;
@@ -430,8 +455,7 @@ function homeScreen(root, params, navigate) {
 
     var lists = listWatchlists(user);
     if (!lists.length) {
-      feedEl.innerHTML =
-        '<p class="status-msg">No watchlists yet. Bookmark a movie or episode, or create a list in Settings.</p>';
+      renderFeedEmpty(feedEl, 'No watchlists yet. Bookmark a movie or episode, or create a list in Settings.');
       return;
     }
 
@@ -476,10 +500,14 @@ function homeScreen(root, params, navigate) {
       });
       invalidateFocusableCache();
       if (!hasRows) {
-        el.innerHTML = '<p class="status-msg">Your watchlists are empty. Bookmark titles from detail screens.</p>';
+        renderFeedEmpty(el, 'Your watchlists are empty. Bookmark titles from detail screens.');
       } else {
         primeVisiblePosters(el);
+        focusFirstFeedCardIfNeeded();
       }
+    }).catch(function (err) {
+      if (destroyed || token !== renderToken) return;
+      renderFeedError(document.getElementById('home-feed'), 'your watchlists', err, loadWatchlistHub);
     });
   }
 
@@ -509,30 +537,22 @@ function homeScreen(root, params, navigate) {
       });
       invalidateFocusableCache();
       if (!hasRows) {
-        el.innerHTML =
-          '<p class="status-msg">Nothing is leaving soon. Titles expiring from your libraries will appear here.</p>';
+        renderFeedEmpty(el, 'Nothing is leaving soon. Titles expiring from your libraries will appear here.');
       } else {
         primeVisiblePosters(el);
         focusFirstFeedCardIfNeeded();
       }
-    }).catch(function () {
+    }).catch(function (err) {
       if (destroyed || token !== renderToken) return;
-      var el = document.getElementById('home-feed');
-      if (el) {
-        el.innerHTML =
-          '<p class="status-msg">Nothing is leaving soon. Titles expiring from your libraries will appear here.</p>';
-      }
+      renderFeedError(document.getElementById('home-feed'), 'Leaving Soon', err, loadLeavingSoonHub);
     });
   }
 
   if (activeHubId === 'watchlist') {
-    setHubTitle('Watchlist');
     loadWatchlistHub();
   } else if (activeHubId === 'leavingSoon') {
-    setHubTitle('Leaving Soon');
     loadLeavingSoonHub();
   } else {
-    setHubTitle('Home');
     loadHomeHub();
   }
 
@@ -564,6 +584,7 @@ function homeScreen(root, params, navigate) {
       ilHeroToken += 1;
       if (posterFocusTimer) { clearTimeout(posterFocusTimer); posterFocusTimer = null; }
       if (ilHeroTimer) { clearTimeout(ilHeroTimer); ilHeroTimer = null; }
+      if (ultrablurPrefetchTimer) { clearTimeout(ultrablurPrefetchTimer); ultrablurPrefetchTimer = null; }
       try { abortPrefetch(); } catch (e) { /* ignore */ }
       window.removeEventListener(USERQUEUE_CHANGED_EVENT, onUserQueueChanged);
       detachFocus();

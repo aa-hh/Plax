@@ -175,6 +175,19 @@ function clearPosterReveal(img) {
 function revealPosterImage(img) {
   if (!img || !(img.naturalWidth > 0)) return;
   img.classList.add('poster--loaded');
+  setPosterWrapNoArt(img, false);
+}
+
+/**
+ * Failed/absent artwork: the <img> stays transparent (never the browser's broken
+ * image glyph + alt text) and the poster wrap paints a blank surface tile instead.
+ * Shared by every card path (create, deferred hydrate, viewport hydrate) so the
+ * fallback can't depend on which caller bound the poster.
+ */
+function setPosterWrapNoArt(img, failed) {
+  var wrap = img && img.parentElement;
+  if (!wrap || !wrap.classList || !wrap.classList.contains('card-poster-wrap')) return;
+  wrap.classList.toggle('card-poster-wrap--no-art', !!failed);
 }
 
 /** Fade-in when decode finishes; safe alongside other load handlers (uses addEventListener). */
@@ -237,7 +250,10 @@ function startPosterImageLoad(img, url, opts) {
       revealPosterImage(img);
       // Network load succeeded — capture the bytes for next session.
       persistPosterBlobInBackground(url);
-    } else if (opts.onError) opts.onError();
+    } else {
+      setPosterWrapNoArt(img, true);
+      if (opts.onError) opts.onError();
+    }
   }
 
   // Same-session shortcut: an earlier card already produced a blob URL.

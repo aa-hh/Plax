@@ -4,6 +4,7 @@
  */
 
 import { hydrateRowViewport } from '../posterImages.js';
+import { invalidateFocusableCache } from '../focus.js';
 
 // One card's horizontal advance: 2-column Google TV poster (--row-poster-w:
 // 248px @1920) + the 20dp grid gutter (--row-card-gap: 40px) = 288px pitch.
@@ -81,6 +82,10 @@ function createVirtualRow(container, options) {
       var card = scrollEl.querySelector('[data-item-index="' + activeIdx + '"]');
       if (card && card.focus) card.focus();
     }
+    // The slice was rebuilt: every card node is new. focus.js caches focusables
+    // per container, so without this the D-pad only knows the detached cards
+    // and RIGHT/LEFT dead-ends once a long rail (> maxDom) shifts its window.
+    invalidateFocusableCache();
     // Hydrate posters off the keydown tick — the focus change should commit
     // visually first, image bytes can wait one task.
     setTimeout(function () { hydrateRowViewport(scrollEl); }, 0);

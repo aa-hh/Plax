@@ -236,11 +236,12 @@ function createMediaCard(item, onSelect, options) {
     // creation lets it reveal from cache immediately instead of flashing the
     // placeholder and fading back in.
     if (!options.deferPoster || isPosterLoaded(sizedThumb)) {
-      bindPosterImage(img, sizedThumb, {
-        priority: true,
-        onError: function () { img.style.display = 'none'; }
-      });
+      bindPosterImage(img, sizedThumb, { priority: true });
     }
+  } else {
+    // No artwork at all: show the blank tile now (a load failure adds the same
+    // class from posterImages) so the slot is never a see-through hole.
+    posterWrap.classList.add('card-poster-wrap--no-art');
   }
 
   var status = getWatchStatus(item);
