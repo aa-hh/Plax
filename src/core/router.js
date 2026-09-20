@@ -278,7 +278,13 @@ function showRetainedEntry(entry, perfOn) {
   var startedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
 
   hideOtherHosts(entry);
-  if (entry.host) entry.host.style.display = '';
+  if (entry.host) {
+    // display:none → block restarts CSS animations, so the enter fade that
+    // played when this host was first built would replay on every Back. Strip
+    // the class: retained re-shows snap, per the retention promise.
+    entry.host.classList.remove('screen-host--enter');
+    entry.host.style.display = '';
+  }
   screenInstance = entry.instance;
   if (!entry.shown) {
     entry.shown = true;

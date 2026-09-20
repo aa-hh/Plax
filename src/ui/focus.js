@@ -25,6 +25,16 @@ import { isPerfEnabled, mark as perfMark } from '../perf/resourceMonitor.js';
 // stutters on the B8, the period-correct upgrade is a translate3d track (the
 // Enact approach) — but the app shipped a 220ms rAF glide here without jank.
 var NAV_SCROLL_MS = 150;
+// Reduced motion (app.css policy: remove spatial movement, keep state feedback)
+// → the glide becomes an instant jump. Read once: the OS setting doesn't change
+// mid-session. Chrome 53 predates the media query (Chrome 74+) so the B8 keeps
+// gliding; the simulator/dev browser honour it.
+var prefersReducedMotion = false;
+try {
+  prefersReducedMotion = typeof window !== 'undefined' && !!window.matchMedia &&
+    !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+} catch (e) { /* no matchMedia (tests) — keep the glide */ }
+function glideMs() { return prefersReducedMotion ? 0 : NAV_SCROLL_MS; }
 
 var focusableSelector = 'button, [tabindex], .btn, .card, .nav-item, .library-item, .browsing-hub-item, .row-item, .season-chip, .episode-chip, .detail-setting-chip, .detail-breadcrumb, .detail-breadcrumb-trail__btn, .detail-episode-picker, .detail-link, .detail-file-row, .detail-modal-cancel, .detail-watchlist-btn, .watchlist-row-link, .user-chip, .profile-card, .pin-pad-btn, select, .player-seek-bar, .player-control-pill, .player-stream-pill, .player-menu-option, input.search-input, .search-input';
 
@@ -749,7 +759,7 @@ function scrollHomeRailAnchored(el) {
   if (maxScroll >= 0 && target > maxScroll) target = maxScroll;
   // Same motion as the horizontal carousel: a short glide on capable engines,
   // an instant jump on webOS 4 / Chromium 53 for snappy rail-to-rail movement.
-  smoothScrollVertical(feed, target, NAV_SCROLL_MS);
+  smoothScrollVertical(feed, target, glideMs());
   return true;
 }
 
@@ -800,7 +810,7 @@ function scrollFocusedIntoView(el) {
       target = cardLeft - Math.floor((containerWidth - cardWidth) / 2);
     }
     target = Math.max(0, Math.min(target, rowScroll.scrollWidth - containerWidth));
-    smoothScrollCarousel(rowScroll, target, NAV_SCROLL_MS);
+    smoothScrollCarousel(rowScroll, target, glideMs());
     // Vertical: anchor the rail to its fixed slot on the home feed, else fall
     // back to the edge-margin "camera follows focus" scroll for other lists.
     if (!scrollHomeRailAnchored(el)) scrollNearestVertical(rowScroll);

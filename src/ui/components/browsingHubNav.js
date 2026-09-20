@@ -174,29 +174,6 @@ function focusSidebarHub(host, activeHubId) {
   return true;
 }
 
-// Entry "peek" hint: briefly expand the collapsed rail on a cold landing so the
-// user can see where nav lives, then collapse it. Class hook only — DesignSystem
-// styles --peek to the expanded width with a transition; we just toggle it and
-// remove it after a one-shot delay (cleared if the host goes away first).
-var SIDEBAR_PEEK_MS = 1400;
-
-function playSidebarPeekHint(host) {
-  if (!host) return function () {};
-  // Don't fight an already-focused rail (it's expanded anyway).
-  var hasFocus = typeof host.contains === 'function' && document.activeElement &&
-    host.contains(document.activeElement);
-  if (hasFocus) return function () {};
-  host.classList.add('browsing-hub-nav-host--peek');
-  var timer = setTimeout(function () {
-    timer = null;
-    host.classList.remove('browsing-hub-nav-host--peek');
-  }, SIDEBAR_PEEK_MS);
-  return function cancelPeek() {
-    if (timer) { clearTimeout(timer); timer = null; }
-    host.classList.remove('browsing-hub-nav-host--peek');
-  };
-}
-
 /**
  * Mount Media, Search, and System sidebar sections.
  */
@@ -306,6 +283,5 @@ export {
   refreshHubNavIcons,
   handleHubNavSelect,
   focusSidebarHub,
-  playSidebarPeekHint,
   mountBrowsingHubNav
 };

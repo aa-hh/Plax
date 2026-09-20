@@ -719,8 +719,8 @@ html.caps-motion .detail-watchlist-btn:focus {
   background: var(--bg-base);
   /* Eased slide is cheap here: the rail is an absolute OVERLAY, so growing its
      width reflows only its own ~8 items, never the feed. (In-flow screens snap
-     instantly — see the base rule.) */
-  transition: width 180ms var(--ease-standard);
+     instantly — see the base rule.) Layout prop by ratified exception. */
+  transition: width var(--dur-short4) var(--ease-standard);
 }
 
 /* Expanded-drawer SCRIM (kit modal-drawer anatomy: drawer + Scrim over content,
@@ -749,16 +749,14 @@ html.caps-motion .detail-watchlist-btn:focus {
   pointer-events: none;
   z-index: -1;
 }
-.screen-home .browsing-hub-nav-host--peek::before,
 .screen-home .browsing-hub-nav-host--expanded::before,
-.library-screen .browsing-hub-nav-host--peek::before,
 .library-screen .browsing-hub-nav-host--expanded::before {
   opacity: 1;
 }
 /* Fade is motion-gated; engines without caps-motion just snap the opacity. */
 html.caps-motion .screen-home .browsing-hub-nav-host::before,
 html.caps-motion .library-screen .browsing-hub-nav-host::before {
-  transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity var(--dur-short3) var(--ease-standard);
 }
 .screen-home .home-main {
   margin-left: 0;
@@ -865,19 +863,17 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
      own ~8 items and the animation is essentially free. */
 }
 
-/* Expand to full sidebar when any descendant has focus, or during the
-   one-shot entry "peek" hint (E) so a cold landing reveals where nav lives. */
-/* Expand/collapse is driven by JS classes (--peek, --expanded), NOT :focus-within:
+/* Expand to full sidebar when any descendant has focus. */
+/* Expand/collapse is driven by the JS class --expanded, NOT :focus-within:
    Chrome 53 (webOS 4) can't parse :focus-within and drops the WHOLE rule it's in,
    which previously killed both the expand and the label-hide rules on the B8. */
-.browsing-hub-nav-host--peek,
 .browsing-hub-nav-host--expanded {
   width: var(--nav-rail-w-expanded);
 }
 
 /* Hide labels and section headings when collapsed. */
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item__label,
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-section__title {
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--expanded) .browsing-hub-item__label,
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--expanded) .browsing-hub-section__title {
   display: none;
 }
 
@@ -890,7 +886,7 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
    box regardless of the item's own internal padding) is a 72×72 circle for
    free, and the icon's x position only moves ~2px between collapsed/expanded
    (imperceptible) instead of jumping. */
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--expanded) .browsing-hub-item {
   padding-left: 14px;
   padding-right: 14px;
   justify-content: center;
@@ -899,7 +895,6 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
 /* Drawer-focused brighten (kit: contentColor = drawerHasFocus ? onSurface :
    onSurfaceVariant). Entering the rail (--expanded) lifts every resting item from
    on-surface-variant to on-surface; the focused/selected items override below. */
-.browsing-hub-nav-host--peek .browsing-hub-item,
 .browsing-hub-nav-host--expanded .browsing-hub-item {
   color: var(--gt-text);
 }
@@ -1030,7 +1025,7 @@ html.caps-motion .library-screen .browsing-hub-nav-host::before {
    smooth on Chromium 53 and runs at higher FPS on more capable hardware. Text is
    never GPU-scaled (Chrome 53 blurs stretched text — same rule as text Buttons). */
 html.caps-motion .browsing-hub-item {
-  transition: background-color var(--focus-motion-dur) ease, color var(--focus-motion-dur) ease;
+  transition: background-color var(--focus-motion-dur) var(--ease-standard), color var(--focus-motion-dur) var(--ease-standard);
 }
 
 @keyframes navLabelIn {
@@ -1038,9 +1033,25 @@ html.caps-motion .browsing-hub-item {
   to { opacity: 1; transform: translateX(0); }
 }
 
-html.caps-motion .browsing-hub-nav-host--peek .browsing-hub-item__label,
-html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
-  animation: navLabelIn 160ms cubic-bezier(0.4, 0, 0.2, 1);
+/* Label reveal on expand: short3 (150ms) decelerate, plus a capped sibling
+   stagger (25ms steps, capped at 75ms from the 4th item on) so the ~8 labels
+   read as a list arriving with the rail rather than a single block. Worst
+   case 75 + 150 = 225ms, inside the 300ms cap and under the rail's own
+   width slide. `backwards` keeps a delayed label invisible during its delay
+   (no pre-flash). The brand wordmark shares the reveal so the mark→wordmark
+   swap reads as part of the same motion. */
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label,
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark {
+  animation: navLabelIn var(--dur-short3) var(--ease-standard-decelerate) backwards;
+}
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(2) .browsing-hub-item__label {
+  animation-delay: 25ms;
+}
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(3) .browsing-hub-item__label {
+  animation-delay: 50ms;
+}
+html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item:nth-child(n+4) .browsing-hub-item__label {
+  animation-delay: 75ms;
 }
 
 .watchlist-row-link {
@@ -1411,7 +1422,7 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
      overlay rule; the expanded scrim below carries the fade instead. */
   background: var(--bg-base);
   /* Overlay rail: eased width slide is free (reflows only the rail subtree). */
-  transition: width 180ms var(--ease-standard);
+  transition: width var(--dur-short4) var(--ease-standard);
 }
 
 .library-item {
@@ -1634,14 +1645,6 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
   opacity: 1;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .card-poster-wrap img.poster,
-  .detail-poster,
-  .detail-episode-art {
-    transition: none;
-  }
-}
-
 .card-text {
   /* Clearance so the focus ring / focus-grow on the poster never overlaps the
      title+meta below it. 20px clears both the B8 static ring (7px) and the
@@ -1738,7 +1741,7 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 
 /* ── Google TV redesign — Home (sidebar drawer + rails) ──────────────────── */
 /* Plax logo at the top of the nav drawer. Full "plax" wordmark when the rail
-   has room (peek/expanded); compact "x" mark when collapsed icon-only. Letters
+   has room (expanded); compact "x" mark when collapsed icon-only. Letters
    inherit `color` (white on this dark surface); the x keeps its brand gradient. */
 /* Header region (kit drawer 563:4331 "Header", py-12). We keep the plax brand here
    instead of the kit's account switcher (ratified). Collapses to the compact mark. */
@@ -1773,12 +1776,10 @@ html.caps-motion .media-card:focus .card-poster-wrap {
 /* Full wordmark hidden until the rail expands (mirrors nav-item label reveal) */
 .browsing-hub-brand__wordmark { display: none; margin-left: 2px; }
 .browsing-hub-brand__wordmark svg { display: block; width: auto; height: 68px; }
-.browsing-hub-nav-host--peek .browsing-hub-brand__wordmark,
 .browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark { display: block; }
-.browsing-hub-nav-host--peek .browsing-hub-brand__mark,
 .browsing-hub-nav-host--expanded .browsing-hub-brand__mark { display: none; }
 /* Collapsed rail: center the compact mark */
-.browsing-hub-nav-host:not(.browsing-hub-nav-host--peek):not(.browsing-hub-nav-host--expanded) .browsing-hub-brand {
+.browsing-hub-nav-host:not(.browsing-hub-nav-host--expanded) .browsing-hub-brand {
   justify-content: center;
   padding-left: 14px;
   padding-right: 14px;
@@ -5506,7 +5507,28 @@ video.native-player.subtitle-no-bg ::cue {
   pointer-events: none;
 }
 
-.loading-overlay.hidden { display: none !important; }
+/* Hidden = opacity + visibility (not display) so show/hide can fade. The
+   generic `.hidden { display:none !important }` still matches, so re-assert
+   flex at higher specificity. Never focusable: pointer-events:none, no
+   tabindex — focus stays on the screen underneath while it is up. */
+.loading-overlay.hidden {
+  display: flex !important;
+  opacity: 0;
+  visibility: hidden;
+}
+/* Show waits short3 (150ms) before fading in (short4, decelerate), so a load
+   that finishes inside that window never paints the overlay. Hide fades out
+   in short3 (accelerate) — exit shorter than enter. loadingOverlay.js adds a
+   minimum-visible hold on top so a painted overlay never blinks. Without
+   caps-motion both directions snap. */
+html.caps-motion .loading-overlay {
+  transition: opacity var(--dur-short4) var(--ease-standard-decelerate) var(--dur-short3),
+              visibility 0s linear var(--dur-short3);
+}
+html.caps-motion .loading-overlay.hidden {
+  transition: opacity var(--dur-short3) var(--ease-standard-accelerate),
+              visibility 0s linear var(--dur-short3);
+}
 
 .loading-overlay-inner { pointer-events: none; }
 
@@ -6341,8 +6363,12 @@ html.caps-motion .server-card:focus .server-card__media {
   justify-content: center;
   opacity: 1;
   pointer-events: none;
-  -webkit-transition: opacity 0.4s ease;
-  transition: opacity 0.4s ease;
+}
+/* Fade-out = medium2 (300ms cap), accelerate (it is an exit). Gated like every
+   other fade; without caps-motion the splash hard-cuts to the first screen. */
+html.caps-motion .splash-screen {
+  -webkit-transition: opacity var(--dur-medium2) var(--ease-standard-accelerate);
+  transition: opacity var(--dur-medium2) var(--ease-standard-accelerate);
 }
 .splash-screen--out {
   opacity: 0;
@@ -7515,3 +7541,57 @@ html[data-theme="gold"][data-contrast="high"] {
 /* --- editor role row --- */
 .appearance-role-row { display: flex; flex-direction: row; flex-wrap: wrap; }
 .appearance-role-row > * { margin-right: 6px; margin-bottom: 6px; }
+
+/* ── Reduced motion — one policy for the whole app ─────────────────────────
+   Removes spatial movement and keeps opacity/state feedback:
+     - animated transforms (focus scale/lift, seek thumb, radio dot) snap
+       instead of easing — the scaled/ringed/inverted state still shows;
+     - slide-in keyframes (rows, sheets, drawers, nav labels) swap to the
+       opacity-only gt-overlay-in at their own duration, so enter still reads;
+     - the PIN shake is dropped (the error text is the feedback);
+     - the nav rail's width slide snaps;
+     - fades (screen enter, scrim, overlays, splash, poster load) and the
+       spinner stay — they are the state feedback.
+   focus.js mirrors this for the scroll glide (instant scroll). Chrome 53
+   predates this media query (Chrome 74+), so the B8 never matches it; the
+   simulator, dev browser and newer engines do. ── */
+@media (prefers-reduced-motion: reduce) {
+  html.caps-motion .card:not(.media-card):not(.profile-card),
+  html.caps-motion .nav-item,
+  html.caps-motion .library-item,
+  html.caps-motion .row-item:not(.media-card),
+  html.caps-motion .season-chip,
+  html.caps-motion .episode-chip,
+  html.caps-motion .detail-setting-chip,
+  html.caps-motion .library-filter-chip,
+  html.caps-motion .user-chip,
+  html.caps-motion .pin-pad-btn,
+  html.caps-motion .detail-episode-picker,
+  html.caps-motion .detail-link,
+  html.caps-motion .detail-network-retest,
+  html.caps-motion .detail-network-info-btn,
+  html.caps-motion .detail-watchlist-btn,
+  html.caps-motion .media-card .card-poster-wrap,
+  html.caps-motion .profile-card-avatar,
+  html.caps-motion .server-card__media,
+  html.caps-motion .gt-list-item,
+  html.caps-motion .browsing-hub-nav-host,
+  .player-seek-thumb,
+  .player-menu-option-check::after {
+    transition: none;
+  }
+  html.caps-motion .row-section--enter,
+  html.caps-motion .detail-modal-sheet,
+  html.caps-motion .gt-modal-sheet,
+  html.caps-motion .gt-dialog-sheet,
+  html.caps-motion .player-track-modal-sheet,
+  html.caps-motion .player-media-info-sheet,
+  html.caps-motion .gt-side-panel-sheet,
+  html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label,
+  html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-brand__wordmark {
+    animation-name: gt-overlay-in;
+  }
+  .profile-picker--pin-error .pin-display {
+    animation: none;
+  }
+}

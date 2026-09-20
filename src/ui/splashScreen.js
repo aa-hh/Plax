@@ -46,13 +46,15 @@ function createSplash() {
 
   var showTime = Date.now();
   var MIN_MS = 600;
+  // Removal trails the CSS fade (--dur-medium2, 300ms) by a frame or two.
+  var FADE_MS = 350;
   var dismissed = false;
 
   function doFade() {
     el.classList.add('splash-screen--out');
     setTimeout(function () {
       if (el.parentNode) el.parentNode.removeChild(el);
-    }, 450);
+    }, FADE_MS);
   }
 
   function dismiss() {
