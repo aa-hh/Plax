@@ -121,7 +121,7 @@ Base URL = server root (no version prefix). JSON in/out. `{userId}` = GUID from 
 - **`POST /Users/AuthenticateByName`** body `{ "Username": "...", "Pw": "..." }` (field is `Pw`!). Needs `Authorization: MediaBrowser ...` header (no Token yet). Returns `AuthenticationResult { AccessToken, User.Id, ... }`.
 - **Quick Connect:** `GET /QuickConnect/Enabled` (bool gate) → `POST /QuickConnect/Initiate` returns `{ Secret, Code }` (show `Code`, keep `Secret`) → poll `GET /QuickConnect/Connect?secret={Secret}` ~every 5s until `Authenticated===true` → `POST /Users/AuthenticateWithQuickConnect` body `{ "Secret": "..." }` → `AuthenticationResult`. (User authorizes `Code` from another signed-in client; our app never calls `/Authorize`.)
 - **Header (every request; omit Token pre-login):**
-  `Authorization: MediaBrowser Client="XPlay", Device="LG webOS B8", DeviceId="{stable-uuid}", Version="1.0.0", Token="{AccessToken}"`
+  `Authorization: MediaBrowser Client="Plax", Device="LG webOS B8", DeviceId="{stable-uuid}", Version="1.0.0", Token="{AccessToken}"`
   DeviceId must be stable per install. `X-Emby-Token` / `?api_key=` also accepted.
 - **`GET /System/Info/Public`** (no auth) — validate user-entered URL: 200 + non-empty `Id`+`Version` = real Jellyfin. Probe `/System/Info/Public` then `/jellyfin/System/Info/Public`.
 

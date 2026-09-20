@@ -1,7 +1,7 @@
-# XPlay UI foundation — Google TV / Android TV design system
+# Plax UI foundation — Google TV / Android TV design system
 
 The redesign adopts **Google's TV design language** (Android TV / Google TV) as the spec, implemented
-in XPlay's existing Chrome-53-safe vanilla stack. We adopt the *design system* (tokens, component
+in Plax's existing Chrome-53-safe vanilla stack. We adopt the *design system* (tokens, component
 anatomy, behavior) — not Google's *code* (Compose/`androidx.tv.material3`), which can't run on webOS.
 
 Sources: the full Google TV design guide (foundations, styles, components) + the TV playback-controls

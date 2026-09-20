@@ -224,8 +224,12 @@ Use CSS variables from `:root` in `src/styles/app.css`.
 
 ### D-pad movement model
 
-- Left/Right moves within rows and nav clusters.
-- Up/Down moves between navigational bands (nav -> inputs -> rails/actions).
+- Focus moves inside the current zone first. Only when nothing lies in the pressed
+  direction does it cross to another zone.
+- Left/Right moves along a rail or across a row of controls.
+- Up/Down moves between zones (nav drawer -> inputs -> rails/actions).
+- Entering a zone lands on the child it remembers, or the nearest one across the axis.
+- Up/Down never crosses between the nav drawer and content.
 - Enter/OK activates focused item.
 - Input fields may consume left/right for cursor movement when editing text.
 

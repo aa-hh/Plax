@@ -17,7 +17,7 @@
 - App launches on webOS 4.0+ (version gate).
 - **Auto** (default): progressive direct play when codecs match; otherwise HLS remux, then server transcode.
 - **Original file only**: no remux/transcode — use only when the file is known to direct-play on the TV; DTS titles often need **Auto** on simulator or strict Original mode.
-- DTS: HTML5 `canPlayType` is unreliable; on real LG TVs (webOS 4+), XPlay may assume in-app DTS decode when the browser probe is empty. The **webOS TV Simulator** keeps conservative DTS probing (warnings are expected).
+- DTS: HTML5 `canPlayType` is unreliable; on real LG TVs (webOS 4+), Plax may assume in-app DTS decode when the browser probe is empty. The **webOS TV Simulator** keeps conservative DTS probing (warnings are expected).
 
 ## Graphics / Video Resolution
 
