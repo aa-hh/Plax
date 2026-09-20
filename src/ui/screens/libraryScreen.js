@@ -12,6 +12,12 @@ import {
   hydrateGridViewport,
   primeVisiblePosters
 } from '../posterImages.js';
+import {
+  describeLoadError,
+  renderStatus,
+  renderGridSkeleton,
+  replayEnter
+} from './screenStates.js';
 
 var LIBRARY_INITIAL_POSTERS = 24;
 /** Virtual grid constants */
@@ -21,6 +27,8 @@ var BUFFER_ROWS = 3;
  *  (~48px) + vertical margins (28px) ≈ 448. Measured precisely after first
  *  render (measureRowHeight); this is only the pre-measure guess. */
 var ROW_HEIGHT_ESTIMATE = 460;
+/** Loading placeholders: two full rows so the skeleton reads as a grid. */
+var GRID_SKELETON_CARDS = 12;
 
 var SORT_OPTIONS = [
   { key: 'titleSort', label: 'Title' },
@@ -41,6 +49,7 @@ function libraryScreen(root, params, navigate) {
   }
   var isScanning = false;
   var scanReloadTimer = null;
+  var isLoading = false;
 
   var screen = document.createElement('div');
   screen.className = 'screen library-screen';
@@ -49,14 +58,14 @@ function libraryScreen(root, params, navigate) {
     '<nav class="browsing-hub-nav-host" id="browsing-hub-nav-host" data-focus-zone="sidebar" data-focus-zone-enter=".browsing-hub-item"></nav>' +
     '<div class="library-main" id="lib-main">' +
     '<h1 class="screen-title library-title" id="lib-title">Library</h1>' +
-    '<p class="watch-status-msg" id="lib-scan-status"></p>' +
+    '<p class="library-status" id="lib-scan-status" aria-live="polite"></p>' +
     '<div class="library-toolbar" data-focus-zone="library-toolbar">' +
     '<div class="library-filter-bar" id="library-filter-bar">' +
     '<button class="library-filter-chip library-filter-chip--active" id="filter-chip-all" data-filter="all" tabindex="0">All</button>' +
     '<button class="library-filter-chip" id="filter-chip-unwatched" data-filter="unwatched" tabindex="0">Unwatched</button>' +
     '<button class="library-filter-chip library-filter-chip--sort" id="filter-chip-sort" data-sort-index="0" tabindex="0">Sort: Title</button>' +
     '</div>' +
-    '<button class="btn btn-outline btn--sm library-scan-btn" id="btn-scan-library" tabindex="0">Scan library</button>' +
+    '<button class="btn btn-outline btn--sm library-scan-btn" id="btn-scan-library" tabindex="0"><span class="library-scan-btn__label">Scan library</span></button>' +
     '</div>' +
     '<div class="library-grid-host" id="library-grid-host">' +
     '<div class="media-grid" id="media-grid" data-cols="6" data-focus-zone="library-grid"></div>' +
@@ -146,16 +155,36 @@ function libraryScreen(root, params, navigate) {
       if (!initialAuto) return;
       sidebar.removeAttribute('data-initial-focus');
     }
-    var card = grid.querySelector('.media-card');
-    if (card && card.focus) card.focus();
+    // Empty / error grid: land on the retry button or the first chip so focus
+    // never sits on the overlay rail with nothing underneath it.
+    var target = grid.querySelector('.media-card') ||
+      grid.querySelector('.status-retry') ||
+      filterChipAll;
+    if (target && target.focus) target.focus();
   }
 
   // ── Scan status helpers ───────────────────────────────────────────────────
 
-  function setScanStatus(text, isError) {
+  // Status line under the title: scan progress, "loading more", or an error
+  // with a D-pad-reachable retry. Content is textContent + a real <button>,
+  // never markup.
+  function setScanStatus(text, isError, retry, retryLabel) {
     if (!scanStatus) return;
+    // The retry button lives in this line; if it is focused when the line is
+    // replaced, park focus on the Scan button instead of letting it hit <body>.
+    var active = document.activeElement;
+    if (active && scanStatus.contains(active) && scanBtn.focus) scanBtn.focus();
     scanStatus.textContent = text || '';
-    scanStatus.className = 'watch-status-msg' + (isError ? ' watch-status-error' : '');
+    scanStatus.className = 'library-status' + (isError ? ' library-status--error' : '');
+    if (retry) {
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-outline btn--sm library-status__retry';
+      btn.setAttribute('tabindex', '0');
+      btn.textContent = retryLabel || 'Try again';
+      btn.addEventListener('click', retry);
+      scanStatus.appendChild(btn);
+    }
+    invalidateFocusableCache();
   }
 
   function friendlyScanError(err) {
@@ -163,15 +192,40 @@ function libraryScreen(root, params, navigate) {
       return 'Scan not allowed. Your account may not have permission (admin only).';
     }
     if (err && err.status === 401) {
-      return 'Sign-in expired. Sign in again to scan.';
+      return 'Sign-in expired. Sign in again from Settings to scan.';
     }
     if (err && err.status >= 500) {
       return 'Server unreachable. Try again in a moment.';
     }
     if (err && err.message && err.message.toLowerCase().indexOf('timeout') >= 0) {
-      return 'Scan request timed out.';
+      return 'Scan request timed out. Try again.';
     }
-    return (err && err.message) || 'Scan failed.';
+    return (err && err.message ? err.message : 'Scan failed') + '. Try again.';
+  }
+
+  function setBusy(busy) {
+    isLoading = busy;
+    var controls = [filterChipAll, filterChipUnwatched, filterChipSort, scanBtn];
+    for (var i = 0; i < controls.length; i++) {
+      if (!controls[i]) continue;
+      // aria-disabled (not `disabled`) keeps the control focusable so D-pad
+      // focus never drops to <body> while the grid loads.
+      if (busy) controls[i].setAttribute('aria-disabled', 'true');
+      else if (controls[i] !== scanBtn || !isScanning) controls[i].removeAttribute('aria-disabled');
+    }
+  }
+
+  function setScanBusy(busy) {
+    isScanning = busy;
+    var label = scanBtn.querySelector('.library-scan-btn__label');
+    if (label) label.textContent = busy ? 'Scanning…' : 'Scan library';
+    if (busy) scanBtn.setAttribute('aria-disabled', 'true');
+    else scanBtn.removeAttribute('aria-disabled');
+  }
+
+  function itemCountLabel(count) {
+    var noun = activeLib && activeLib.type === 'show' ? 'show' : 'title';
+    return count + ' ' + noun + (count === 1 ? '' : 's');
   }
 
   // ── Filter / sort ─────────────────────────────────────────────────────────
@@ -231,7 +285,7 @@ function libraryScreen(root, params, navigate) {
 
   if (filterChipAll) {
     filterChipAll.addEventListener('click', function () {
-      if (activeFilter === 'all') return;
+      if (isLoading || activeFilter === 'all') return;
       activeFilter = 'all';
       onFilterChange();
     });
@@ -239,7 +293,7 @@ function libraryScreen(root, params, navigate) {
 
   if (filterChipUnwatched) {
     filterChipUnwatched.addEventListener('click', function () {
-      if (activeFilter === 'unwatched') return;
+      if (isLoading || activeFilter === 'unwatched') return;
       activeFilter = 'unwatched';
       onFilterChange();
     });
@@ -247,6 +301,7 @@ function libraryScreen(root, params, navigate) {
 
   if (filterChipSort) {
     filterChipSort.addEventListener('click', function () {
+      if (isLoading) return;
       activeSortIndex = (activeSortIndex + 1) % SORT_OPTIONS.length;
       onFilterChange();
     });
@@ -277,8 +332,12 @@ function libraryScreen(root, params, navigate) {
     if (!card) return;
     var h = card.offsetHeight;
     if (h > 50) {
-      // Include the top+bottom margin (--media-grid-gap-y = 24px total = 12px each side)
-      rowHeightPx = h + 24;
+      // Add the card's real vertical margins (14px each side in CSS). A hard-
+      // coded 24 drifted 4px per row — over 160 rows that is more than a full
+      // row, which mis-maps scrollTop to the rendered window.
+      var cs = window.getComputedStyle ? window.getComputedStyle(card) : null;
+      var my = cs ? (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0) : 28;
+      rowHeightPx = h + my;
       rowHeightMeasured = true;
     }
   }
@@ -305,11 +364,15 @@ function libraryScreen(root, params, navigate) {
     var totalRows = Math.ceil(total / GRID_COLS);
 
     if (total === 0) {
-      topSpacer.style.height = '0';
-      bottomSpacer.style.height = '0';
-      // Remove any rendered cards
-      var toRemove = Array.prototype.slice.call(grid.querySelectorAll('.media-card'));
-      for (var r = 0; r < toRemove.length; r++) grid.removeChild(toRemove[r]);
+      // Empty state replaces the whole grid (cards + spacers); ensureSpacers
+      // recreates them on the next non-empty render.
+      topSpacer = null;
+      bottomSpacer = null;
+      var libName = activeLib && activeLib.title ? activeLib.title : 'this library';
+      renderStatus(grid, activeFilter === 'unwatched' && allItems.length
+        ? 'Everything in ' + libName + ' is watched. Choose All to see the full list.'
+        : 'Nothing in ' + libName + ' yet. Add media on the server, then Scan library.');
+      replayEnter(grid, 'media-grid--enter');
       invalidateFocusableCache();
       return;
     }
@@ -352,6 +415,12 @@ function libraryScreen(root, params, navigate) {
     // different, so every card must be rebuilt; reuse only on pure scroll.
     var fullReset = displayDirty;
     displayDirty = false;
+    // A dataset change may follow an empty state whose message is still in the
+    // grid — drop it before cards go back in.
+    if (fullReset) {
+      var stale = Array.prototype.slice.call(grid.querySelectorAll('.status-msg, .status-retry'));
+      for (var s = 0; s < stale.length; s++) grid.removeChild(stale[s]);
+    }
     var existingCards = Array.prototype.slice.call(grid.querySelectorAll('.media-card'));
     var present = {};
     var removedAny = false;
@@ -405,6 +474,9 @@ function libraryScreen(root, params, navigate) {
 
     // Prime posters for the freshly added cards (kept cards already have theirs).
     if (addedAny) primeVisiblePosters(grid);
+    // Dataset change (load / filter / sort): fade the rebuilt grid in as one
+    // unit so the every-poster restart reads as a deliberate transition.
+    if (fullReset && addedAny) replayEnter(grid, 'media-grid--enter');
 
     // Try to measure height after first render
     if (!rowHeightMeasured) measureRowHeight();
@@ -436,11 +508,43 @@ function libraryScreen(root, params, navigate) {
   function loadGrid(lib) {
     var token = ++gridLoadToken;
     screen.querySelector('#lib-title').textContent = lib.title;
-    grid.innerHTML = '<p class="status-msg">Loading…</p>';
+    setBusy(true);
+    setScanStatus('');
+    // A retry from the in-grid error state is about to wipe its own button.
+    var activeNow = document.activeElement;
+    if (activeNow && grid.contains(activeNow) && filterChipAll) filterChipAll.focus();
+    topSpacer = null;
+    bottomSpacer = null;
+    renderGridSkeleton(grid, GRID_SKELETON_CARDS);
+    invalidateFocusableCache();
     lastRenderStart = -1;
     lastRenderEnd = -1;
     allItems = [];
     displayItems = [];
+
+    // The rest of a large library arrives after the first page. Say so in the
+    // status line; on failure offer a retry that refetches only the rest.
+    function loadRest(fetchRest) {
+      setScanStatus('Showing the first ' + itemCountLabel(allItems.length) + ' while the rest load…');
+      fetchRest().then(function (allServerItems) {
+        if (destroyed || token !== gridLoadToken) return;
+        if (allServerItems && allServerItems.length > allItems.length) {
+          allItems = allServerItems;
+          applyFilterSort();
+          renderWindow();
+        }
+        setScanStatus(itemCountLabel(allItems.length));
+      }).catch(function (err) {
+        if (destroyed || token !== gridLoadToken) return;
+        setScanStatus(
+          'Only the first ' + itemCountLabel(allItems.length) + ' loaded. ' +
+          describeLoadError(err, 'the rest of ' + lib.title),
+          true,
+          function () { loadRest(fetchRest); },
+          'Load the rest'
+        );
+      });
+    }
 
     return browseByType(server, lib.id, lib.type, { progressive: true }).then(function (result) {
       if (destroyed || token !== gridLoadToken) return;
@@ -450,29 +554,27 @@ function libraryScreen(root, params, navigate) {
 
       allItems = items || [];
       applyFilterSort();
+      setBusy(false);
 
-      // Clear loading message, ensure spacers exist
+      // Clear loading skeleton, ensure spacers exist
       grid.innerHTML = '';
       setupVirtualScroll();
       renderWindow();
       focusFirstGridCardIfNeeded();
 
-      if (fetchRest) {
-        fetchRest().then(function (allServerItems) {
-          if (destroyed || token !== gridLoadToken) return;
-          if (!allServerItems || allServerItems.length <= allItems.length) return;
-          allItems = allServerItems;
-          applyFilterSort();
-          renderWindow();
-        }).catch(function () {});
-      }
+      if (fetchRest) loadRest(fetchRest);
+      else setScanStatus(allItems.length ? itemCountLabel(allItems.length) : '');
     }).catch(function (err) {
       if (destroyed || token !== gridLoadToken) return;
-      grid.innerHTML = '';
-      var failMsg = document.createElement('p');
-      failMsg.className = 'status-msg';
-      failMsg.textContent = 'Failed: ' + (err && err.message ? err.message : 'unknown error');
-      grid.appendChild(failMsg);
+      setBusy(false);
+      topSpacer = null;
+      bottomSpacer = null;
+      renderStatus(grid, describeLoadError(err, lib.title), {
+        error: true,
+        retry: function () { loadGrid(lib); }
+      });
+      invalidateFocusableCache();
+      focusFirstGridCardIfNeeded();
     });
   }
 
@@ -481,46 +583,46 @@ function libraryScreen(root, params, navigate) {
   scanBtn.addEventListener('click', startSectionScan);
 
   function startSectionScan() {
-    if (isScanning) return;
+    if (isScanning || isLoading) return;
     var current = getState().activeLibrary || activeLib;
     if (!current) {
-      setScanStatus('No active library to scan.', true);
+      setScanStatus('No library selected. Pick one from the sidebar to scan.', true);
       return;
     }
-    isScanning = true;
-    scanBtn.disabled = true;
-    setScanStatus('Scan started on "' + current.title + '"…', false);
+    setScanBusy(true);
+    setScanStatus('Scanning ' + current.title + ' for new media…', false);
 
     refreshSection(server, current.id, { force: false }).then(function () {
+      if (destroyed) return;
       if (scanReloadTimer) clearTimeout(scanReloadTimer);
       scanReloadTimer = setTimeout(function () {
         scanReloadTimer = null;
+        if (destroyed) return;
         var stillActive = getState().activeLibrary || activeLib;
         // Only auto-reload if the user is still viewing the scanned library.
         if (!stillActive || stillActive.id !== current.id) {
-          setScanStatus('Scan requested.', false);
-          isScanning = false;
-          scanBtn.disabled = false;
+          setScanStatus('Scan requested on ' + current.title + '.', false);
+          setScanBusy(false);
           return;
         }
         loadGrid(stillActive).then(function () {
-          setScanStatus('Library refreshed.', false);
+          if (destroyed) return;
+          setScanStatus(current.title + ' refreshed: ' + itemCountLabel(allItems.length) + '.', false);
         }).catch(function () {
-          setScanStatus('Scan requested.', false);
+          if (!destroyed) setScanStatus('Scan requested on ' + current.title + '.', false);
         }).then(function () {
-          isScanning = false;
-          scanBtn.disabled = false;
+          setScanBusy(false);
         });
       }, 5000);
     }).catch(function (err) {
-      isScanning = false;
-      scanBtn.disabled = false;
-      setScanStatus(friendlyScanError(err), true);
+      if (destroyed) return;
+      setScanBusy(false);
+      setScanStatus(friendlyScanError(err), true, startSectionScan);
     });
   }
 
   if (activeLib) loadGrid(activeLib);
-  else grid.innerHTML = '<p class="status-msg">No libraries available</p>';
+  else renderStatus(grid, 'No libraries to browse. Add one on the server, or check which libraries this profile can see in Settings.');
 
   // Land focus on the active sidebar item, but tag it as auto-focus so it gives
   // way to the first grid card once the grid renders (focusFirstGridCardIfNeeded).
