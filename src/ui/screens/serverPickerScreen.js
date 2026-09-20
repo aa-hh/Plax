@@ -51,14 +51,18 @@ function serverPickerScreen(root, params, navigate) {
 
   var links = getSavedLinks();
   var cardsHtml = links.map(savedCardHtml).join('') + addCardHtml();
+  // 0 saved links (e.g. after "Forget server"): only the Add card remains, so
+  // the subtitle says what to do instead of describing cards that aren't there.
+  var subtitle = links.length
+    ? 'Pick a saved server or add a new one. Your saved servers stay linked — switching never removes them.'
+    : 'No saved servers yet. Add one to get started.';
 
   var screen = document.createElement('div');
   screen.className = 'screen screen-center server-picker-screen';
   screen.setAttribute('data-focus-mode', 'sequential');
   screen.innerHTML =
     '<h1 class="screen-title">Choose a server</h1>' +
-    '<p class="screen-subtitle">Pick a saved server or add a new one. Your saved ' +
-      'servers stay linked — switching never removes them.</p>' +
+    '<p class="screen-subtitle">' + subtitle + '</p>' +
     '<div class="server-card-grid" id="server-card-grid">' + cardsHtml + '</div>' +
     (fromSettings
       ? '<button class="btn server-picker-back" id="sp-back" tabindex="0">Back</button>'
@@ -67,11 +71,13 @@ function serverPickerScreen(root, params, navigate) {
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
   var destroyed = false;
+  var switching = false; // double-press guard: one switch per screen life
 
   // Restore a saved link's session and route into it. Non-destructive: only the
   // *active* session is cleared, never the saved-links list.
   function switchToLink(link) {
-    if (destroyed) return;
+    if (destroyed || switching) return;
+    switching = true;
     clearActiveSession();
     cache.invalidateAll();
     invalidateRetention();
@@ -121,7 +127,7 @@ function serverPickerScreen(root, params, navigate) {
   var grid = screen.querySelector('#server-card-grid');
   grid.addEventListener('click', function (e) {
     var card = e.target && e.target.closest ? e.target.closest('.server-card') : null;
-    if (!card) return;
+    if (!card || switching) return;
     if (card.getAttribute('data-add')) {
       navigate('provider-picker', {});
       return;

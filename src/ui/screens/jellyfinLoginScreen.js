@@ -10,6 +10,39 @@ import {
   authenticateByName
 } from '../../backends/jellyfin/auth.js';
 
+var URL_PLACEHOLDER = 'http://192.168.1.10:8096';
+
+/**
+ * Plain-language copy for Jellyfin request failures. `context` is 'server'
+ * (probing an address) or 'signin' (username/password). Every message names
+ * the problem and what to do next; raw "HTTP 401" / "Request timeout" strings
+ * never reach the screen.
+ */
+function describeJellyfinError(err, context) {
+  var status = err && err.status;
+  var msg = (err && err.message) || '';
+  var signin = context === 'signin';
+  if (status === 401) {
+    return signin ? 'Incorrect username or password.' : 'That server refused the connection. Check the address.';
+  }
+  if (status === 403) {
+    return signin ? 'This account isn’t allowed to sign in here. Check with the server owner.'
+      : 'That server refused the connection (HTTP 403).';
+  }
+  if (status === 404) return 'Nothing answered at that address. Check the address and port.';
+  if (status >= 500) return 'The server had a problem (HTTP ' + status + '). Try again in a moment.';
+  if (status) return 'The server rejected the request (HTTP ' + status + ').';
+  if (/timeout|timed out/i.test(msg)) {
+    return signin ? 'Sign-in timed out. Check the server and network, then try again.'
+      : 'No answer from that address. Check it and that the server is on, then try again.';
+  }
+  if (/failed to fetch|network|load failed/i.test(msg)) {
+    return 'Couldn’t reach the server. Check the address and the TV’s network connection.';
+  }
+  if (msg) return msg;
+  return signin ? 'Sign-in failed. Try again.' : 'Could not reach that server.';
+}
+
 /**
  * Jellyfin sign-in: server URL → Quick Connect (primary, remote-friendly) with a
  * username/password fallback. Reached via the 'pairing' route when
@@ -21,8 +54,14 @@ function jellyfinLoginScreen(root, params, navigate) {
   // If arriving from the server picker, the server is pre-resolved.
   var server = (params && params.savedServer) || null;
   var username = '';
+  var password = '';
   var qc = null;            // active Quick Connect controller
   var destroyed = false;
+  var connecting = false;   // Connect in flight (double-press guard)
+  var signingIn = false;    // Sign in in flight (double-press guard)
+  // Bumped whenever the address changes so a probe of an older address that
+  // resolves late can't move the flow forward with the wrong server.
+  var addressGen = 0;
 
   var screen = document.createElement('div');
   screen.className = 'screen screen-center jellyfin-login';
@@ -33,9 +72,10 @@ function jellyfinLoginScreen(root, params, navigate) {
 
     '<div class="login-step is-active" id="step-server">' +
       '<div class="login-fields">' +
-        '<div class="login-field">' +
+        '<div class="login-field" id="field-url">' +
           '<span class="login-field__label">Server address</span>' +
-          '<button class="btn login-field__btn is-placeholder" id="jf-url" tabindex="0">http://192.168.1.10:8096</button>' +
+          '<button class="btn login-field__btn is-placeholder" id="jf-url" tabindex="0">' + URL_PLACEHOLDER + '</button>' +
+          '<span class="login-field__error" id="jf-url-error" hidden></span>' +
         '</div>' +
       '</div>' +
       '<div class="login-actions">' +
@@ -55,13 +95,15 @@ function jellyfinLoginScreen(root, params, navigate) {
 
     '<div class="login-step" id="step-password">' +
       '<div class="login-fields">' +
-        '<div class="login-field">' +
+        '<div class="login-field" id="field-username">' +
           '<span class="login-field__label">Username</span>' +
           '<button class="btn login-field__btn is-placeholder" id="jf-username" tabindex="0">Enter username</button>' +
+          '<span class="login-field__error" id="jf-username-error" hidden></span>' +
         '</div>' +
-        '<div class="login-field">' +
+        '<div class="login-field" id="field-password">' +
           '<span class="login-field__label">Password</span>' +
           '<button class="btn login-field__btn is-placeholder" id="jf-password" tabindex="0">Enter password</button>' +
+          '<span class="login-field__error" id="jf-password-error" hidden></span>' +
         '</div>' +
       '</div>' +
       '<p class="status-msg" id="pw-status"></p>' +
@@ -99,15 +141,43 @@ function jellyfinLoginScreen(root, params, navigate) {
     }
   }
 
+  // Error sits directly under its field (red outline + line); the typed value
+  // stays in the field so the user can correct rather than retype.
+  function setFieldError(fieldId, msg) {
+    var field = $(fieldId);
+    if (!field) return;
+    var line = field.querySelector('.login-field__error');
+    field.classList.toggle('login-field--error', !!msg);
+    if (line) {
+      line.textContent = msg || '';
+      line.hidden = !msg;
+    }
+  }
+
+  function setStatus(id, msg, isError) {
+    var el = $(id);
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'status-msg' + (isError ? ' watch-status-error' : '');
+  }
+
+  function setBusy(btnId, busy, busyLabel, idleLabel) {
+    var btn = $(btnId);
+    if (!btn) return;
+    btn.classList.toggle('is-busy', !!busy);
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    btn.textContent = busy ? busyLabel : idleLabel;
+  }
+
   // Pre-fill URL field if arriving from the server picker with a known server.
   if (server) {
-    setFieldValue($('jf-url'), server.url, 'http://192.168.1.10:8096');
+    setFieldValue($('jf-url'), server.url, URL_PLACEHOLDER);
   }
 
   // ---- session finalize ----
   function finalize(authResult) {
     if (!authResult || !authResult.AccessToken || !authResult.User) {
-      throw new Error('Unexpected sign-in response');
+      throw new Error('Jellyfin sent an unexpected sign-in response. Try again.');
     }
     var token = authResult.AccessToken;
     var user = { id: authResult.User.Id, name: authResult.User.Name };
@@ -151,49 +221,79 @@ function jellyfinLoginScreen(root, params, navigate) {
     openTextInputModal({
       variant: 'auth',
       title: 'Server address',
-      defaultValue: server ? server.url : '',
+      defaultValue: $('jf-url').classList.contains('is-placeholder') ? (server ? server.url : '') : $('jf-url').textContent,
       confirmLabel: 'Set',
       onConfirm: function (val) {
-        setFieldValue($('jf-url'), val, 'http://192.168.1.10:8096');
+        addressGen += 1;
+        setFieldValue($('jf-url'), val, URL_PLACEHOLDER);
+        setFieldError('field-url', '');
       }
     });
   });
 
   $('jf-connect').addEventListener('click', function () {
+    if (connecting) return;
     var raw = $('jf-url').classList.contains('is-placeholder') ? '' : $('jf-url').textContent;
-    if (!raw) { $('jf-subtitle').textContent = 'Enter your server address first.'; return; }
+    if (!raw) {
+      setFieldError('field-url', 'Enter your server address first.');
+      $('jf-url').focus();
+      return;
+    }
+    var gen = addressGen;
+    connecting = true;
+    setFieldError('field-url', '');
+    setBusy('jf-connect', true, 'Connecting…', 'Connect');
     $('jf-subtitle').textContent = 'Connecting to server…';
     validateServer(raw).then(function (srv) {
-      if (destroyed) return;
+      if (destroyed || gen !== addressGen) return;
       server = srv;
       $('jf-subtitle').textContent = 'Connected to ' + srv.name + '.';
       return quickConnectEnabled(srv.url).then(function (enabled) {
-        if (destroyed) return;
+        if (destroyed || gen !== addressGen) return;
         if (enabled) startQuickConnect();
         else showStep('step-password');
       });
     }).catch(function (err) {
-      if (destroyed) return;
-      $('jf-subtitle').textContent = err && err.message ? err.message : 'Could not reach that server.';
+      if (destroyed || gen !== addressGen) return;
+      $('jf-subtitle').textContent = 'Enter your Jellyfin server address to begin.';
+      setFieldError('field-url', describeJellyfinError(err, 'server'));
+    }).then(function () {
+      // Only one probe is ever in flight (guarded above), so always release it.
+      connecting = false;
+      if (!destroyed) setBusy('jf-connect', false, 'Connecting…', 'Connect');
     });
   });
 
   // ---- step: quick connect ----
   function startQuickConnect() {
     showStep('step-quickconnect');
-    $('qc-status').textContent = 'Requesting a code…';
+    setStatus('qc-status', 'Requesting a code…', false);
+    $('qc-code').textContent = '------';
     qc = runQuickConnect(server.url, function (code) {
       if (destroyed) return;
       $('qc-code').textContent = code != null ? String(code) : '------';
-      $('qc-status').textContent = 'Waiting for approval…';
+      setStatus('qc-status', 'Waiting for approval…', false);
     });
+    var mine = qc;
     qc.promise.then(function (authResult) {
-      if (destroyed) return;
-      $('qc-status').textContent = 'Signed in!';
+      if (destroyed || mine !== qc) return;
+      setStatus('qc-status', 'Signed in!', false);
       finalize(authResult);
     }).catch(function (err) {
-      if (destroyed || (err && err.message === 'cancelled')) return;
-      $('qc-status').textContent = (err && err.message) || 'Quick Connect failed.';
+      if (destroyed || mine !== qc || (err && err.message === 'cancelled')) return;
+      var msg = (err && err.message) || '';
+      if (/timed out/i.test(msg)) {
+        // Code expired: send the user back to Connect (address preserved) for a fresh one.
+        qc = null;
+        showStep('step-server');
+        setFieldError('field-url', 'The Quick Connect code expired. Press Connect for a new one.');
+        return;
+      }
+      if (/unavailable/i.test(msg)) {
+        setStatus('qc-status', 'Quick Connect is turned off on this server. Use your username and password instead.', true);
+        return;
+      }
+      setStatus('qc-status', describeJellyfinError(err, 'server'), true);
     });
   }
 
@@ -206,33 +306,57 @@ function jellyfinLoginScreen(root, params, navigate) {
   $('jf-username').addEventListener('click', function () {
     openTextInputModal({
       variant: 'auth', title: 'Username', defaultValue: username, confirmLabel: 'Set',
-      onConfirm: function (val) { username = val; setFieldValue($('jf-username'), val, 'Enter username'); }
+      onConfirm: function (val) {
+        username = val;
+        setFieldValue($('jf-username'), val, 'Enter username');
+        setFieldError('field-username', '');
+      }
     });
   });
 
-  var password = '';
   $('jf-password').addEventListener('click', function () {
     openTextInputModal({
       variant: 'auth', title: 'Password', defaultValue: password, confirmLabel: 'Set',
       onConfirm: function (val) {
         password = val;
         setFieldValue($('jf-password'), val ? '••••••••' : '', 'Enter password');
+        setFieldError('field-password', '');
       }
     });
   });
 
   $('jf-signin').addEventListener('click', function () {
-    if (!server) { $('pw-status').textContent = 'Connect to a server first.'; return; }
-    if (!username) { $('pw-status').textContent = 'Enter a username.'; return; }
-    $('pw-status').textContent = 'Signing in…';
+    if (signingIn) return;
+    if (!server) { setStatus('pw-status', 'Connect to a server first.', true); return; }
+    if (!username) {
+      setFieldError('field-username', 'Enter a username.');
+      $('jf-username').focus();
+      return;
+    }
+    signingIn = true;
+    setFieldError('field-username', '');
+    setFieldError('field-password', '');
+    setBusy('jf-signin', true, 'Signing in…', 'Sign in');
+    setStatus('pw-status', 'Signing in…', false);
     authenticateByName(server.url, username, password).then(function (authResult) {
       if (destroyed) return;
+      setStatus('pw-status', '', false);
       finalize(authResult);
     }).catch(function (err) {
       if (destroyed) return;
-      var msg = (err && err.status === 401) ? 'Incorrect username or password.'
-        : (err && err.message) || 'Sign-in failed.';
-      $('pw-status').textContent = msg;
+      setStatus('pw-status', '', false);
+      var msg = describeJellyfinError(err, 'signin');
+      // Credential errors belong under the password field; anything else is
+      // about the server/network and reads better as the step's status line.
+      if (err && (err.status === 401 || err.status === 403)) {
+        setFieldError('field-password', msg);
+        $('jf-password').focus();
+      } else {
+        setStatus('pw-status', msg, true);
+      }
+    }).then(function () {
+      signingIn = false;
+      if (!destroyed) setBusy('jf-signin', false, 'Signing in…', 'Sign in');
     });
   });
 
@@ -252,4 +376,4 @@ function jellyfinLoginScreen(root, params, navigate) {
   };
 }
 
-export { jellyfinLoginScreen };
+export { jellyfinLoginScreen, describeJellyfinError };
