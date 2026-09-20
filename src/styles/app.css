@@ -1068,6 +1068,13 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
   margin-left: var(--space-3);
 }
 
+/* List names are user-typed (rename modal) — one line, ellipsis. */
+.watchlist-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .screen-home .screen-title {
   margin-bottom: var(--space-3);
 }
@@ -1500,6 +1507,35 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
   text-align: center;
   margin-bottom: var(--space-5);
   flex-shrink: 0;
+  /* Library names are server-authored (120-char / CJK): one line, ellipsis. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status line between title and toolbar: scan progress, "loading the rest",
+   item count, or an error with an inline Try-again button. Sized for 10 ft
+   (the 14px .watch-status-msg it replaced is a detail-screen caption size). */
+.library-status {
+  font-size: var(--font-small);
+  line-height: 1.4;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0 0 var(--space-3);
+  min-height: 1.4em;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-status--error {
+  color: var(--color-error);
+}
+
+.library-status .library-status__retry {
+  margin-left: var(--space-3);
+  vertical-align: middle;
 }
 
 /* Control strip under the title: filters left, Scan action right. */
@@ -1578,6 +1614,25 @@ html.caps-motion .browsing-hub-nav-host--expanded .browsing-hub-item__label {
 
 .media-grid > .media-card {
   margin: 14px 14px;
+}
+
+/* Loading state: poster-sized placeholders on the same 14px gutter, so the
+   skeleton and the real grid share one footprint (no jump on load). */
+.media-grid > .media-grid-skeleton-card {
+  margin: 14px 14px;
+  border-radius: var(--radius-lg);
+}
+
+/* Dataset change (load / filter / sort) fades the rebuilt grid in as one unit
+   (opacity only — no transform on a large scroll container). Snaps without
+   caps-motion; nothing to reduce under prefers-reduced-motion. */
+@keyframes media-grid-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+html.caps-motion .media-grid--enter {
+  animation: media-grid-enter var(--dur-short4) var(--ease-standard-decelerate);
 }
 
 .media-card {
@@ -5383,6 +5438,17 @@ video.native-player.subtitle-no-bg ::cue {
   line-height: 1.5;
 }
 
+/* Error variant + the D-pad-reachable retry that follows it
+   (src/ui/screens/screenStates.js renderStatus). */
+.status-msg--error {
+  color: var(--color-error);
+}
+
+.status-retry {
+  margin-top: var(--space-4);
+  align-self: flex-start;
+}
+
 /* ── Static loaders (no keyframes / transitions) ── */
 .plax-loader-wrap {
   display: flex;
@@ -5652,6 +5718,15 @@ video.native-player.subtitle-no-bg ::cue {
   background: var(--focus-fill);
   color: var(--focus-on-fill);
   border-color: transparent;
+}
+
+/* Disabled-while-loading: aria-disabled (not `disabled`) so the chip / Scan
+   button stays focusable and D-pad focus never drops to <body> mid-load. The
+   click handlers ignore the press; the dim is the only visual change, and the
+   focus inversion still shows through it. */
+.library-filter-chip[aria-disabled="true"],
+.library-scan-btn[aria-disabled="true"] {
+  opacity: 0.45;
 }
 
 /* ── Virtual grid spacers ── */

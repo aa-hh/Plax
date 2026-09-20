@@ -2,36 +2,27 @@ import { getState } from '../../core/store.js';
 import { search as searchHubs } from '../../backends/index.js';
 import { renderHubRow } from '../components/hubRow.js';
 import { mountBrowsingHubNav } from '../components/browsingHubNav.js';
-import { focusFirst, attachFocusNav } from '../focus.js';
+import { focusFirst, attachFocusNav, invalidateFocusableCache } from '../focus.js';
 import {
   hydrateFocusedNeighborhood,
   primeVisiblePosters
 } from '../posterImages.js';
+import {
+  describeLoadError,
+  renderStatus,
+  renderRowSkeletons,
+  truncateLabel
+} from './screenStates.js';
 
 var DEBOUNCE_MS = 350;
 var HUB_LIMIT = 10;
 var SEARCH_SKELETON_ROWS = 3;
-
-function escapeText(s) {
-  var d = document.createElement('div');
-  d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
-}
-
-function renderRowSkeletons(el, count) {
-  var i;
-  el.innerHTML = '';
-  for (i = 0; i < count; i++) {
-    var section = document.createElement('div');
-    section.className = 'row-section row-skeleton';
-    section.innerHTML =
-      '<p class="row-label row-skeleton-label"></p>' +
-      '<div class="row-scroll row-skeleton-scroll">' +
-      '<div class="row-skeleton-card"></div>'.repeat(8) +
-      '</div>';
-    el.appendChild(section);
-  }
-}
+/** Longest query echoed back in the "No results" line (CJK/emoji-safe cut). */
+var QUERY_ECHO_MAX = 60;
+var IDLE_MESSAGE = 'Type to search your libraries.';
+/** Staggered reveal for rows that arrive in one batch (mirrors Home). */
+var ROW_STAGGER_STEP_MS = 40;
+var ROW_STAGGER_MAX_STEPS = 6;
 
 function searchScreen(root, params, navigate) {
   var state = getState();
@@ -50,9 +41,8 @@ function searchScreen(root, params, navigate) {
     'placeholder="Search movies, shows, episodes" ' +
     'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />' +
     '</div>' +
-    '<div id="search-results" class="search-results">' +
-    '<p class="status-msg">Type to search your Plex libraries.</p>' +
-    '</div></div></div>';
+    '<div id="search-results" class="search-results" aria-live="polite"></div>' +
+    '</div></div>';
 
   root.appendChild(screen);
   var detachFocus = attachFocusNav(screen);
@@ -88,41 +78,74 @@ function searchScreen(root, params, navigate) {
     if (card) schedulePosterNeighborhood(card);
   });
 
-  function setMessage(html) {
-    results.innerHTML = '<p class="status-msg">' + html + '</p>';
+  // Any re-render of the results pane may remove the focused card / retry
+  // button; keep focus on the input (the natural place to keep typing).
+  function reclaimFocus() {
+    var active = document.activeElement;
+    if (active && results.contains(active) && input.focus) input.focus();
+  }
+
+  function setMessage(text, opts) {
+    reclaimFocus();
+    renderStatus(results, text, opts);
+    invalidateFocusableCache();
+  }
+
+  function setBusy(busy) {
+    if (busy) input.setAttribute('aria-busy', 'true');
+    else input.removeAttribute('aria-busy');
   }
 
   function showSearchSkeletons() {
+    reclaimFocus();
     renderRowSkeletons(results, SEARCH_SKELETON_ROWS);
+    invalidateFocusableCache();
+  }
+
+  function noResultsMessage() {
+    return 'No results for “' + truncateLabel(lastQuery, QUERY_ECHO_MAX) + '”. Try a shorter title or a different spelling.';
+  }
+
+  function enterRow(section, step) {
+    if (!section || !section.classList) return;
+    var delay = Math.min(step, ROW_STAGGER_MAX_STEPS) * ROW_STAGGER_STEP_MS;
+    if (delay) section.style.animationDelay = delay + 'ms';
+    section.classList.add('row-section--enter');
   }
 
   function renderRows(rows) {
+    reclaimFocus();
     results.innerHTML = '';
     if (!rows.length) {
-      setMessage('No results for &ldquo;' + escapeText(lastQuery) + '&rdquo;.');
+      setMessage(noResultsMessage());
       return;
     }
-    rows.forEach(function (row) {
-      renderHubRow(results, row, navigate);
+    rows.forEach(function (row, i) {
+      enterRow(renderHubRow(results, row, navigate), i);
     });
+    invalidateFocusableCache();
     primeVisiblePosters(results);
   }
 
   function appendRow(row) {
-    renderHubRow(results, row, navigate);
+    // Streamed rows already arrive spaced out by the network; no extra delay.
+    enterRow(renderHubRow(results, row, navigate), 0);
+    invalidateFocusableCache();
     primeVisiblePosters(results);
   }
 
   function runSearch(query) {
     var token = ++requestToken;
+    setBusy(false);
     if (!query) {
-      setMessage('Type to search your Plex libraries.');
+      setMessage(IDLE_MESSAGE);
       return;
     }
     if (!server) {
-      setMessage('No Plex server connected.');
+      setMessage('No server connected. Sign in from Settings, then search again.');
       return;
     }
+    setBusy(true);
     showSearchSkeletons();
     var streamed = false;
     searchHubs(server, query, HUB_LIMIT, {
@@ -131,6 +154,7 @@ function searchScreen(root, params, navigate) {
       onRow: function (row) {
         if (token !== requestToken || destroyed) return;
         if (!streamed) {
+          reclaimFocus();
           results.innerHTML = '';
           streamed = true;
         }
@@ -139,8 +163,9 @@ function searchScreen(root, params, navigate) {
     })
       .then(function (rows) {
         if (token !== requestToken || destroyed) return;
+        setBusy(false);
         if (!rows.length) {
-          setMessage('No results for &ldquo;' + escapeText(lastQuery) + '&rdquo;.');
+          setMessage(noResultsMessage());
           return;
         }
         if (!streamed) renderRows(rows);
@@ -148,7 +173,11 @@ function searchScreen(root, params, navigate) {
       })
       .catch(function (err) {
         if (token !== requestToken || destroyed) return;
-        setMessage('Search failed: ' + escapeText(err && err.message ? err.message : 'unknown error'));
+        setBusy(false);
+        setMessage(describeLoadError(err, 'search results'), {
+          error: true,
+          retry: function () { runSearch(lastQuery); }
+        });
       });
   }
 
@@ -182,6 +211,8 @@ function searchScreen(root, params, navigate) {
     input.value = params.query;
     lastQuery = String(params.query).trim();
     runSearch(lastQuery);
+  } else {
+    setMessage(IDLE_MESSAGE);
   }
 
   setTimeout(function () {
