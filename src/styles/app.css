@@ -3477,16 +3477,27 @@ html.caps-motion .detail-episode-grid--enter {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  /* M3 Fade pattern — exit: emphasized-accelerate, short3 (150ms). Exit shorter
-     than enter (M3 rule). Delay visibility:hidden so the opacity fade plays first. */
-  transition: opacity var(--dur-short3) var(--ease-emphasized-accelerate), visibility 0s linear var(--dur-short3);
+  /* M3 Fade pattern — exit: standard-accelerate, short3 (150ms) per the registry
+     overlay/transport row. Exit shorter than enter (M3 rule). Delay
+     visibility:hidden so the opacity fade plays first. */
+  transition: opacity var(--dur-short3) var(--ease-standard-accelerate), visibility 0s linear var(--dur-short3);
 }
 
+/* Skip prompt stays up while the transport auto-hides: the overlay itself must
+   NOT fade to 0 here (the prompt is its child — opacity:0 on the parent made it
+   invisible once the overlay-level fade landed). The transport (.player-bottom)
+   fades out on its own instead, same M3 timing as the overlay fade. */
 .player-overlay--hidden.player-overlay--skip-intro-active {
+  opacity: 1;
   visibility: visible;
   pointer-events: none;
   background: transparent;
   padding-bottom: 0;
+}
+
+.player-overlay--hidden.player-overlay--skip-intro-active .player-bottom {
+  opacity: 0;
+  transition: opacity var(--dur-short3) var(--ease-standard-accelerate), visibility 0s linear var(--dur-short3);
 }
 
 .player-overlay--hidden.player-overlay--skip-intro-active .player-bottom,
@@ -3560,14 +3571,25 @@ html.caps-motion .detail-episode-grid--enter {
   z-index: 1;
 }
 
-.player-skip-intro-prompt--credits-countdown:focus::before {
-  opacity: 1;
-}
-
+/* Countdown fill is deliberately NOT gated behind caps-motion: it is the
+   time-remaining indicator (5s linear scaleX, compositor-only), not decoration.
+   Without it the pill would sit static while the autoplay timer runs. */
 @keyframes player-skip-credits-fill {
   to {
     transform: scaleX(1);
   }
+}
+
+/* Prompt enter: rises 12px into place (translateX(-50%) is the centering — it
+   must stay in every keyframe or the pill jumps sideways). Exit is the instant
+   [hidden] display:none (entrance-only, like the drawers). Gated; snaps otherwise. */
+@keyframes player-skip-prompt-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+
+html.caps-motion .player-skip-intro-prompt {
+  animation: player-skip-prompt-in var(--dur-short4) var(--ease-emphasized-decelerate);
 }
 
 .player-skip-intro-prompt:focus {
@@ -3608,6 +3630,9 @@ html.caps-motion .detail-episode-grid--enter {
   display: flex;
   flex-direction: column;
   width: 100%;
+  /* Own fade-in for the skip-prompt-active hide/show path (see the
+     --skip-intro-active rules above); no-op in the plain overlay fade. */
+  transition: opacity var(--dur-short4) var(--ease-emphasized-decelerate);
 }
 
 .player-bottom > * + * {
@@ -3681,6 +3706,10 @@ html.caps-motion .detail-episode-grid--enter {
   line-height: 1.3;
   margin: 0;
   color: var(--accent);
+  /* Server error bodies can be one unbroken token (URL / session id) — wrap it
+     rather than push the action cluster off-screen. */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .player-status--error {
@@ -3715,6 +3744,8 @@ html.caps-motion .detail-episode-grid--enter {
   text-align: center;
   pointer-events: none;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .player-playback-error.hidden {
@@ -4004,6 +4035,14 @@ html.caps-motion .detail-episode-grid--enter {
   color: var(--focus-on-fill);
   border-color: transparent;
   box-shadow: none;
+}
+
+/* prev/next at the queue edges (updateQueueControls sets `disabled`): M3
+   disabled = 38% opacity. The focus engine already skips disabled buttons; this
+   makes the skip legible instead of a pill that looks live but does nothing. */
+.player-control-pill:disabled {
+  opacity: 0.38;
+  pointer-events: none;
 }
 
 .player-control-pill--play {
@@ -4558,6 +4597,31 @@ html.caps-motion .detail-episode-grid--enter {
 
 .player-autoplay-panel[hidden] {
   display: none !important;
+}
+
+/* Up-next toast enter: fade + 8px rise (transform/opacity only), plays each
+   time the panel is un-hidden. Cancel/complete exit is the instant [hidden].
+   Gated; snaps in without caps-motion. */
+@keyframes player-autoplay-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+html.caps-motion .player-autoplay-panel {
+  animation: player-autoplay-in var(--dur-short4) var(--ease-emphasized-decelerate);
+}
+
+/* Reduced motion: keep the opacity feedback, drop the travel. The overlay's
+   own fade is opacity-only already; the credits fill is a progress indicator. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes player-skip-prompt-in {
+    from { opacity: 0; transform: translateX(-50%); }
+    to { opacity: 1; transform: translateX(-50%); }
+  }
+  @keyframes player-autoplay-in {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
 }
 
 .player-autoplay-text {
@@ -5332,6 +5396,13 @@ html.caps-motion .loading-overlay {
 html.caps-motion .loading-overlay.hidden {
   transition: opacity var(--dur-short3) var(--ease-standard-accelerate),
               visibility 0s linear var(--dur-short3);
+}
+
+/* Buffering / preparing scrim eases in (opacity only, 150ms) instead of popping
+   to a full-screen dim. Replays on every show (display:none resets it). The
+   player's 250ms show-delay handles flicker; this softens the edge that remains. */
+html.caps-motion .loading-overlay {
+  animation: gt-overlay-in var(--dur-short3) var(--ease-standard-decelerate);
 }
 
 .loading-overlay-inner { pointer-events: none; }
